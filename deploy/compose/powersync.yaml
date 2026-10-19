@@ -1,0 +1,20 @@
+# PowerSync service config. The URIs come from the environment.
+replication:
+  connections:
+    - type: postgresql
+      uri: !env PS_DATA_SOURCE_URI
+      sslmode: disable
+
+storage:
+  type: postgresql
+  uri: !env PS_STORAGE_SOURCE_URI
+  sslmode: disable
+
+port: 8080
+
+sync_rules:
+  path: /config/sync-rules.yaml
+
+client_auth:
+  jwks_uri: !env PS_JWKS_URI
+  audience: ["mt-powersync"]

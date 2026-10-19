@@ -1,0 +1,11 @@
+# PowerSync sync rules. Each user gets one bucket with only their own rows.
+bucket_definitions:
+  user_data:
+    parameters: SELECT request.user_id() AS user_id
+    data:
+      - SELECT * FROM accounts WHERE user_id = bucket.user_id
+      - SELECT * FROM categories WHERE user_id = bucket.user_id
+      - SELECT * FROM transactions WHERE user_id = bucket.user_id
+      - SELECT * FROM recurring_rules WHERE user_id = bucket.user_id
+      - SELECT * FROM budgets WHERE user_id = bucket.user_id
+      - SELECT * FROM user_settings WHERE user_id = bucket.user_id

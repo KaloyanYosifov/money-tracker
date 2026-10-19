@@ -1,0 +1,154 @@
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Platform } from "react-native";
+
+import { authApi, type AuthApi, type TokenResponse } from "./api";
+import * as tokenStore from "./tokenStore";
+
+export type AuthStatus = "loading" | "signedOut" | "signedIn" | "reauthRequired";
+
+export interface AuthContextValue {
+  status: AuthStatus;
+  /** The signed-in user, or the last known user in reauthRequired. */
+  userId: string | null;
+  /** Returns a valid access token, or null if none can be had now. */
+  getAccessToken(): Promise<string | null>;
+  /** Stores the token response of a finished login or invite confirm. */
+  signIn(tokens: TokenResponse): Promise<void>;
+  signOut(): Promise<void>;
+}
+
+/** Called with the new and the previous user ID, before the new user is published. */
+export type UserChangeHandler = (nextUserId: string, previousUserId: string | null) => void | Promise<void>;
+
+const REFRESH_MARGIN_MS = 60_000;
+
+type RefreshOutcome = { kind: "ok"; tokens: TokenResponse } | { kind: "invalid" } | { kind: "failed" };
+
+const AuthContext = createContext<AuthContextValue | null>(null);
+
+export function AuthProvider({
+  children,
+  api = authApi,
+  onUserChange,
+  now = Date.now,
+}: {
+  children: ReactNode;
+  api?: AuthApi;
+  onUserChange?: UserChangeHandler;
+  now?: () => number;
+}) {
+  const [state, setState] = useState<{ status: AuthStatus; userId: string | null }>({
+    status: "loading",
+    userId: null,
+  });
+  const access = useRef<{ token: string; expiresAt: number } | null>(null);
+  const inflight = useRef<Promise<RefreshOutcome> | null>(null);
+  // Props in refs keep the callbacks stable, so inline props do not restart the effect.
+  const props = useRef({ api, onUserChange, now });
+  useLayoutEffect(() => {
+    props.current = { api, onUserChange, now };
+  });
+
+  const keepTokens = useCallback(
+    async (tokens: TokenResponse) => {
+      if (tokens.refresh_token) {
+        await tokenStore.setRefreshToken(tokens.refresh_token);
+      }
+      await tokenStore.setLastUserId(tokens.user_id);
+      access.current = { token: tokens.access_token, expiresAt: props.current.now() + tokens.expires_in * 1000 };
+    },
+    [],
+  );
+
+  const refresh = useCallback((): Promise<RefreshOutcome> => {
+    if (inflight.current) {
+      return inflight.current;
+    }
+    const run = async (): Promise<RefreshOutcome> => {
+      const stored = await tokenStore.getRefreshToken();
+      // Native keeps the token in the Keychain. Without it, no refresh can work.
+      const result =
+        stored === null && Platform.OS !== "web"
+          ? ({ ok: false, error: "refresh_invalid" } as const)
+          : await props.current.api.refresh(stored);
+
+      if (result.ok) {
+        await keepTokens(result.value);
+        setState({ status: "signedIn", userId: result.value.user_id });
+        return { kind: "ok", tokens: result.value };
+      }
+      if (result.error === "refresh_invalid") {
+        access.current = null;
+        await tokenStore.setRefreshToken(null);
+        const last = await tokenStore.getLastUserId();
+        setState({ status: last ? "reauthRequired" : "signedOut", userId: last });
+        return { kind: "invalid" };
+      }
+      return { kind: "failed" };
+    };
+    inflight.current = run().finally(() => {
+      inflight.current = null;
+    });
+    return inflight.current;
+  }, [keepTokens]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const outcome = await refresh();
+      if (outcome.kind !== "failed" || cancelled) {
+        return;
+      }
+      // Offline start: a known user keeps using the local data.
+      const last = await tokenStore.getLastUserId();
+      setState({ status: last ? "signedIn" : "signedOut", userId: last });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [refresh]);
+
+  const getAccessToken = useCallback(async (): Promise<string | null> => {
+    const current = access.current;
+    if (current && props.current.now() < current.expiresAt - REFRESH_MARGIN_MS) {
+      return current.token;
+    }
+    const outcome = await refresh();
+    return outcome.kind === "ok" ? outcome.tokens.access_token : null;
+  }, [refresh]);
+
+  const signIn = useCallback(
+    async (tokens: TokenResponse) => {
+      const previous = await tokenStore.getLastUserId();
+      if (previous !== tokens.user_id) {
+        await props.current.onUserChange?.(tokens.user_id, previous);
+      }
+      await keepTokens(tokens);
+      setState({ status: "signedIn", userId: tokens.user_id });
+    },
+    [keepTokens],
+  );
+
+  const signOut = useCallback(async () => {
+    await props.current.api.logout(await tokenStore.getRefreshToken());
+    access.current = null;
+    await tokenStore.setRefreshToken(null);
+    await tokenStore.setLastUserId(null);
+    setState({ status: "signedOut", userId: null });
+  }, []);
+
+  const value = useMemo<AuthContextValue>(
+    () => ({ ...state, getAccessToken, signIn, signOut }),
+    [state, getAccessToken, signIn, signOut],
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function useAuth(): AuthContextValue {
+  const value = useContext(AuthContext);
+  if (!value) {
+    throw new Error("useAuth needs an AuthProvider");
+  }
+  return value;
+}

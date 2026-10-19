@@ -1,0 +1,86 @@
+# Local development stack. All passwords and keys here are dev-only.
+name: money-tracker
+
+services:
+  postgres:
+    image: postgres:17
+    command: postgres -c wal_level=logical
+    environment:
+      POSTGRES_USER: money
+      POSTGRES_PASSWORD: money-dev
+      POSTGRES_DB: money
+    volumes:
+      - ./postgres-init.sql:/docker-entrypoint-initdb.d/postgres-init.sql:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "money", "-d", "money"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # The api image is distroless and has no shell, so a one-shot container
+  # runs the migrations before the api container starts.
+  migrate:
+    image: money-tracker-api:dev
+    build:
+      context: ../..
+      dockerfile: deploy/docker/api.Dockerfile
+    command: ["migrate"]
+    env_file: dev.env
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    image: money-tracker-api:dev
+    build:
+      context: ../..
+      dockerfile: deploy/docker/api.Dockerfile
+    command: ["serve"]
+    env_file: dev.env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  powersync:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/powersync.Dockerfile
+    environment:
+      POWERSYNC_CONFIG_PATH: /config/powersync.yaml
+      PS_DATA_SOURCE_URI: postgres://powersync_repl:powersync-repl-dev@postgres:5432/money
+      PS_STORAGE_SOURCE_URI: postgres://powersync_storage:powersync-storage-dev@postgres:5432/powersync_storage
+      PS_JWKS_URI: http://api:8080/api/.well-known/jwks.json
+    volumes:
+      - ./powersync.yaml:/config/powersync.yaml:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      api:
+        condition: service_started
+
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:2.13.0
+    command: ["-host=0.0.0.0", "-config=/config/toxiproxy.json"]
+    volumes:
+      - ./toxiproxy.json:/config/toxiproxy.json:ro
+    ports:
+      - "8474:8474"
+      - "18080:18080"
+      - "18081:18081"
+    depends_on:
+      - api
+      - powersync
+
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/web.Dockerfile
+    environment:
+      API_UPSTREAM: http://toxiproxy:18080
+      POWERSYNC_URL: http://localhost:18081
+      POWERSYNC_WS_URL: ws://localhost:18081
+    ports:
+      - "8088:8080"
+    depends_on:
+      - toxiproxy

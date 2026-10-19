@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.expo/
+ios/
+app/ios/
+api/bin/
+*.secret.plaintext.yaml
+.env*
+e2e/test-results/
+e2e/playwright-report/
+app/public/@powersync/

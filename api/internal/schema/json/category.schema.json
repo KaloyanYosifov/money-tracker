@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "category.schema.json",
+  "title": "Category",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "user_id", "type", "name", "icon", "color", "sort_order"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "user_id": { "type": "string", "format": "uuid" },
+    "type": { "type": "string", "enum": ["expense", "income"] },
+    "name": { "type": "string", "minLength": 1, "maxLength": 60 },
+    "icon": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40,
+      "description": "Key from the app icon registry."
+    },
+    "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+    "sort_order": { "type": "integer", "minimum": 0 },
+    "archived_at": { "type": ["string", "null"], "format": "date-time" }
+  }
+}

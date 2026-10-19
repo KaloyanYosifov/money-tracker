@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "Money Tracker",
+    "slug": "money-tracker",
+    "version": "1.0.0",
+    "orientation": "default",
+    "scheme": "moneytracker",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.kyosifov.moneytracker",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Unlock Money Tracker with Face ID"
+      }
+    },
+    "web": {
+      "output": "single",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

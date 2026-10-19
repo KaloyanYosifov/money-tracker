@@ -1,0 +1,18 @@
+{
+  "name": "money-tracker",
+  "private": true,
+  "workspaces": [
+    "app",
+    "e2e"
+  ],
+  "scripts": {
+    "generate": "make generate",
+    "check-generated": "make check-generated"
+  },
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "op-sqlite": {
+    "sqlcipher": true
+  }
+}

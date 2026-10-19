@@ -1,0 +1,12 @@
+{
+  "name": "money-tracker-schema-scripts",
+  "private": true,
+  "type": "module",
+  "description": "Generates TypeScript and Go types from the JSON Schemas in schema/.",
+  "dependencies": {
+    "json-schema-to-typescript": "16.0.0"
+  },
+  "config": {
+    "goJsonschema": "github.com/atombender/go-jsonschema@v0.24.1"
+  }
+}

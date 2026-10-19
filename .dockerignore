@@ -1,0 +1,12 @@
+.git
+**/node_modules
+**/.expo
+**/dist
+app/ios
+app/public/@powersync
+api/bin
+e2e/test-results
+e2e/playwright-report
+.env*
+*.secret.plaintext.yaml
+docs

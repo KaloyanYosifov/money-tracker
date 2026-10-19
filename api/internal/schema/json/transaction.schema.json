@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "transaction.schema.json",
+  "title": "Transaction",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "user_id", "type", "amount_minor", "currency_code", "date", "name", "account_id", "source"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "user_id": { "type": "string", "format": "uuid" },
+    "type": { "type": "string", "enum": ["expense", "income", "transfer"] },
+    "amount_minor": { "type": "integer", "minimum": 1, "maximum": 1000000000000 },
+    "currency_code": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "name": { "type": "string", "minLength": 0, "maxLength": 120 },
+    "category_id": { "type": ["string", "null"], "format": "uuid" },
+    "account_id": { "type": "string", "format": "uuid" },
+    "to_account_id": { "type": ["string", "null"], "format": "uuid" },
+    "note": { "type": ["string", "null"], "minLength": 0, "maxLength": 2000 },
+    "recurring_rule_id": { "type": ["string", "null"], "format": "uuid" },
+    "source": { "type": "string", "enum": ["manual", "recurring", "import", "bank"] },
+    "import_batch_id": { "type": ["string", "null"], "format": "uuid" },
+    "external_id": { "type": ["string", "null"], "minLength": 0, "maxLength": 200 },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true,
+      "description": "Set by the server."
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true,
+      "description": "Set by the server."
+    }
+  }
+}

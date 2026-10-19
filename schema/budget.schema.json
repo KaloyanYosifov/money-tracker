@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "budget.schema.json",
+  "title": "Budget",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "user_id", "period", "amount_minor"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "user_id": { "type": "string", "format": "uuid" },
+    "category_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Null means the overall budget."
+    },
+    "period": { "type": "string", "enum": ["daily", "weekly", "biweekly", "monthly", "yearly"] },
+    "amount_minor": { "type": "integer", "minimum": 1 }
+  }
+}

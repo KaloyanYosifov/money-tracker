@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "upload.schema.json",
+  "title": "UploadRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "ops"],
+  "properties": {
+    "schema_version": { "type": "integer" },
+    "ops": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 200,
+      "items": { "$ref": "#/$defs/UploadOp" }
+    }
+  },
+  "$defs": {
+    "UploadOp": {
+      "title": "UploadOp",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "table", "id"],
+      "properties": {
+        "op": { "type": "string", "enum": ["PUT", "PATCH", "DELETE"] },
+        "table": {
+          "type": "string",
+          "enum": ["accounts", "categories", "transactions", "recurring_rules", "budgets", "user_settings"]
+        },
+        "id": { "type": "string", "format": "uuid" },
+        "data": { "type": "object" }
+      },
+      "if": {
+        "properties": { "op": { "enum": ["PUT", "PATCH"] } },
+        "required": ["op"]
+      },
+      "then": { "required": ["data"] }
+    }
+  }
+}
