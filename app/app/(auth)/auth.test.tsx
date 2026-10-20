@@ -174,7 +174,7 @@ describe("invite", () => {
     mockApi.confirmInvite.mockResolvedValue({ ok: true, value: { ...tokens, recovery_codes: RECOVERY_CODES } });
     await renderApp("/invite?token=invite-1");
 
-    // Step 1: the password, at least 12 characters, typed twice.
+    // Step 1: the password, at least 8 characters, typed twice.
     const next = await screen.findByRole("button", { name: "Continue" });
     await fireEvent.changeText(screen.getByLabelText("Password"), "short");
     await fireEvent.changeText(screen.getByLabelText("Repeat password"), "short");

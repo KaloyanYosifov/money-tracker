@@ -18,10 +18,10 @@ const (
 	argonThreads   = 2
 	argonSaltLen   = 16
 	argonKeyLen    = 32
-	minPasswordLen = 12
+	minPasswordLen = 8
 )
 
-var ErrPasswordTooShort = errors.New("password must have at least 12 characters")
+var ErrPasswordTooShort = errors.New("password must have at least 8 characters")
 
 var b64 = base64.RawStdEncoding
 

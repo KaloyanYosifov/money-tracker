@@ -5,8 +5,10 @@ WORKDIR /src
 COPY package.json package-lock.json ./
 COPY app/package.json app/
 COPY e2e/package.json e2e/
+COPY scripts/install-platform-bindings.mjs scripts/
 # The dev dependencies are for the tests only. better-sqlite3 needs Python to compile.
-RUN npm ci --workspace app --omit=dev --no-audit --no-fund
+# CI=1 skips the bindings for other platforms.
+RUN CI=1 npm ci --workspace app --omit=dev --no-audit --no-fund
 COPY app/ app/
 WORKDIR /src/app
 # Copies the PowerSync web worker and wasm assets into public/@powersync.

@@ -37,7 +37,7 @@ func TestHashesDiffer(t *testing.T) {
 }
 
 func TestRejectShortPassword(t *testing.T) {
-	_, err := HashPassword("short12345")
+	_, err := HashPassword("short12")
 	if !errors.Is(err, ErrPasswordTooShort) {
 		t.Fatalf("got %v, want ErrPasswordTooShort", err)
 	}

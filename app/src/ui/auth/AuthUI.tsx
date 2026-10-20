@@ -14,7 +14,7 @@ const ERROR_MESSAGES: Partial<Record<AuthError, string>> = {
   rate_limited: "Too many attempts. Wait a minute and try again.",
   invalid_code: "Wrong code. Try again.",
   setup_incomplete: "Finish the setup from your invite link first.",
-  password_too_short: "Use at least 12 characters.",
+  password_too_short: "Use at least 8 characters.",
   invite_invalid: "This invite link is not valid.",
   invite_expired: "This invite link has expired. Ask for a new one.",
   invite_used: "This invite link was already used.",

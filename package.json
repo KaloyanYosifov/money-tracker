@@ -7,7 +7,8 @@
   ],
   "scripts": {
     "generate": "make generate",
-    "check-generated": "make check-generated"
+    "check-generated": "make check-generated",
+    "postinstall": "node scripts/install-platform-bindings.mjs"
   },
   "engines": {
     "node": ">=24 <25"

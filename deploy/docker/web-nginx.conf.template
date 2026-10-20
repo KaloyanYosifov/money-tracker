@@ -27,6 +27,13 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 
+    # Run-time config for the app. Do not use add_header here: it drops the
+    # server-level headers above.
+    location = /config.json {
+        default_type application/json;
+        return 200 '{"powersyncUrl":"${POWERSYNC_URL}"}';
+    }
+
     location / {
         try_files $uri $uri/ /index.html;
     }

@@ -5,7 +5,7 @@ import type {
   PowerSyncCredentials,
 } from "@powersync/common";
 
-import { API_URL, POWERSYNC_URL } from "../config";
+import { API_URL, getPowerSyncUrl } from "../config";
 import { newId } from "../domain/ids";
 import { SCHEMA_VERSION, type UploadOp } from "../generated/schema";
 
@@ -39,7 +39,7 @@ export function createConnector(deps: ConnectorDeps): PowerSyncBackendConnector 
   return {
     async fetchCredentials(): Promise<PowerSyncCredentials | null> {
       const token = await deps.getAccessToken();
-      return token ? { endpoint: POWERSYNC_URL, token } : null;
+      return token ? { endpoint: await getPowerSyncUrl(), token } : null;
     },
 
     async uploadData(database: CommonPowerSyncDatabase): Promise<void> {

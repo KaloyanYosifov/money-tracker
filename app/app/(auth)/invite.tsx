@@ -18,7 +18,7 @@ import {
   ErrorText,
 } from "../../src/ui/auth/AuthUI";
 
-const MIN_PASSWORD_LENGTH = 12;
+const MIN_PASSWORD_LENGTH = 8;
 
 type Step =
   | { kind: "password" }
@@ -86,9 +86,24 @@ function PasswordStep({ error, onSubmit }: { error: string | null; onSubmit: (pa
 
   const longEnough = [...password].length >= MIN_PASSWORD_LENGTH;
   const mismatch = repeat.length > 0 && password !== repeat;
+  const canSubmit = longEnough && password === repeat && !busy;
+  const submit = () => {
+    if (!canSubmit) {
+      return;
+    }
+    setBusy(true);
+    void onSubmit(password).finally(() => setBusy(false));
+  };
+
+  let hint = error;
+  if (password.length > 0 && !longEnough) {
+    hint = authErrorMessage("password_too_short");
+  } else if (mismatch) {
+    hint = "The passwords do not match.";
+  }
 
   return (
-    <AuthScreen title="Set up your account" text="Step 1 of 3. Choose a password with at least 12 characters.">
+    <AuthScreen title="Set up your account" text="Step 1 of 3. Choose a password with at least 8 characters.">
       <AuthField
         label="Password"
         value={password}
@@ -96,6 +111,7 @@ function PasswordStep({ error, onSubmit }: { error: string | null; onSubmit: (pa
         secureTextEntry
         textContentType="newPassword"
         autoComplete="new-password"
+        onSubmitEditing={submit}
       />
       <AuthField
         label="Repeat password"
@@ -104,16 +120,10 @@ function PasswordStep({ error, onSubmit }: { error: string | null; onSubmit: (pa
         secureTextEntry
         textContentType="newPassword"
         autoComplete="new-password"
+        onSubmitEditing={submit}
       />
-      <ErrorText message={mismatch ? "The passwords do not match." : error} />
-      <AuthButton
-        label="Continue"
-        disabled={!longEnough || password !== repeat || busy}
-        onPress={() => {
-          setBusy(true);
-          void onSubmit(password).finally(() => setBusy(false));
-        }}
-      />
+      <ErrorText message={hint} />
+      <AuthButton label="Continue" disabled={!canSubmit} onPress={submit} />
     </AuthScreen>
   );
 }
