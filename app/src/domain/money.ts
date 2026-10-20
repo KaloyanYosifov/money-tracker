@@ -8,7 +8,12 @@ export function minorUnits(currency: string): number {
 }
 
 function decimalSeparator(locale?: string): string {
-  const part = new Intl.NumberFormat(locale).formatToParts(1.1).find((p) => p.type === "decimal");
+  const format = new Intl.NumberFormat(locale);
+  // Hermes on iOS has no NumberFormat.formatToParts. Without it, read the character between the 1s of "1.1".
+  if (typeof format.formatToParts !== "function") {
+    return /1(\D)1/.exec(format.format(1.1))?.[1] ?? ".";
+  }
+  const part = format.formatToParts(1.1).find((p) => p.type === "decimal");
   return part?.value ?? ".";
 }
 

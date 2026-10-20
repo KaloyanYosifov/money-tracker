@@ -120,10 +120,12 @@ function formatDate(date: CalendarDate, locale: string | undefined, options: Int
 function rangeLabel(start: CalendarDate, end: CalendarDate, currentYear: number, locale?: string): string {
   const withYear = start.year !== end.year || start.year !== currentYear;
   const options: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", ...(withYear && { year: "numeric" }) };
-  if (start.year === end.year && start.month === end.month) {
+  const dateFormat = new Intl.DateTimeFormat(locale, { ...options, timeZone: "UTC" });
+  // Hermes on iOS can lack DateTimeFormat.formatToParts. Then the label repeats the month: "12 Oct – 18 Oct".
+  if (start.year === end.year && start.month === end.month && typeof dateFormat.formatToParts === "function") {
     // Keep the locale order of day and month, and put the range on the day: "12 – 18 Oct" or "Oct 12 – 18".
     const utc = new Date(Date.UTC(end.year, end.month - 1, end.day));
-    return new Intl.DateTimeFormat(locale, { ...options, timeZone: "UTC" })
+    return dateFormat
       .formatToParts(utc)
       .map((part) => (part.type === "day" ? `${start.day} – ${end.day}` : part.value))
       .join("");

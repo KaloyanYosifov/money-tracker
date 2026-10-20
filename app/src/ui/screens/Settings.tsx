@@ -57,9 +57,14 @@ const LOCK_AFTER: Option<"0" | "60" | "300">[] = [
 ];
 
 function currencySymbol(currency: string): string {
-  const part = new Intl.NumberFormat(undefined, { style: "currency", currency })
-    .formatToParts(0)
-    .find((p) => p.type === "currency");
+  const format = new Intl.NumberFormat(undefined, { style: "currency", currency });
+  // Hermes on iOS has no NumberFormat.formatToParts. Without it, remove the number ("0.00") from "€0.00".
+  if (typeof format.formatToParts !== "function") {
+    const digits = format.resolvedOptions().maximumFractionDigits ?? 2;
+    const number = new Intl.NumberFormat(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(0);
+    return format.format(0).replace(number, "").trim() || currency;
+  }
+  const part = format.formatToParts(0).find((p) => p.type === "currency");
   return part?.value ?? currency;
 }
 
