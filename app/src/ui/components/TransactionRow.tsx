@@ -5,6 +5,7 @@ import type { TransactionListRow } from "../../data/queries";
 import { formatAmount, minorUnits } from "../../domain/money";
 import { CategoryIcon, categoryIcons, type CategoryIconKey, type IconVariant } from "../icons/categoryIcons";
 import { colors, type ThemeColors } from "../theme";
+import { isHovered } from "./interaction";
 
 type Props = {
   row: TransactionListRow;
@@ -83,7 +84,13 @@ export function TransactionRow({ row, iconStyle = "filled", locale, onPress, the
       accessibilityLabel={label}
       onPress={onPress}
       disabled={!onPress}
-      style={[styles.row, { backgroundColor: background, borderBottomColor: theme.line }]}
+      style={(state) => [
+        styles.row,
+        {
+          backgroundColor: onPress && state.pressed ? theme.line : onPress && isHovered(state) ? theme.hover : background,
+          borderBottomColor: theme.line,
+        },
+      ]}
     >
       <View style={styles.icon}>
         {icon ? (

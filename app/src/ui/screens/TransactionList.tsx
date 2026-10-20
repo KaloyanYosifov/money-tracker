@@ -27,6 +27,7 @@ import { formatAmount } from "../../domain/money";
 import type { Period } from "../../domain/period";
 import type { Transaction, UserSettings } from "../../generated/schema";
 import { useShortcuts } from "../../hooks/useShortcuts";
+import { isHovered } from "../components/interaction";
 import { PaperBar } from "../components/PaperBar";
 import { TransactionRow } from "../components/TransactionRow";
 import { UndoToast } from "../components/UndoToast";
@@ -176,9 +177,24 @@ function ToolbarButton({ label, onPress, children }: { label: string; onPress: (
   );
 }
 
-function ToolbarIcon({ d, color, filled = false }: { d: string; color: string; filled?: boolean }) {
+function BarButton({ label, onPress, theme }: { label: string; onPress: () => void; theme: ThemeColors }) {
   return (
-    <Svg width={24} height={24} viewBox="0 0 24 24">
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={(state) => [styles.barButton, (isHovered(state) || state.pressed) && { backgroundColor: theme.hover }]}
+    >
+      <Text allowFontScaling style={[styles.barAction, { color: theme.accent }]}>
+        {`${label} ▾`}
+      </Text>
+    </Pressable>
+  );
+}
+
+function ToolbarIcon({ d, color, filled = false, size = 24 }: { d: string; color: string; filled?: boolean; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
       <Path
         d={d}
         fill={filled ? color : "none"}
@@ -314,37 +330,39 @@ export function TransactionList({
       <PaperBar theme={theme} style={web ? styles.webBar : undefined}>
         {web ? (
           <>
-            <TextInput
-              ref={searchInput}
-              value={searchText}
-              onChangeText={setSearchText}
-              placeholder="Search transactions ( / )"
-              placeholderTextColor={theme.accent}
-              accessibilityLabel="Search transactions"
-              allowFontScaling
-              style={[styles.search, { borderColor: theme.line, color: theme.ink, backgroundColor: theme.row }]}
-            />
+            <View style={styles.searchBox}>
+              <View pointerEvents="none" style={styles.searchIcon}>
+                <ToolbarIcon d="M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13Zm4.6-1.9L20 20" color={theme.accent} size={15} />
+              </View>
+              <TextInput
+                ref={searchInput}
+                value={searchText}
+                onChangeText={setSearchText}
+                placeholder="Search transactions ( / )"
+                placeholderTextColor={theme.accent}
+                accessibilityLabel="Search transactions"
+                allowFontScaling
+                style={[styles.search, { borderColor: theme.line, color: theme.ink, backgroundColor: theme.row }]}
+              />
+            </View>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Choose account"
               accessibilityValue={{ text: title }}
               onPress={() => setMenu("account")}
+              style={(state) => [
+                styles.accountChip,
+                { borderColor: theme.line, backgroundColor: isHovered(state) || state.pressed ? theme.hover : theme.row },
+              ]}
             >
-              <Text allowFontScaling style={[styles.barText, { color: theme.accent }]}>
-                <Text testID="paper-bar-title">{title}</Text> ▾
+              <Text allowFontScaling numberOfLines={1} style={[styles.chipText, { color: theme.ink }]}>
+                <Text testID="paper-bar-title">{title}</Text>
+                <Text style={{ color: theme.accent }}> ▾</Text>
               </Text>
             </Pressable>
             <View style={styles.barActions}>
-              <Pressable accessibilityRole="button" accessibilityLabel="Sort" onPress={() => setMenu("sort")}>
-                <Text allowFontScaling style={[styles.barAction, { color: theme.accent }]}>
-                  Sort ▾
-                </Text>
-              </Pressable>
-              <Pressable accessibilityRole="button" accessibilityLabel="Filter" onPress={() => setMenu("filter")}>
-                <Text allowFontScaling style={[styles.barAction, { color: theme.accent }]}>
-                  Filter ▾
-                </Text>
-              </Pressable>
+              <BarButton label="Sort" onPress={() => setMenu("sort")} theme={theme} />
+              <BarButton label="Filter" onPress={() => setMenu("filter")} theme={theme} />
               <ExportButton theme={theme} />
             </View>
           </>
@@ -438,7 +456,7 @@ function ExportButton({ theme }: { theme: ThemeColors }) {
   return (
     <View testID="export" onPointerEnter={() => setHover(true)} onPointerLeave={() => setHover(false)}>
       <Pressable accessibilityRole="button" accessibilityLabel="Export" accessibilityHint="Coming soon" disabled>
-        <Text allowFontScaling style={[styles.barAction, styles.disabled, { color: theme.accent }]}>
+        <Text allowFontScaling style={[styles.barAction, styles.barButton, styles.disabled, { color: theme.accent }]}>
           Export
         </Text>
       </Pressable>
@@ -457,7 +475,34 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     gap: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     zIndex: 1,
+  },
+  searchBox: {
+    flex: 1,
+    maxWidth: 220,
+    justifyContent: "center",
+  },
+  searchIcon: {
+    position: "absolute",
+    left: 10,
+    zIndex: 1,
+  },
+  accountChip: {
+    flexShrink: 1,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingVertical: 5,
+    paddingHorizontal: 14,
+  },
+  chipText: {
+    fontSize: 14,
+  },
+  barButton: {
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    borderRadius: 6,
   },
   barText: {
     fontSize: 15,
@@ -466,7 +511,7 @@ const styles = StyleSheet.create({
   barActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 2,
   },
   barAction: {
     fontSize: 13,
@@ -484,13 +529,12 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   search: {
-    flex: 1,
-    maxWidth: 230,
+    height: 32,
     borderWidth: 1,
-    borderRadius: 4,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    fontSize: 12,
+    borderRadius: 16,
+    paddingLeft: 32,
+    paddingRight: 12,
+    fontSize: 13,
   },
   totals: {
     flexDirection: "row",

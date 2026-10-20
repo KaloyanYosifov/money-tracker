@@ -1,6 +1,6 @@
 import { usePowerSync, useQuery } from "@powersync/react";
 import { useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, type PressableStateCallbackType } from "react-native";
 
 import { saveOverallBudget, updateSettings, type SettingsPatch } from "../../data/mutations";
 import type { DeviceSession, SessionsApi } from "../../data/session";
@@ -12,6 +12,7 @@ import { useAppLockAvailable } from "../../security/AppLock";
 import { useSyncState } from "../../sync/syncState";
 import { useUpdateRequired } from "../../sync/updateRequired";
 import { GroupedSection } from "../components/GroupedSection";
+import { isHovered } from "../components/interaction";
 import { ThemedSwitch } from "../components/ThemedSwitch";
 import type { ThemeColors } from "../theme";
 import { defaultPlatform, useScreenSettings, type ScreenPlatform } from "./manage";
@@ -288,10 +289,22 @@ function BudgetAmountInput({
   );
 }
 
+function rowBackground(state: PressableStateCallbackType, theme: ThemeColors): string {
+  if (state.pressed) return theme.line;
+  return isHovered(state) ? theme.hover : theme.row;
+}
+
 function ScreenHeader({ title, onBack, theme }: { title: string; onBack: () => void; theme: ThemeColors }) {
   return (
     <View style={[styles.header, { borderBottomColor: theme.line }]}>
-      <Pressable testID="back" accessibilityRole="button" accessibilityLabel="Back" onPress={onBack} hitSlop={8} style={styles.back}>
+      <Pressable
+        testID="back"
+        accessibilityRole="button"
+        accessibilityLabel="Back"
+        onPress={onBack}
+        hitSlop={8}
+        style={(state) => [styles.back, (isHovered(state) || state.pressed) && { backgroundColor: theme.hover }]}
+      >
         <Text allowFontScaling style={[styles.backText, { color: theme.ink }]}>
           ←
         </Text>
@@ -358,7 +371,7 @@ function ChoiceRow<T extends string>({
         accessibilityLabel={`${label}, ${current}`}
         accessibilityState={{ expanded: open }}
         onPress={() => setOpen((o) => !o)}
-        style={[styles.row, { backgroundColor: theme.row, borderBottomColor: theme.line }]}
+        style={(state) => [styles.row, { backgroundColor: rowBackground(state, theme), borderBottomColor: theme.line }]}
       >
         <Text allowFontScaling style={[styles.label, styles.labelText, { color: theme.settingsBlue }]}>
           {label}
@@ -380,7 +393,11 @@ function ChoiceRow<T extends string>({
                   setOpen(false);
                   if (!checked) onChange(option.value);
                 }}
-                style={[styles.row, styles.option, { backgroundColor: theme.paper, borderBottomColor: theme.line }]}
+                style={(state) => [
+                  styles.row,
+                  styles.option,
+                  { backgroundColor: isHovered(state) || state.pressed ? theme.hover : theme.paper, borderBottomColor: theme.line },
+                ]}
               >
                 <Text allowFontScaling style={[styles.label, { color: theme.ink }]}>
                   {option.label}
@@ -410,7 +427,7 @@ function LinkRow({
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
-      style={[styles.row, { backgroundColor: theme.row, borderBottomColor: theme.line }]}
+      style={(state) => [styles.row, { backgroundColor: rowBackground(state, theme), borderBottomColor: theme.line }]}
     >
       <Text allowFontScaling style={[styles.label, styles.labelText, { color: color ?? theme.settingsBlue }]}>
         {label}
@@ -637,6 +654,9 @@ const styles = StyleSheet.create({
   back: {
     minWidth: 44,
     minHeight: 44,
+    marginRight: 6,
+    borderRadius: 22,
+    alignItems: "center",
     justifyContent: "center",
   },
   backText: {

@@ -9,6 +9,7 @@ import type { UserSettings } from "../../generated/schema";
 import type { LayoutMode } from "../../hooks/useLayoutMode";
 import { CashFlowChart } from "../charts/CashFlowChart";
 import { PieChart, percent, type PieSlice } from "../charts/PieChart";
+import { isHovered } from "../components/interaction";
 import { SegmentedControl } from "../components/SegmentedControl";
 import { colors, resolveTheme } from "../theme";
 import { spokenAmount } from "./Chalkboard";
@@ -106,7 +107,10 @@ export function Reports({
               accessibilityRole="button"
               accessibilityLabel={`${slice.label}, ${spoken(slice.value)}, ${share}%`}
               onPress={() => onCategoryPress(slice.id)}
-              style={styles.legendItem}
+              style={(state) => [
+                styles.legendItem,
+                (isHovered(state) || state.pressed) && { backgroundColor: landscape ? "rgba(255, 255, 255, 0.08)" : theme.hover },
+              ]}
             >
               <View style={[styles.swatch, { backgroundColor: slice.color }]} />
               <Text allowFontScaling numberOfLines={1} style={[styles.legendName, { color: text }]}>
@@ -196,6 +200,7 @@ const styles = StyleSheet.create({
   content: {
     flexGrow: 1,
     padding: 16,
+    paddingTop: 24,
   },
   pieArea: {
     alignItems: "center",
@@ -210,13 +215,15 @@ const styles = StyleSheet.create({
   legend: {
     alignSelf: "stretch",
     flexShrink: 1,
-    gap: 4,
+    gap: 2,
   },
   legendItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingVertical: 3,
+    gap: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: 6,
   },
   swatch: {
     width: 12,
@@ -233,6 +240,7 @@ const styles = StyleSheet.create({
   summary: {
     fontSize: 12,
     marginTop: 8,
+    paddingHorizontal: 10,
     opacity: 0.8,
   },
   empty: {

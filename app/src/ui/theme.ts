@@ -11,6 +11,8 @@ export type ThemeColors = {
   paper: string;
   row: string;
   line: string;
+  /** Background of a row or button under the mouse pointer (web). */
+  hover: string;
   carryOver: string;
   chalkBackground: string;
   chalkGreen: string;
@@ -30,6 +32,7 @@ export const colors: Record<ThemeName, ThemeColors> = {
     paper: "#f1ece2",
     row: "#f6f2ea",
     line: "#e2d9c8",
+    hover: "#ece4d6",
     carryOver: "#f6dfc6",
     chalkBackground: "#2a2a2a",
     chalkGreen: "#8ee08f",
@@ -47,6 +50,7 @@ export const colors: Record<ThemeName, ThemeColors> = {
     paper: "#23201c",
     row: "#2c2824",
     line: "#3d3730",
+    hover: "#36302a",
     carryOver: "#4a3626",
     chalkBackground: "#1c1c1c",
     chalkGreen: "#7fd180",

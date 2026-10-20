@@ -18,6 +18,7 @@ import { setDevicePref } from "../../hooks/useDevicePrefs";
 import { useShortcuts } from "../../hooks/useShortcuts";
 import { AmountKeypad } from "../components/AmountKeypad";
 import { GroupedSection } from "../components/GroupedSection";
+import { isHovered } from "../components/interaction";
 import { SegmentedControl } from "../components/SegmentedControl";
 import { ThemedSwitch } from "../components/ThemedSwitch";
 import { CategoryIcon, categoryIcons, type CategoryIconKey } from "../icons/categoryIcons";
@@ -368,7 +369,12 @@ function FormBody({
                         setCategoryId(category.id);
                         touch("category_id");
                       }}
-                      style={[styles.cell, selected && { backgroundColor: theme.paper, borderColor: theme.accent }]}
+                      style={(state) => [
+                        styles.cell,
+                        selected
+                          ? { backgroundColor: theme.paper, borderColor: theme.accent }
+                          : (isHovered(state) || state.pressed) && { backgroundColor: theme.hover },
+                      ]}
                     >
                       {category.icon in categoryIcons ? (
                         <CategoryIcon
@@ -579,7 +585,11 @@ function Chip({
       accessibilityLabel={label}
       accessibilityState={{ checked: selected }}
       onPress={onPress}
-      style={[styles.chip, { borderColor: theme.accent }, selected && { backgroundColor: theme.accent }]}
+      style={(state) => [
+        styles.chip,
+        { borderColor: theme.accent },
+        selected ? { backgroundColor: theme.accent } : (isHovered(state) || state.pressed) && { backgroundColor: theme.hover },
+      ]}
     >
       <Text allowFontScaling style={[styles.chipText, { color: selected ? theme.paper : theme.accent }]}>
         {label}

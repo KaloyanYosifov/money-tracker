@@ -6,6 +6,7 @@ import { useBudgetProgress, useCarryOver, useCategoryTotals, usePeriodTotals, ty
 import { formatAmount, minorUnits } from "../../domain/money";
 import type { Period } from "../../domain/period";
 import type { UserSettings } from "../../generated/schema";
+import { isHovered } from "../components/interaction";
 import { currencyName } from "../components/TransactionRow";
 import { colors, resolveTheme, summaryFontFamily } from "../theme";
 import { Texture } from "../Texture";
@@ -118,6 +119,7 @@ export function Chalkboard({ period, locale, showRotateHint = false, onCategoryP
       accessibilityRole="button"
       accessibilityLabel={`${row.name}, ${spokenAmount(row.total, currency)}`}
       onPress={() => onCategoryPress(row.category_id, accountId)}
+      style={(state) => [styles.categoryLine, (isHovered(state) || state.pressed) && styles.chalkHover]}
     >
       <Line label={row.name} amount={format(row.total)} textStyle={chalkText} size="sub" />
     </Pressable>
@@ -170,7 +172,7 @@ export function Chalkboard({ period, locale, showRotateHint = false, onCategoryP
                 accessibilityRole="button"
                 accessibilityLabel={label}
                 onPress={() => onAdd(type)}
-                style={[styles.button, { borderColor: CHALK_WHITE }]}
+                style={(state) => [styles.button, { borderColor: CHALK_WHITE }, (isHovered(state) || state.pressed) && styles.chalkHover]}
               >
                 <Text allowFontScaling style={[...chalkText, styles.buttonText]}>
                   {label}
@@ -254,6 +256,14 @@ const styles = StyleSheet.create({
     opacity: 0.8,
     marginTop: 12,
     marginBottom: 6,
+  },
+  categoryLine: {
+    marginHorizontal: -6,
+    paddingHorizontal: 6,
+    borderRadius: 4,
+  },
+  chalkHover: {
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
   },
   buttons: {
     flexDirection: "row",

@@ -14,6 +14,7 @@ import {
 import Svg, { Circle, Path } from "react-native-svg";
 
 import type { UserSettings } from "../../generated/schema";
+import { isHovered } from "../components/interaction";
 import { ListRow } from "../components/ListRow";
 import { colors, resolveTheme, type ThemeColors } from "../theme";
 
@@ -261,7 +262,7 @@ function ReorderItem({ item, platform, theme, icon, dragging, onStartDrag, onEnd
               {...responder}
               style={styles.handle}
             >
-              <Text style={[styles.handleText, { color: theme.accent }]}>≡</Text>
+              <Text style={[styles.handleText, { color: theme.accent }]}>⋮⋮</Text>
             </View>
           ) : null
         }
@@ -306,7 +307,7 @@ export function FormHeader({
         accessibilityLabel={web ? "Close" : "Cancel"}
         onPress={onCancel}
         hitSlop={8}
-        style={styles.headerButton}
+        style={(state) => [styles.headerButton, styles.closeButton, (isHovered(state) || state.pressed) && { backgroundColor: theme.hover }]}
       >
         <Text allowFontScaling style={[styles.headerText, { color: theme.ink }]}>
           {web ? "✕" : "Cancel"}
@@ -323,7 +324,11 @@ export function FormHeader({
         disabled={!canSave}
         onPress={onSave}
         hitSlop={8}
-        style={[styles.headerButton, styles.saveButton]}
+        style={(state) => [
+          styles.headerButton,
+          styles.saveButton,
+          canSave && (isHovered(state) || state.pressed) && { backgroundColor: theme.hover },
+        ]}
       >
         <Text allowFontScaling style={[styles.headerText, styles.save, { color: theme.accent, opacity: canSave ? 1 : 0.4 }]}>
           {web ? "SAVE" : "Save"}
@@ -382,7 +387,7 @@ export function FormAction({
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
-      style={[styles.action, { backgroundColor: color }]}
+      style={(state) => [styles.action, { backgroundColor: color, opacity: state.pressed ? 0.75 : isHovered(state) ? 0.9 : 1 }]}
     >
       <Text allowFontScaling style={styles.actionText}>
         {label.toUpperCase()}
@@ -440,7 +445,9 @@ const styles = StyleSheet.create({
     cursor: "grab",
   },
   handleText: {
-    fontSize: 22,
+    fontSize: 16,
+    letterSpacing: -4,
+    opacity: 0.45,
   },
   archivedHeader: {
     marginTop: 16,
@@ -481,8 +488,14 @@ const styles = StyleSheet.create({
     minHeight: 44,
     justifyContent: "center",
   },
+  closeButton: {
+    alignItems: "center",
+    borderRadius: 22,
+  },
   saveButton: {
-    alignItems: "flex-end",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    borderRadius: 6,
   },
   headerText: {
     fontSize: 20,

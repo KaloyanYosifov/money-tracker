@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { colors, type ThemeColors } from "../theme";
+import { isHovered } from "./interaction";
 
 type Option<T extends string> = { value: T; label: string };
 
@@ -23,7 +24,10 @@ export function SegmentedControl<T extends string>({ options, value, onChange, t
             accessibilityLabel={option.label}
             accessibilityState={{ selected }}
             onPress={() => onChange(option.value)}
-            style={[styles.item, selected && { backgroundColor: theme.accent }]}
+            style={(state) => [
+              styles.item,
+              selected ? { backgroundColor: theme.accent } : isHovered(state) || state.pressed ? { backgroundColor: theme.hover } : null,
+            ]}
           >
             <Text allowFontScaling style={[styles.label, { color: selected ? theme.paper : theme.accent }]}>
               {option.label.toUpperCase()}

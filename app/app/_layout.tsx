@@ -22,6 +22,9 @@ import { AppLock, useAppLockCovered } from "../src/security/AppLock";
 import { setUpdateRequired, useUpdateRequired } from "../src/sync/updateRequired";
 import { ReauthLogin } from "../src/ui/auth/LoginForms";
 import { Banner } from "../src/ui/components/Banner";
+import { installWebStyles } from "../src/ui/webStyles";
+
+installWebStyles();
 
 // In the browser these screens show as a card above the page (see DeskScreen), so the page stays visible below.
 const FORM_PRESENTATION = Platform.OS === "web" ? "transparentModal" : "modal";

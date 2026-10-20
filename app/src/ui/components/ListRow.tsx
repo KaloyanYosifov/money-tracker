@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { colors, type ThemeColors } from "../theme";
+import { isHovered } from "./interaction";
 
 type Props = {
   title: string;
@@ -22,7 +23,13 @@ export function ListRow({ title, icon, onPress, onLongPress, testID, theme = col
       onLongPress={onLongPress}
       disabled={!onPress}
       testID={testID}
-      style={[styles.row, { backgroundColor: theme.row, borderBottomColor: theme.line }]}
+      style={(state) => [
+        styles.row,
+        {
+          backgroundColor: onPress && state.pressed ? theme.line : onPress && isHovered(state) ? theme.hover : theme.row,
+          borderBottomColor: theme.line,
+        },
+      ]}
     >
       {icon ? <View style={styles.icon}>{icon}</View> : null}
       <Text allowFontScaling style={[styles.title, { color: theme.ink }]}>

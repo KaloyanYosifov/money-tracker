@@ -6,6 +6,7 @@ import { archiveAccount, deleteAccount, restoreAccount, saveAccount } from "../.
 import { deleteSyncProblem, problemRecord, useSyncProblem } from "../../data/syncProblems";
 import { validateAccount } from "../../domain/validation";
 import type { Account } from "../../generated/schema";
+import { isHovered } from "../components/interaction";
 import { PaperBar } from "../components/PaperBar";
 import { Texture } from "../Texture";
 import type { ThemeColors } from "../theme";
@@ -58,13 +59,19 @@ export function AccountsScreen({ platform, onOpen, onNew, onTransfer }: ScreenPr
           accessibilityRole="button"
           accessibilityLabel="Transfer"
           onPress={onTransfer}
-          style={[styles.transfer, { backgroundColor: theme.transferButton }]}
+          style={(state) => [styles.transfer, { backgroundColor: theme.transferButton, opacity: state.pressed ? 0.8 : isHovered(state) ? 0.92 : 1 }]}
         >
           <Text allowFontScaling style={styles.transferText}>
             Transfer
           </Text>
         </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="New account" onPress={onNew} hitSlop={8} style={styles.add}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="New account"
+          onPress={onNew}
+          hitSlop={8}
+          style={(state) => [styles.add, (isHovered(state) || state.pressed) && { backgroundColor: theme.hover }]}
+        >
           <Text allowFontScaling style={[styles.addText, { color: theme.ink }]}>
             +
           </Text>
@@ -249,7 +256,11 @@ const styles = StyleSheet.create({
   transfer: {
     paddingVertical: 8,
     paddingHorizontal: 26,
-    borderRadius: 3,
+    borderRadius: 4,
+    shadowColor: "#000",
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
     minHeight: 44,
     justifyContent: "center",
   },
@@ -263,6 +274,7 @@ const styles = StyleSheet.create({
     right: 14,
     minWidth: 44,
     minHeight: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
   },

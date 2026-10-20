@@ -6,6 +6,7 @@ import { archiveCategory, deleteCategory, restoreCategory, saveCategory } from "
 import { deleteSyncProblem, problemRecord, useSyncProblem } from "../../data/syncProblems";
 import { validateCategory } from "../../domain/validation";
 import type { Category, UserSettings } from "../../generated/schema";
+import { isHovered } from "../components/interaction";
 import { PaperBar } from "../components/PaperBar";
 import { SegmentedControl } from "../components/SegmentedControl";
 import { CategoryIcon, categoryIconKeys, categoryIcons, type CategoryIconKey } from "../icons/categoryIcons";
@@ -77,7 +78,7 @@ export function CategoriesScreen({ platform, onOpen, onNew }: ScreenProps) {
           accessibilityLabel="New category"
           onPress={() => onNew(type)}
           hitSlop={8}
-          style={styles.add}
+          style={(state) => [styles.add, (isHovered(state) || state.pressed) && { backgroundColor: theme.hover }]}
         >
           <Text allowFontScaling style={[styles.addText, { color: theme.ink }]}>
             +
@@ -295,6 +296,7 @@ const styles = StyleSheet.create({
     right: 14,
     minWidth: 44,
     minHeight: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
   },

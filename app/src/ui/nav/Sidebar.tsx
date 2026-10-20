@@ -6,6 +6,7 @@ import { periodFor, type PeriodKind } from "../../domain/period";
 import type { QuickAddType } from "../../hooks/useShortcuts";
 import { useSyncState, type SyncStateKind } from "../../sync/syncState";
 import { useUpdateRequired } from "../../sync/updateRequired";
+import { isHovered } from "../components/interaction";
 import { PeriodPill } from "../components/PeriodPill";
 import { SegmentedControl } from "../components/SegmentedControl";
 import { TabIcon } from "../icons/tabIcons";
@@ -76,13 +77,16 @@ export function Sidebar({ state, emitter, navigateToTab, onQuickAdd, onSettings,
               accessibilityLabel={page.title}
               accessibilityState={{ selected: focused }}
               onPress={onPress}
-              style={[styles.item, focused && { backgroundColor: theme.line }]}
+              style={(state) => [
+                styles.item,
+                focused ? { backgroundColor: theme.line } : isHovered(state) || state.pressed ? { backgroundColor: theme.hover } : null,
+              ]}
             >
               <TabIcon name={page.icon} filled={focused} size={30} color={theme.ink} background={theme.line} />
               <Text allowFontScaling style={[styles.itemText, { color: theme.ink }, focused && styles.itemTextOn]}>
                 {page.title}
               </Text>
-              <Text style={[styles.key, { borderColor: theme.line, color: theme.accent }]}>{index + 1}</Text>
+              <Text style={[styles.key, { backgroundColor: focused ? theme.paper : theme.hover, color: theme.accent }]}>{index + 1}</Text>
             </Pressable>
           );
         })}
@@ -99,19 +103,29 @@ export function Sidebar({ state, emitter, navigateToTab, onQuickAdd, onSettings,
               accessibilityRole="button"
               accessibilityLabel={label.replace(/^[+⇄] /, "New ")}
               onPress={() => onQuickAdd(type)}
-              style={[styles.quickButton, { borderColor: theme.accent }, primary && { backgroundColor: theme.accent }]}
+              style={(state) => [
+                styles.quickButton,
+                { borderColor: theme.accent },
+                primary
+                  ? { backgroundColor: theme.accent, opacity: state.pressed ? 0.8 : isHovered(state) ? 0.92 : 1 }
+                  : (isHovered(state) || state.pressed) && { backgroundColor: theme.hover },
+              ]}
             >
               <Text allowFontScaling style={[styles.quickText, { color: primary ? theme.paper : theme.accent }]}>
                 {label}
               </Text>
-              <Text style={[styles.quickText, { color: primary ? theme.paper : theme.accent }]}>{key}</Text>
+              <Text style={[styles.quickText, styles.quickKey, { color: primary ? theme.paper : theme.accent }]}>{key}</Text>
             </Pressable>
           );
         })}
       </View>
 
       <View style={[styles.foot, { borderTopColor: theme.line }]}>
-        <Pressable accessibilityRole="button" onPress={onSettings} style={styles.footRow}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={onSettings}
+          style={(state) => [styles.footRow, styles.footButton, (isHovered(state) || state.pressed) && { backgroundColor: theme.hover }]}
+        >
           <TabIcon name="gear" size={24} color={theme.ink} background={theme.paper} />
           <Text allowFontScaling style={[styles.itemText, { color: theme.ink }]}>
             Settings
@@ -124,9 +138,11 @@ export function Sidebar({ state, emitter, navigateToTab, onQuickAdd, onSettings,
           </Text>
         </View>
         <Pressable accessibilityRole="button" onPress={onLogout} style={styles.footRow}>
-          <Text allowFontScaling style={[styles.footText, { color: theme.accent }]}>
-            Log out
-          </Text>
+          {(state) => (
+            <Text allowFontScaling style={[styles.footText, { color: theme.accent }, isHovered(state) && styles.underline]}>
+              Log out
+            </Text>
+          )}
         </Pressable>
       </View>
     </Texture>
@@ -165,10 +181,28 @@ export function SidebarPage({ routeName, title, children, theme = colors.light }
         </Text>
         {usesPeriod && (
           <>
-            <Pressable accessibilityRole="button" accessibilityLabel="Previous period" onPress={() => shift(-1)} hitSlop={8}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Previous period"
+              onPress={() => shift(-1)}
+              hitSlop={4}
+              style={(state) => [
+                styles.arrowButton,
+                { borderColor: theme.line, backgroundColor: isHovered(state) || state.pressed ? theme.hover : theme.row },
+              ]}
+            >
               <Text style={[styles.arrow, { color: theme.ink }]}>‹</Text>
             </Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel="Next period" onPress={() => shift(1)} hitSlop={8}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Next period"
+              onPress={() => shift(1)}
+              hitSlop={4}
+              style={(state) => [
+                styles.arrowButton,
+                { borderColor: theme.line, backgroundColor: isHovered(state) || state.pressed ? theme.hover : theme.row },
+              ]}
+            >
               <Text style={[styles.arrow, { color: theme.ink }]}>›</Text>
             </Pressable>
             {/* The pill aligns itself to the start, so a wrapper centres it in the row. */}
@@ -242,10 +276,12 @@ const styles = StyleSheet.create({
   },
   key: {
     marginLeft: "auto",
+    minWidth: 18,
+    textAlign: "center",
     fontSize: 10.5,
-    borderWidth: 1,
-    borderRadius: 3,
+    borderRadius: 4,
     paddingHorizontal: 5,
+    paddingVertical: 1,
   },
   separator: {
     height: 1,
@@ -260,13 +296,19 @@ const styles = StyleSheet.create({
   quickButton: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
     borderWidth: 1.5,
-    borderRadius: 5,
-    paddingVertical: 7,
-    paddingHorizontal: 10,
+    borderRadius: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
   },
   quickText: {
-    fontSize: 13,
+    fontSize: 13.5,
+    fontWeight: "500",
+  },
+  quickKey: {
+    fontSize: 11,
+    opacity: 0.7,
   },
   foot: {
     marginTop: "auto",
@@ -280,8 +322,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
+  footButton: {
+    marginHorizontal: -8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
   footText: {
     fontSize: 12,
+  },
+  underline: {
+    textDecorationLine: "underline",
   },
   dot: {
     width: 8,
@@ -297,7 +348,7 @@ const styles = StyleSheet.create({
     width: CARD_WIDTH,
     flexDirection: "row",
     alignItems: "center",
-    gap: 14,
+    gap: 10,
     minHeight: 36,
     marginBottom: 14,
   },
@@ -306,9 +357,18 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     marginRight: "auto",
   },
+  arrowButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   arrow: {
-    fontSize: 22,
-    paddingHorizontal: 4,
+    fontSize: 20,
+    lineHeight: 22,
+    marginTop: -2,
   },
   card: {
     width: CARD_WIDTH,
