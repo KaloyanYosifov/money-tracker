@@ -35,7 +35,9 @@ kubectl -n money-tracker exec deploy/money-tracker-api -c api -- \
   /mtapi admin revoke-sessions --email <email>
 ```
 
-All devices of the user must log in again.
+All devices of the user must log in again. Access tokens that the API issued before the revocation stay valid for up to 10 minutes.
+
+Revocation stops the sync, but it does not delete the data that is already on the device. The app keeps the local database and asks the user to log in again. On iOS the database is encrypted with SQLCipher. On the web it is not encrypted. If the device is not safe, also change the password of the user with `reset-totp`.
 
 ## Secrets
 
@@ -278,3 +280,9 @@ Do the steps in this order:
    When the build is on TestFlight, install it on the iPhone or iPad from the TestFlight app.
 
 The `production` profile in `app/eas.json` sets `EXPO_PUBLIC_API_URL=https://money.kyosifov.com` and `EXPO_PUBLIC_POWERSYNC_URL=https://money-sync.kyosifov.com`. The `development` profile builds for the iOS simulator. The `preview` profile builds for internal distribution to registered devices.
+
+## Edge proxy
+
+The API trusts `X-Real-IP` from the addresses in `TRUSTED_PROXY_CIDRS`. The web nginx sends this header to the API without a change. The login rate limit uses it to find the client.
+
+The edge proxy in front of the web pod must set `X-Real-IP` to the real client address and remove the value that the client sent. ingress-nginx does this by default. Do not set `use-forwarded-headers: true` on ingress-nginx, and do not put a different proxy in front of the web pod, unless that proxy also sets `X-Real-IP`. If a client can send its own `X-Real-IP`, it can avoid the login rate limit.

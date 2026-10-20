@@ -219,6 +219,45 @@ describe("signIn", () => {
   });
 });
 
+describe("signOut", () => {
+  const platform = jest.requireActual<typeof import("react-native")>("react-native").Platform;
+  const original = platform.OS;
+  afterEach(() => {
+    platform.OS = original;
+  });
+
+  async function signedIn() {
+    mockStore.refreshToken = "refresh-user-1-0";
+    mockStore.lastUserId = "user-1";
+    api.refresh.mockResolvedValue({ ok: true, value: tokens("user-1", 1) });
+    const rendered = await renderAuth();
+    await waitFor(() => expect(rendered.result.current.status).toBe("signedIn"));
+    return rendered;
+  }
+
+  it("signs out on native also when the API call fails", async () => {
+    const { result } = await signedIn();
+    api.logout.mockResolvedValue({ ok: false, error: "network" });
+
+    await act(async () => result.current.signOut());
+
+    expect(result.current.status).toBe("signedOut");
+    expect(mockStore.refreshToken).toBeNull();
+  });
+
+  it("rejects and stays signed in on the web when the API call fails", async () => {
+    const { result } = await signedIn();
+    platform.OS = "web";
+    api.logout.mockResolvedValue({ ok: false, error: "network" });
+
+    await act(async () => {
+      await expect(result.current.signOut()).rejects.toThrow("logout failed");
+    });
+
+    expect(result.current.status).toBe("signedIn");
+  });
+});
+
 describe("Web Locks", () => {
   afterEach(() => {
     delete (globalThis.navigator as { locks?: unknown }).locks;

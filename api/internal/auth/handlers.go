@@ -107,8 +107,7 @@ var dummyHash = sync.OnceValue(func() string {
 
 func (h *Handlers) rateLimited(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ip := h.clientIP(r)
-		if !h.limiter.Allow(ip.String(), h.now()) {
+		if !h.limiter.Allow(limiterKey(h.clientIP(r)), h.now()) {
 			writeError(w, http.StatusTooManyRequests, "rate_limited")
 			return
 		}
@@ -528,6 +527,10 @@ func (h *Handlers) refreshToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) logout(w http.ResponseWriter, r *http.Request) {
+	if !isNative(r) && r.Header.Get(csrfHeader) != csrfHeaderValue {
+		writeError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	token, ok := h.requestRefreshToken(w, r)
 	if !ok {
 		return

@@ -82,6 +82,9 @@ describe("AppLock", () => {
     await renderLock();
 
     expect(cover()).toBeTruthy();
+    // VoiceOver must not reach the app behind the cover.
+    expect(screen.queryByText("Secret balance")).toBeNull();
+    expect(screen.getByText("Secret balance", { includeHiddenElements: true })).toBeTruthy();
     expect(authenticate).toHaveBeenCalledWith({
       promptMessage: "Unlock Money Tracker",
       disableDeviceFallback: false,
@@ -89,6 +92,7 @@ describe("AppLock", () => {
 
     await act(async () => resolve({ success: true }));
     expect(cover()).toBeNull();
+    expect(screen.getByText("Secret balance")).toBeTruthy();
   });
 
   it("shows an Unlock button after a failed authentication", async () => {

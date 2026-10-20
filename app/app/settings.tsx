@@ -1,4 +1,5 @@
 import { useRouter, type Href } from "expo-router";
+import { Alert, Platform } from "react-native";
 
 import { useSessionActions } from "../src/data/session";
 import { Settings } from "../src/ui/screens/Settings";
@@ -17,8 +18,14 @@ export default function SettingsRoute() {
       onClose={close}
       onOpenSyncProblems={() => router.push("/sync-problems" as Href)}
       onOpenSessions={() => router.push("/sessions" as Href)}
-      onLogout={() => void logout()}
+      onLogout={() => void logout().catch(showLogoutError)}
       onResetLocalData={() => void resetLocalData()}
     />
   );
+}
+
+function showLogoutError() {
+  const message = "The server did not end the session. Check the connection and try again.";
+  if (Platform.OS === "web") window.alert(message);
+  else Alert.alert("Log out failed", message);
 }

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -550,7 +551,11 @@ func TestLogout(t *testing.T) {
 		u := env.register("a@example.com")
 		cookie := refreshCookie(t, u.confirm)
 
-		req := env.request("POST", "/api/auth/logout", nil, "X-Requested-With", "money-tracker")
+		req := env.request("POST", "/api/auth/logout", nil)
+		req.AddCookie(cookie)
+		wantError(t, env.serve(req), http.StatusForbidden, "forbidden")
+
+		req = env.request("POST", "/api/auth/logout", nil, "X-Requested-With", "money-tracker")
 		req.AddCookie(cookie)
 		rec := env.serve(req)
 		if rec.Code != http.StatusNoContent {
@@ -667,7 +672,7 @@ func TestRateLimitedRoutes(t *testing.T) {
 	env := newAuthEnv(t, true)
 	fromIP := func(ip, path string) *httptest.ResponseRecorder {
 		req := env.request("POST", path, map[string]string{}, "X-Client", "native")
-		req.RemoteAddr = ip + ":1234"
+		req.RemoteAddr = net.JoinHostPort(ip, "1234")
 		return env.serve(req)
 	}
 
@@ -681,6 +686,18 @@ func TestRateLimitedRoutes(t *testing.T) {
 	}
 	if rec := fromIP("192.0.2.2", "/api/auth/login"); rec.Code == http.StatusTooManyRequests {
 		t.Fatal("another IP was limited")
+	}
+
+	// All addresses of one IPv6 /64 share one bucket.
+	for i := range auth.LoginAttemptsPerMinute {
+		ip := fmt.Sprintf("2001:db8:0:1::%x", i+1)
+		if rec := fromIP(ip, "/api/auth/login"); rec.Code == http.StatusTooManyRequests {
+			t.Fatalf("IPv6 request %d was limited", i+1)
+		}
+	}
+	wantError(t, fromIP("2001:db8:0:1::ffff", "/api/auth/login"), http.StatusTooManyRequests, "rate_limited")
+	if rec := fromIP("2001:db8:0:2::1", "/api/auth/login"); rec.Code == http.StatusTooManyRequests {
+		t.Fatal("another IPv6 /64 was limited")
 	}
 
 	env.advance(time.Minute)

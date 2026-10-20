@@ -139,7 +139,14 @@ function NativeAppLock({ children, enabled, now }: { children: ReactNode; enable
   return (
     <CoveredContext.Provider value={covered}>
       <View style={styles.fill}>
-        {children}
+        {/* The cover only hides the app visually. These props also hide it from VoiceOver and TalkBack. */}
+        <View
+          style={styles.fill}
+          accessibilityElementsHidden={covered}
+          importantForAccessibility={covered ? "no-hide-descendants" : "auto"}
+        >
+          {children}
+        </View>
         {covered ? <LockScreen showUnlock={locked && failed && !away} onUnlock={() => {
               setFailed(false);
               setAttempt((n) => n + 1);
@@ -152,7 +159,7 @@ function NativeAppLock({ children, enabled, now }: { children: ReactNode; enable
 function LockScreen({ showUnlock, onUnlock }: { showUnlock: boolean; onUnlock: () => void }) {
   const { theme } = useScreenSettings();
   return (
-    <View testID="privacy-cover" style={[StyleSheet.absoluteFill, styles.cover, { backgroundColor: theme.paper }]}>
+    <View testID="privacy-cover" accessibilityViewIsModal style={[StyleSheet.absoluteFill, styles.cover, { backgroundColor: theme.paper }]}>
       <Text allowFontScaling style={[styles.title, { color: theme.ink }]}>
         Money Tracker
       </Text>

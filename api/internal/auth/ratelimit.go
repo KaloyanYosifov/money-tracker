@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
 	"sync"
 	"time"
 
@@ -68,6 +69,15 @@ func (l *IPLimiter) Allow(ip string, now time.Time) bool {
 	}
 	e.lastSeen = now
 	return e.limiter.AllowN(now, 1)
+}
+
+// limiterKey returns the key of the IP in the IPLimiter. An IPv6 client
+// usually gets a full /64, so all addresses in one /64 share one bucket.
+func limiterKey(ip netip.Addr) string {
+	if ip.Is6() {
+		return netip.PrefixFrom(ip, 64).Masked().String()
+	}
+	return ip.String()
 }
 
 // Len returns the number of IPs in memory.

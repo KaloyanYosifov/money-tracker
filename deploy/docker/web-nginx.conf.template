@@ -20,6 +20,9 @@ server {
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "no-referrer" always;
 
+    # nginx sends the X-Real-IP of the request to the API without a change. The
+    # edge proxy must set it (see docs/operations.md). The local e2e suite
+    # sets it to give each browser its own login rate limit.
     location /api/ {
         proxy_pass ${API_UPSTREAM};
         proxy_http_version 1.1;

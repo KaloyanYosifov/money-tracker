@@ -18,6 +18,7 @@ export interface AuthContextValue {
   refreshAccessToken(): Promise<string | null>;
   /** Stores the token response of a finished login or invite confirm. */
   signIn(tokens: TokenResponse): Promise<void>;
+  /** On the web it rejects if the server did not end the session. */
   signOut(): Promise<void>;
 }
 
@@ -152,7 +153,12 @@ export function AuthProvider({
   );
 
   const signOut = useCallback(async () => {
-    await props.current.api.logout(await tokenStore.getRefreshToken());
+    const result = await props.current.api.logout(await tokenStore.getRefreshToken());
+    // On the web the refresh token is an HttpOnly cookie that only the server can clear.
+    // If the call fails, the next person at this browser can still resume the session.
+    if (!result.ok && Platform.OS === "web") {
+      throw new Error(`logout failed: ${result.error}`);
+    }
     access.current = null;
     await tokenStore.setRefreshToken(null);
     await tokenStore.setLastUserId(null);
