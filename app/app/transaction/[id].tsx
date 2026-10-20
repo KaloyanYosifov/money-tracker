@@ -1,5 +1,6 @@
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 
+import { DeskScreen } from "../../src/ui/nav/DeskScreen";
 import { TransactionForm } from "../../src/ui/screens/TransactionForm";
 
 const TYPES = ["expense", "income", "transfer"] as const;
@@ -16,12 +17,14 @@ export default function TransactionScreen() {
   };
 
   return (
-    <TransactionForm
-      key={`${id}:${initialType}`}
-      id={id === "new" ? null : id}
-      initialType={initialType}
-      problemId={problem}
-      onClose={close}
-    />
+    <DeskScreen>
+      <TransactionForm
+        key={`${id}:${initialType}`}
+        id={id === "new" ? null : id}
+        initialType={initialType}
+        problemId={problem}
+        onClose={close}
+      />
+    </DeskScreen>
   );
 }

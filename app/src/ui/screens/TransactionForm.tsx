@@ -1,6 +1,6 @@
 import { usePowerSync, useQuery } from "@powersync/react";
 import { useState, type ReactNode } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, useColorScheme, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useColorScheme, View } from "react-native";
 
 import { saveRecurringRule, saveTransaction, type SaveResult } from "../../data/mutations";
 import { deleteSyncProblem, problemRecord, useSyncProblem } from "../../data/syncProblems";
@@ -17,9 +17,12 @@ import type { Category, RecurringRule, Transaction, UserSettings } from "../../g
 import { setDevicePref } from "../../hooks/useDevicePrefs";
 import { useShortcuts } from "../../hooks/useShortcuts";
 import { AmountKeypad } from "../components/AmountKeypad";
+import { GroupedSection } from "../components/GroupedSection";
 import { SegmentedControl } from "../components/SegmentedControl";
+import { ThemedSwitch } from "../components/ThemedSwitch";
 import { CategoryIcon, categoryIcons, type CategoryIconKey } from "../icons/categoryIcons";
 import { colors, resolveTheme, type ThemeColors } from "../theme";
+import { FormAction, FormField, FormHeader, formStyles } from "./manage";
 
 export const LAST_ACCOUNT_PREF = "lastAccountId";
 
@@ -272,42 +275,38 @@ function FormBody({
   const title = existing ? "Edit Transaction" : `New ${TYPES.find((t) => t.value === type)?.label}`;
 
   return (
-    <View style={[styles.screen, { backgroundColor: theme.paper }]}>
-      <View style={[styles.header, { borderBottomColor: theme.line }]}>
-        <HeaderButton
-          label={platform === "web" ? "Close" : "Cancel"}
-          text={platform === "web" ? "✕" : "Cancel"}
-          onPress={onClose}
-          color={theme.accent}
-        />
-        <Text allowFontScaling accessibilityRole="header" style={[styles.title, { color: theme.ink }]}>
-          {title}
-        </Text>
-        <HeaderButton
-          testID="transaction-save"
-          label="Save"
-          text={platform === "web" ? "SAVE" : "Save"}
-          onPress={() => void save()}
-          disabled={!valid || saving}
-          color={theme.accent}
-          bold
-        />
-      </View>
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
-        <SegmentedControl options={TYPES} value={type} onChange={changeType} theme={theme} />
+    <View style={[formStyles.screen, { backgroundColor: theme.paper }]}>
+      <FormHeader
+        title={title}
+        platform={platform}
+        canSave={valid && !saving}
+        onCancel={onClose}
+        onSave={() => void save()}
+        saveTestID="transaction-save"
+        theme={theme}
+      />
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={formStyles.content}>
+        <View style={formStyles.typeBar}>
+          <SegmentedControl options={TYPES} value={type} onChange={changeType} theme={theme} />
+        </View>
 
-        <Field label="Amount" error={errorFor("amount_minor")} today={today} theme={theme}>
+        <View style={[styles.amountRow, { backgroundColor: theme.row, borderBottomColor: theme.line }]}>
           <Pressable
             testID="transaction-amount"
             accessibilityRole="button"
             accessibilityLabel={`Amount, ${amount === null ? "empty" : formatAmount(amount, currency, locale)}`}
             onPress={() => setKeypadOpen((open) => !open)}
           >
-            <Text allowFontScaling style={[styles.amount, { color: amount === null ? theme.accent : theme.ink }]}>
+            <Text allowFontScaling style={[styles.amount, { color: amountColor(type, amount, theme) }]}>
               {formatAmount(amount ?? 0, currency, locale)}
             </Text>
           </Pressable>
-        </Field>
+          {errorFor("amount_minor") ? (
+            <Text allowFontScaling testID="error-amount_minor" style={[styles.error, { color: theme.listRed }]}>
+              {message(errorFor("amount_minor") as FieldError, today)}
+            </Text>
+          ) : null}
+        </View>
         {keypadOpen ? (
           <AmountKeypad
             currency={currency}
@@ -322,174 +321,174 @@ function FormBody({
           />
         ) : null}
 
-        <Field label="Name" error={errorFor("name")} today={today} theme={theme}>
-          <TextInput
-            testID="transaction-name"
-            allowFontScaling
-            placeholder="Name"
-            placeholderTextColor={theme.accent}
-            value={name}
-            onChangeText={(text) => {
-              setName(text);
-              touch("name");
-            }}
-            style={textStyle}
-          />
-        </Field>
-
-        <Field label="Date" error={errorFor("date")} today={today} theme={theme}>
-          <TextInput
-            allowFontScaling
-            accessibilityLabel="Date"
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor={theme.accent}
-            value={date}
-            onChangeText={(text) => {
-              setDate(text);
-              touch("date");
-            }}
-            style={textStyle}
-          />
-        </Field>
-
-        {transfer ? null : (
-          <Field label="Category" error={errorFor("category_id")} today={today} theme={theme}>
-            <View accessibilityRole="radiogroup" accessibilityLabel="Category" style={styles.grid}>
-              {visibleCategories.map((category) => {
-                const selected = category.id === categoryId;
-                return (
-                  <Pressable
-                    key={category.id}
-                    testID={`category-option-${category.name}`}
-                    accessibilityRole="radio"
-                    accessibilityLabel={category.name}
-                    accessibilityState={{ checked: selected }}
-                    onPress={() => {
-                      setCategoryId(category.id);
-                      touch("category_id");
-                    }}
-                    style={[styles.cell, selected && { backgroundColor: theme.row, borderColor: theme.accent }]}
-                  >
-                    {category.icon in categoryIcons ? (
-                      <CategoryIcon
-                        icon={category.icon as CategoryIconKey}
-                        variant={iconStyle}
-                        color={theme.ink}
-                        background={selected ? theme.row : theme.paper}
-                      />
-                    ) : null}
-                    <Text allowFontScaling numberOfLines={1} style={[styles.cellText, { color: theme.ink }]}>
-                      {category.name}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+        <GroupedSection title="Transaction Details" theme={theme}>
+          <Field label="Name" error={errorFor("name")} today={today} theme={theme}>
+            <TextInput
+              testID="transaction-name"
+              allowFontScaling
+              placeholder="Name"
+              placeholderTextColor={theme.accent}
+              value={name}
+              onChangeText={(text) => {
+                setName(text);
+                touch("name");
+              }}
+              style={textStyle}
+            />
           </Field>
-        )}
 
-        <AccountChoice
-          label={transfer ? "From" : "Account"}
-          accounts={accounts}
-          value={accountId}
-          onChange={(next) => {
-            setAccountId(next);
-            touch("account_id");
-          }}
-          error={errorFor("account_id")}
-          today={today}
-          theme={theme}
-        />
-        {transfer ? (
+          <Field label="Date" error={errorFor("date")} today={today} theme={theme}>
+            <TextInput
+              allowFontScaling
+              accessibilityLabel="Date"
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={theme.accent}
+              value={date}
+              onChangeText={(text) => {
+                setDate(text);
+                touch("date");
+              }}
+              style={textStyle}
+            />
+          </Field>
+
+          {transfer ? null : (
+            <Field label="Category" error={errorFor("category_id")} today={today} theme={theme}>
+              <View accessibilityRole="radiogroup" accessibilityLabel="Category" style={styles.grid}>
+                {visibleCategories.map((category) => {
+                  const selected = category.id === categoryId;
+                  return (
+                    <Pressable
+                      key={category.id}
+                      testID={`category-option-${category.name}`}
+                      accessibilityRole="radio"
+                      accessibilityLabel={category.name}
+                      accessibilityState={{ checked: selected }}
+                      onPress={() => {
+                        setCategoryId(category.id);
+                        touch("category_id");
+                      }}
+                      style={[styles.cell, selected && { backgroundColor: theme.paper, borderColor: theme.accent }]}
+                    >
+                      {category.icon in categoryIcons ? (
+                        <CategoryIcon
+                          icon={category.icon as CategoryIconKey}
+                          variant={iconStyle}
+                          color={theme.ink}
+                          background={selected ? theme.paper : theme.row}
+                        />
+                      ) : null}
+                      <Text allowFontScaling numberOfLines={1} style={[styles.cellText, { color: theme.ink }]}>
+                        {category.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </Field>
+          )}
+
           <AccountChoice
-            label="To"
+            label={transfer ? "From" : "Account"}
             accounts={accounts}
-            value={toAccountId}
+            value={accountId}
             onChange={(next) => {
-              setToAccountId(next);
-              touch("to_account_id");
+              setAccountId(next);
+              touch("account_id");
             }}
-            error={errorFor("to_account_id")}
+            error={errorFor("account_id")}
             today={today}
             theme={theme}
           />
-        ) : null}
+          {transfer ? (
+            <AccountChoice
+              label="To"
+              accounts={accounts}
+              value={toAccountId}
+              onChange={(next) => {
+                setToAccountId(next);
+                touch("to_account_id");
+              }}
+              error={errorFor("to_account_id")}
+              today={today}
+              theme={theme}
+            />
+          ) : null}
+        </GroupedSection>
 
         {canRepeat ? (
-          <View style={[styles.switchRow, { borderBottomColor: theme.line }]}>
-            <Text allowFontScaling style={[styles.label, { color: theme.accent }]}>
-              Repeating
-            </Text>
-            <Switch accessibilityLabel="Repeating" value={repeating} onValueChange={setRepeating} />
-          </View>
-        ) : null}
-        {canRepeat && repeating ? (
-          <>
-            <Field label="Every" error={errorFor("frequency")} today={today} theme={theme}>
-              <View accessibilityRole="radiogroup" accessibilityLabel="Every" style={styles.chips}>
-                {FREQUENCIES.map((option) => (
-                  <Chip
-                    key={option.value}
-                    label={option.label}
-                    selected={option.value === frequency}
-                    onPress={() => {
-                      setFrequency(option.value);
-                      touch("frequency");
-                    }}
-                    theme={theme}
-                  />
-                ))}
+          <GroupedSection title="Repeating Details" theme={theme}>
+            <FormField label="Repeating" theme={theme}>
+              <View style={styles.switchValue}>
+                <ThemedSwitch accessibilityLabel="Repeating" value={repeating} onValueChange={setRepeating} theme={theme} />
               </View>
-            </Field>
-            <Field label="End Date" error={errorFor("end_date")} today={today} theme={theme}>
-              <TextInput
-                allowFontScaling
-                accessibilityLabel="End Date"
-                placeholder="No end date"
-                placeholderTextColor={theme.accent}
-                value={endDate}
-                onChangeText={(text) => {
-                  setEndDate(text);
-                  touch("end_date");
-                }}
-                style={textStyle}
-              />
-            </Field>
-          </>
+            </FormField>
+            {repeating ? (
+              <>
+                <Field label="Every" error={errorFor("frequency")} today={today} theme={theme}>
+                  <View accessibilityRole="radiogroup" accessibilityLabel="Every" style={styles.chips}>
+                    {FREQUENCIES.map((option) => (
+                      <Chip
+                        key={option.value}
+                        label={option.label}
+                        selected={option.value === frequency}
+                        onPress={() => {
+                          setFrequency(option.value);
+                          touch("frequency");
+                        }}
+                        theme={theme}
+                      />
+                    ))}
+                  </View>
+                </Field>
+                <Field label="End Date" error={errorFor("end_date")} today={today} theme={theme}>
+                  <TextInput
+                    allowFontScaling
+                    accessibilityLabel="End Date"
+                    placeholder="Never"
+                    placeholderTextColor={theme.accent}
+                    value={endDate}
+                    onChangeText={(text) => {
+                      setEndDate(text);
+                      touch("end_date");
+                    }}
+                    style={textStyle}
+                  />
+                </Field>
+              </>
+            ) : null}
+          </GroupedSection>
         ) : null}
 
-        <Field label="Note" error={errorFor("note")} today={today} theme={theme}>
-          <TextInput
-            testID="transaction-note"
-            allowFontScaling
-            multiline
-            placeholder="Note"
-            placeholderTextColor={theme.accent}
-            value={note}
-            onChangeText={(text) => {
-              setNote(text);
-              touch("note");
-            }}
-            style={textStyle}
-          />
-        </Field>
+        <GroupedSection theme={theme}>
+          <Field label="Note" error={errorFor("note")} today={today} theme={theme}>
+            <TextInput
+              testID="transaction-note"
+              allowFontScaling
+              multiline
+              placeholder="Add a note"
+              placeholderTextColor={theme.accent}
+              value={note}
+              onChangeText={(text) => {
+                setNote(text);
+                touch("note");
+              }}
+              style={textStyle}
+            />
+          </Field>
+        </GroupedSection>
 
-        {existing ? (
-          <Pressable
-            testID="transaction-delete"
-            accessibilityRole="button"
-            accessibilityLabel="Delete"
-            onPress={remove}
-            style={styles.delete}
-          >
-            <Text allowFontScaling style={[styles.deleteText, { color: theme.listRed }]}>
-              Delete
-            </Text>
-          </Pressable>
-        ) : null}
+        {existing ? <FormAction testID="transaction-delete" label="Delete" onPress={remove} color={theme.listRed} /> : null}
       </ScrollView>
     </View>
   );
+}
+
+function amountColor(type: TransactionType, amount: number | null, theme: ThemeColors): string {
+  if (amount === null) return theme.accent;
+  if (type === "expense") return theme.listRed;
+  if (type === "income") return theme.listGreen;
+  return theme.ink;
 }
 
 function ruleMoney(rule: RecurringRule) {
@@ -502,41 +501,6 @@ function ruleMoney(rule: RecurringRule) {
     to_account_id: rule.to_account_id ?? null,
     note: rule.note ?? null,
   };
-}
-
-function HeaderButton({
-  label,
-  text,
-  onPress,
-  disabled = false,
-  color,
-  bold = false,
-  testID,
-}: {
-  testID?: string;
-  label: string;
-  text: string;
-  onPress: () => void;
-  disabled?: boolean;
-  color: string;
-  bold?: boolean;
-}) {
-  return (
-    <Pressable
-      testID={testID}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      hitSlop={8}
-      style={styles.headerButton}
-    >
-      <Text allowFontScaling style={[styles.headerText, { color, opacity: disabled ? 0.4 : 1 }, bold && styles.bold]}>
-        {text}
-      </Text>
-    </Pressable>
-  );
 }
 
 function Field({
@@ -553,17 +517,14 @@ function Field({
   children: ReactNode;
 }) {
   return (
-    <View style={[styles.field, { borderBottomColor: theme.line }]}>
-      <Text allowFontScaling style={[styles.label, { color: theme.accent }]}>
-        {label}
-      </Text>
+    <FormField
+      label={label}
+      error={error ? message(error, today) : undefined}
+      errorTestID={error ? `error-${error.field}` : undefined}
+      theme={theme}
+    >
       {children}
-      {error ? (
-        <Text allowFontScaling testID={`error-${error.field}`} style={[styles.error, { color: theme.listRed }]}>
-          {message(error, today)}
-        </Text>
-      ) : null}
-    </View>
+    </FormField>
   );
 }
 
@@ -628,53 +589,21 @@ function Chip({
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-  },
-  headerButton: {
-    minWidth: 64,
-    minHeight: 44,
-    justifyContent: "center",
-  },
-  headerText: {
-    fontSize: 17,
-  },
-  bold: {
-    fontWeight: "600",
-    textAlign: "right",
-  },
-  title: {
-    fontSize: 17,
-    fontWeight: "600",
-  },
-  content: {
-    paddingVertical: 16,
-    gap: 4,
-  },
-  field: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-  },
-  label: {
-    fontSize: 13,
-    marginBottom: 4,
-  },
   input: {
     fontSize: 16,
-    minHeight: 32,
+    minHeight: 24,
+  },
+  amountRow: {
+    alignItems: "flex-end",
+    paddingTop: 14,
+    paddingBottom: 6,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
   },
   amount: {
-    fontSize: 32,
+    fontSize: 40,
     fontWeight: "300",
+    textAlign: "right",
   },
   grid: {
     flexDirection: "row",
@@ -709,24 +638,11 @@ const styles = StyleSheet.create({
   chipText: {
     fontSize: 14,
   },
-  switchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
+  switchValue: {
+    alignItems: "flex-end",
   },
   error: {
     fontSize: 13,
     marginTop: 4,
-  },
-  delete: {
-    alignItems: "center",
-    paddingVertical: 16,
-    marginTop: 16,
-  },
-  deleteText: {
-    fontSize: 17,
   },
 });

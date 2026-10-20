@@ -2,6 +2,7 @@ import { useRouter, type Href } from "expo-router";
 import { Alert, Platform } from "react-native";
 
 import { useSessionActions } from "../src/data/session";
+import { DeskScreen } from "../src/ui/nav/DeskScreen";
 import { Settings } from "../src/ui/screens/Settings";
 
 export default function SettingsRoute() {
@@ -14,13 +15,15 @@ export default function SettingsRoute() {
   };
 
   return (
-    <Settings
-      onClose={close}
-      onOpenSyncProblems={() => router.push("/sync-problems" as Href)}
-      onOpenSessions={() => router.push("/sessions" as Href)}
-      onLogout={() => void logout().catch(showLogoutError)}
-      onResetLocalData={() => void resetLocalData()}
-    />
+    <DeskScreen>
+      <Settings
+        onClose={close}
+        onOpenSyncProblems={() => router.push("/sync-problems" as Href)}
+        onOpenSessions={() => router.push("/sessions" as Href)}
+        onLogout={() => void logout().catch(showLogoutError)}
+        onResetLocalData={() => void resetLocalData()}
+      />
+    </DeskScreen>
   );
 }
 

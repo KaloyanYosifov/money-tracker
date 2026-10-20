@@ -1,5 +1,4 @@
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
-import { Platform } from "react-native";
 
 import { useLayoutMode } from "../../src/hooks/useLayoutMode";
 import { usePeriod } from "../../src/ui/nav/PeriodContext";
@@ -20,7 +19,8 @@ export default function TransactionsScreen() {
       // Spending opens this tab with new filter params. A new key starts the list with them.
       key={`${accountId ?? ""}:${categoryId ?? ""}`}
       period={period}
-      layout={Platform.OS === "web" ? "web" : "phone"}
+      // The narrow browser uses the phone layout, with the bottom toolbar.
+      layout={mode === "sidebar" ? "web" : "phone"}
       initialAccountId={accountId ?? null}
       initialCategoryId={categoryId ?? null}
       onOpen={(id) => router.push(`/transaction/${id}` as Href)}

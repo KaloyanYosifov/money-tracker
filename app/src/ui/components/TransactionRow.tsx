@@ -91,7 +91,7 @@ export function TransactionRow({ row, iconStyle = "filled", locale, onPress, the
             icon={icon}
             variant={iconStyle}
             size={ICON_SIZE}
-            color={carryOver ? theme.ink : (row.category_color ?? theme.ink)}
+            color={theme.ink}
             background={background}
           />
         ) : null}

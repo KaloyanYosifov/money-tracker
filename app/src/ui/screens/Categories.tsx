@@ -197,7 +197,11 @@ function CategoryFormBody({
       />
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={formStyles.content}>
         {/* Existing transactions must keep a category of their own type. */}
-        {used ? null : <SegmentedControl options={TYPES} value={type} onChange={setType} theme={theme} />}
+        {used ? null : (
+          <View style={formStyles.typeBar}>
+            <SegmentedControl options={TYPES} value={type} onChange={setType} theme={theme} />
+          </View>
+        )}
         <FormField
           label="Name"
           error={nameTouched && nameError ? (nameError.code === "too_long" ? "Too long" : "Required") : undefined}

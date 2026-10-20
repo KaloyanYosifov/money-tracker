@@ -27,7 +27,7 @@ test.beforeAll(() => resetData());
 async function edit(page: Page, name: string, change: { name?: string; note?: string }): Promise<void> {
   await openTransaction(page, name);
   if (change.name !== undefined) await page.getByPlaceholder("Name", { exact: true }).fill(change.name);
-  if (change.note !== undefined) await page.getByPlaceholder("Note", { exact: true }).fill(change.note);
+  if (change.note !== undefined) await page.getByPlaceholder("Add a note", { exact: true }).fill(change.note);
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("heading", { name: "Edit Transaction" })).toBeHidden();
 }
@@ -37,7 +37,7 @@ async function expectForm(page: Page, name: string, values: { name: string; note
   await expect(transactionRow(page, name)).toBeVisible({ timeout: 30_000 });
   await openTransaction(page, name);
   await expect(page.getByPlaceholder("Name", { exact: true })).toHaveValue(values.name);
-  await expect(page.getByPlaceholder("Note", { exact: true })).toHaveValue(values.note);
+  await expect(page.getByPlaceholder("Add a note", { exact: true })).toHaveValue(values.note);
   await page.getByRole("button", { name: "Close" }).click();
 }
 

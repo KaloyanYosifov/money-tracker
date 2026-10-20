@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, Defs, Path, RadialGradient, Stop } from "react-native-svg";
 
 export interface PieSlice {
@@ -82,7 +82,10 @@ export function PieChart({ slices, size = 220, labelColor, onSlicePress }: Props
             fill: `url(#pie-shade-${slice.id})`,
             stroke: "#ffffff",
             strokeWidth: slices.length > 1 ? 1 : 0,
-            onPress: onSlicePress ? () => onSlicePress(slice.id) : undefined,
+            // On the web, react-native-svg turns onPress into responder props on the DOM node, and React warns.
+            ...(Platform.OS === "web"
+              ? ({ onClick: onSlicePress ? () => onSlicePress(slice.id) : undefined } as object)
+              : { onPress: onSlicePress ? () => onSlicePress(slice.id) : undefined }),
           };
           // An arc from 0 to 2π has the same start and end point and draws nothing.
           return to - from >= 2 * Math.PI - 1e-9 ? (

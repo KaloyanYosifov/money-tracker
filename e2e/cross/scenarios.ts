@@ -89,7 +89,7 @@ export async function editsOnBothSurvive({ page, maestro }: CrossContext): Promi
   await waitForSynced(page);
   await openTransaction(page, NAME);
   await expect(page.getByRole("button", { name: /^Amount, .*12/ })).toBeVisible();
-  await expect(page.getByPlaceholder("Note", { exact: true })).toHaveValue(note);
+  await expect(page.getByPlaceholder("Add a note", { exact: true })).toHaveValue(note);
   await page.getByRole("button", { name: "Close" }).click();
 
   maestro("cross-check-row.yaml", { PHASE: "present", NAME, AMOUNT: "12", NOTE: note });

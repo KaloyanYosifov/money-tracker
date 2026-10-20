@@ -71,7 +71,7 @@ export default function MainLayout() {
           reportsReplacesPage(mode, props.state.routes[props.state.index]?.name ?? "") ? null : sidebar ? (
             <Sidebar {...props} onQuickAdd={quickAdd} onSettings={openSettings} onLogout={() => void logout()} theme={theme} />
           ) : (
-            <TabBar {...props} position={tabsPosition} onMenu={openSettings} theme={theme} />
+            <TabBar {...props} position={tabsPosition} onMenu={openSettings} onAdd={() => quickAdd("expense")} theme={theme} />
           )
         }
         screenLayout={({ route, options, children }) => {
@@ -86,7 +86,13 @@ export default function MainLayout() {
           if (tabsPosition === "bottom") {
             return (
               <View style={styles.fill}>
-                <PhoneHeader routeName={route.name} onMenu={openSettings} topInset={insets.top} theme={theme} />
+                <PhoneHeader
+                  routeName={route.name}
+                  onMenu={openSettings}
+                  onAdd={() => quickAdd("expense")}
+                  topInset={insets.top}
+                  theme={theme}
+                />
                 {children}
               </View>
             );

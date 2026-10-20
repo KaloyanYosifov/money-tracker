@@ -1,5 +1,6 @@
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 
+import { DeskScreen } from "../../src/ui/nav/DeskScreen";
 import { AccountForm } from "../../src/ui/screens/Accounts";
 
 /** /account/new opens an empty form. Any other ID opens an edit. */
@@ -12,5 +13,9 @@ export default function AccountRoute() {
     else router.replace("/accounts" as Href);
   };
 
-  return <AccountForm key={id} id={id === "new" ? null : id} problemId={problem} onClose={close} />;
+  return (
+    <DeskScreen>
+      <AccountForm key={id} id={id === "new" ? null : id} problemId={problem} onClose={close} />
+    </DeskScreen>
+  );
 }

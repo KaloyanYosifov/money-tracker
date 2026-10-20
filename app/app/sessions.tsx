@@ -3,6 +3,7 @@ import { useMemo } from "react";
 
 import { useAuth } from "../src/auth/AuthProvider";
 import { createSessionsApi } from "../src/data/session";
+import { DeskScreen } from "../src/ui/nav/DeskScreen";
 import { SessionsScreen } from "../src/ui/screens/Settings";
 
 export default function SessionsRoute() {
@@ -15,5 +16,9 @@ export default function SessionsRoute() {
     else router.replace("/settings" as Href);
   };
 
-  return <SessionsScreen api={api} currentSessionId={sessionId} onClose={close} />;
+  return (
+    <DeskScreen>
+      <SessionsScreen api={api} currentSessionId={sessionId} onClose={close} />
+    </DeskScreen>
+  );
 }

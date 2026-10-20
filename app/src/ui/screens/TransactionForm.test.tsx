@@ -180,7 +180,7 @@ describe("TransactionForm", () => {
     await fireEvent.changeText(screen.getByPlaceholderText("Name"), "Bread");
     await fireEvent.press(within(screen.getByLabelText("Category")).getByRole("radio", { name: "Groceries" }));
     await fireEvent.press(within(screen.getByLabelText("Account")).getByRole("radio", { name: "Bank" }));
-    await fireEvent.changeText(screen.getByPlaceholderText("Note"), "fresh");
+    await fireEvent.changeText(screen.getByPlaceholderText("Add a note"), "fresh");
     expect(isDisabled(saveButton())).toBe(false);
 
     await saveAndWait();
@@ -259,7 +259,7 @@ describe("TransactionForm", () => {
     expect(screen.queryByLabelText("Every")).toBeNull();
     await fireEvent(screen.getByRole("switch", { name: "Repeating" }), "valueChange", true);
     await fireEvent.press(within(screen.getByLabelText("Every")).getByRole("radio", { name: "Monthly" }));
-    await fireEvent.changeText(screen.getByPlaceholderText("No end date"), "2027-09-19");
+    await fireEvent.changeText(screen.getByPlaceholderText("Never"), "2027-09-19");
     await saveAndWait();
 
     const rule = mockDb.prepare("SELECT * FROM recurring_rules").get() as { id: string };

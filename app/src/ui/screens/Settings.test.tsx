@@ -82,7 +82,7 @@ describe("Settings", () => {
   it("shows the grouped sections and rows on iOS", async () => {
     await renderSettings("ios");
 
-    expect(headers()).toEqual(["Settings", "Spending", "Sync", "User Interface", "Security", "General"]);
+    expect(headers()).toEqual(["Settings", "Spending (All Accounts)", "Automatic Syncing", "User Interface", "Security", "General"]);
     expect(screen.getByRole("button", { name: "Time Period, Monthly" })).toBeTruthy();
     expect(screen.getByRole("switch", { name: "Budget Mode" }).props.value).toBe(false);
     expect(screen.queryByLabelText("Budget Amount")).toBeNull();
@@ -112,7 +112,7 @@ describe("Settings", () => {
   it("has no Tabs Position and no Security section on the web", async () => {
     await renderSettings("web");
 
-    expect(headers()).toEqual(["Settings", "Spending", "Sync", "User Interface", "General"]);
+    expect(headers()).toEqual(["Settings", "Spending (All Accounts)", "Automatic Syncing", "User Interface", "General"]);
     expect(screen.queryByRole("button", { name: /Tabs Position/ })).toBeNull();
     expect(screen.queryByRole("switch", { name: "App Lock" })).toBeNull();
   });

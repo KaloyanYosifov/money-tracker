@@ -165,13 +165,11 @@ export function ReorderList<T extends ListItem>({
           </Pressable>
           {archivedOpen
             ? archived.map((item) => (
-                <ListRow
+                <RowWithAction
                   key={item.id}
-                  title={item.name}
-                  icon={icon(item)}
-                  onPress={() => onOpen(item.id)}
                   theme={theme}
-                  right={
+                  row={<ListRow title={item.name} icon={icon(item)} onPress={() => onOpen(item.id)} theme={theme} />}
+                  action={
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={`Restore ${item.name}`}
@@ -250,13 +248,10 @@ function ReorderItem({ item, platform, theme, icon, dragging, onStartDrag, onEnd
       }}
       style={dragging ? [styles.dragging, { transform: [{ translateY: offset }] }] : undefined}
     >
-      <ListRow
-        title={item.name}
-        icon={icon}
-        onPress={onOpen}
-        onLongPress={web ? undefined : onStartDrag}
+      <RowWithAction
         theme={theme}
-        right={
+        row={<ListRow title={item.name} icon={icon} onPress={onOpen} onLongPress={web ? undefined : onStartDrag} theme={theme} />}
+        action={
           web ? (
             <View
               accessible
@@ -275,12 +270,24 @@ function ReorderItem({ item, platform, theme, icon, dragging, onStartDrag, onEnd
   );
 }
 
+/** A list row with a control on its right. The control is a sibling of the row, so the web does not nest buttons. */
+function RowWithAction({ row, action, theme }: { row: ReactNode; action: ReactNode; theme: ThemeColors }) {
+  if (!action) return <>{row}</>;
+  return (
+    <View style={styles.rowWithAction}>
+      <View style={styles.rowMain}>{row}</View>
+      <View style={[styles.rowAction, { backgroundColor: theme.row, borderBottomColor: theme.line }]}>{action}</View>
+    </View>
+  );
+}
+
 export function FormHeader({
   title,
   platform,
   canSave,
   onCancel,
   onSave,
+  saveTestID,
   theme,
 }: {
   title: string;
@@ -288,11 +295,12 @@ export function FormHeader({
   canSave: boolean;
   onCancel: () => void;
   onSave: () => void;
+  saveTestID?: string;
   theme: ThemeColors;
 }) {
   const web = platform === "web";
   return (
-    <View style={[styles.header, { borderBottomColor: theme.line }]}>
+    <View style={[styles.header, { backgroundColor: theme.paper, borderBottomColor: theme.line }]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={web ? "Close" : "Cancel"}
@@ -300,21 +308,22 @@ export function FormHeader({
         hitSlop={8}
         style={styles.headerButton}
       >
-        <Text allowFontScaling style={[styles.headerText, { color: theme.accent }]}>
+        <Text allowFontScaling style={[styles.headerText, { color: theme.ink }]}>
           {web ? "✕" : "Cancel"}
         </Text>
       </Pressable>
-      <Text allowFontScaling accessibilityRole="header" style={[styles.title, { color: theme.ink }]}>
+      <Text allowFontScaling accessibilityRole="header" numberOfLines={1} style={[styles.title, { color: theme.ink }]}>
         {title}
       </Text>
       <Pressable
+        testID={saveTestID}
         accessibilityRole="button"
         accessibilityLabel="Save"
         accessibilityState={{ disabled: !canSave }}
         disabled={!canSave}
         onPress={onSave}
         hitSlop={8}
-        style={styles.headerButton}
+        style={[styles.headerButton, styles.saveButton]}
       >
         <Text allowFontScaling style={[styles.headerText, styles.save, { color: theme.accent, opacity: canSave ? 1 : 0.4 }]}>
           {web ? "SAVE" : "Save"}
@@ -324,46 +333,59 @@ export function FormHeader({
   );
 }
 
+/** A form row: the label on the left, the control on the right, as in the mockup. */
 export function FormField({
   label,
   error,
+  errorTestID,
   theme,
   children,
 }: {
   label: string;
   error?: string;
+  errorTestID?: string;
   theme: ThemeColors;
   children: ReactNode;
 }) {
   return (
-    <View style={[styles.field, { borderBottomColor: theme.line }]}>
+    <View style={[styles.field, { backgroundColor: theme.row, borderBottomColor: theme.line }]}>
       <Text allowFontScaling style={[styles.label, { color: theme.accent }]}>
         {label}
       </Text>
-      {children}
-      {error ? (
-        <Text allowFontScaling style={[styles.error, { color: theme.listRed }]}>
-          {error}
-        </Text>
-      ) : null}
+      <View style={styles.fieldValue}>
+        {children}
+        {error ? (
+          <Text allowFontScaling testID={errorTestID} style={[styles.error, { color: theme.listRed }]}>
+            {error}
+          </Text>
+        ) : null}
+      </View>
     </View>
   );
 }
 
-/** Archive, Restore or Delete at the bottom of a form. */
+/** Archive, Restore or Delete at the bottom of a form: a filled button in the action colour. */
 export function FormAction({
   label,
   onPress,
   color,
+  testID,
 }: {
   label: string;
   onPress: () => void;
   color: string;
+  testID?: string;
 }) {
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={styles.action}>
-      <Text allowFontScaling style={[styles.actionText, { color }]}>
-        {label}
+    <Pressable
+      testID={testID}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={[styles.action, { backgroundColor: color }]}
+    >
+      <Text allowFontScaling style={styles.actionText}>
+        {label.toUpperCase()}
       </Text>
     </Pressable>
   );
@@ -374,8 +396,11 @@ export const formStyles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    paddingVertical: 16,
-    gap: 4,
+    paddingBottom: 24,
+  },
+  typeBar: {
+    alignItems: "center",
+    padding: 14,
   },
   input: {
     fontSize: 16,
@@ -432,38 +457,61 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "500",
   },
+  rowWithAction: {
+    flexDirection: "row",
+  },
+  rowMain: {
+    flex: 1,
+  },
+  rowAction: {
+    justifyContent: "center",
+    paddingRight: 8,
+    borderBottomWidth: 1,
+  },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    gap: 14,
+    minHeight: 58,
+    paddingHorizontal: 14,
     borderBottomWidth: 1,
   },
   headerButton: {
-    minWidth: 64,
+    minWidth: 44,
     minHeight: 44,
     justifyContent: "center",
   },
+  saveButton: {
+    alignItems: "flex-end",
+  },
   headerText: {
-    fontSize: 17,
+    fontSize: 20,
   },
   save: {
+    fontSize: 16,
     fontWeight: "600",
-    textAlign: "right",
+    letterSpacing: 1,
   },
   title: {
-    fontSize: 17,
-    fontWeight: "600",
+    flex: 1,
+    fontSize: 20,
   },
   field: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    minHeight: 48,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderBottomWidth: 1,
   },
   label: {
+    width: 84,
     fontSize: 13,
-    marginBottom: 4,
+    paddingTop: 3,
+  },
+  fieldValue: {
+    flex: 1,
+    minWidth: 0,
   },
   error: {
     fontSize: 13,
@@ -471,10 +519,15 @@ const styles = StyleSheet.create({
   },
   action: {
     alignItems: "center",
-    paddingVertical: 16,
-    marginTop: 8,
+    paddingVertical: 11,
+    marginTop: 16,
+    marginHorizontal: 18,
+    borderRadius: 4,
   },
   actionText: {
-    fontSize: 17,
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "500",
+    letterSpacing: 1,
   },
 });

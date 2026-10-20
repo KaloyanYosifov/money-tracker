@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import Svg, { Circle, Ellipse, Path, Rect } from "react-native-svg";
 
 import type { UserSettings } from "../../generated/schema";
@@ -235,7 +236,8 @@ export function CategoryIcon({
       width={size}
       height={size}
       viewBox="0 0 32 32"
-      accessible
+      // react-native-svg passes `accessible` to the DOM on the web, and React warns about it.
+      {...(Platform.OS === "web" ? {} : { accessible: true })}
       accessibilityRole="image"
       accessibilityLabel={def.label}
       testID={`category-icon-${icon}-${variant}`}

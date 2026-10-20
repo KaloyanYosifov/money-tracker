@@ -1,6 +1,6 @@
 import { usePowerSync, useQuery } from "@powersync/react";
 import { useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { saveOverallBudget, updateSettings, type SettingsPatch } from "../../data/mutations";
 import type { DeviceSession, SessionsApi } from "../../data/session";
@@ -12,6 +12,7 @@ import { useAppLockAvailable } from "../../security/AppLock";
 import { useSyncState } from "../../sync/syncState";
 import { useUpdateRequired } from "../../sync/updateRequired";
 import { GroupedSection } from "../components/GroupedSection";
+import { ThemedSwitch } from "../components/ThemedSwitch";
 import type { ThemeColors } from "../theme";
 import { defaultPlatform, useScreenSettings, type ScreenPlatform } from "./manage";
 
@@ -100,7 +101,7 @@ export function Settings({
       <ScreenHeader title="Settings" onBack={onClose} theme={theme} />
       <ScrollView contentContainerStyle={styles.content}>
         {settings ? (
-          <GroupedSection title="Spending" theme={theme}>
+          <GroupedSection title="Spending (All Accounts)" theme={theme}>
             <ChoiceRow
               label="Time Period"
               value={settings.time_period}
@@ -130,7 +131,7 @@ export function Settings({
           </GroupedSection>
         ) : null}
 
-        <GroupedSection title="Sync" theme={theme}>
+        <GroupedSection title="Automatic Syncing" theme={theme}>
           <View style={[styles.row, { backgroundColor: theme.row, borderBottomColor: theme.line }]}>
             <View style={styles.label}>
               <Text allowFontScaling style={[styles.labelText, { color: theme.settingsBlue }]}>
@@ -322,14 +323,14 @@ function SwitchRow({
       <Text allowFontScaling style={[styles.label, styles.labelText, { color: theme.settingsBlue }]}>
         {label}
       </Text>
-      <Switch
+      <ThemedSwitch
         testID={testID}
         accessibilityRole="switch"
         accessibilityLabel={label}
         value={value}
         disabled={disabled}
         onValueChange={onChange}
-        trackColor={{ true: theme.accent, false: theme.line }}
+        theme={theme}
       />
     </View>
   );

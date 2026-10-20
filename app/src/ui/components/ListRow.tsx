@@ -6,7 +6,6 @@ import { colors, type ThemeColors } from "../theme";
 type Props = {
   title: string;
   icon?: ReactNode;
-  right?: ReactNode;
   onPress?: () => void;
   onLongPress?: () => void;
   testID?: string;
@@ -14,7 +13,7 @@ type Props = {
 };
 
 /** A row with an icon and a title, as in the Categories and Accounts lists. */
-export function ListRow({ title, icon, right, onPress, onLongPress, testID, theme = colors.light }: Props) {
+export function ListRow({ title, icon, onPress, onLongPress, testID, theme = colors.light }: Props) {
   return (
     <Pressable
       accessibilityRole={onPress ? "button" : undefined}
@@ -29,7 +28,6 @@ export function ListRow({ title, icon, right, onPress, onLongPress, testID, them
       <Text allowFontScaling style={[styles.title, { color: theme.ink }]}>
         {title}
       </Text>
-      {right}
     </Pressable>
   );
 }

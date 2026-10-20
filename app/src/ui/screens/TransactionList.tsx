@@ -378,6 +378,11 @@ export function TransactionList({
         data={visibleRows}
         keyExtractor={(row) => row.id}
         initialNumToRender={20}
+        ListEmptyComponent={
+          <Text allowFontScaling style={[styles.empty, { color: theme.ink }]}>
+            No transactions in this period
+          </Text>
+        }
         renderItem={({ item }) => (
           <ListItem
             row={item}
@@ -502,6 +507,11 @@ const styles = StyleSheet.create({
   },
   list: {
     flex: 1,
+  },
+  empty: {
+    textAlign: "center",
+    fontSize: 15,
+    marginTop: 40,
   },
   toolbar: {
     flexDirection: "row",

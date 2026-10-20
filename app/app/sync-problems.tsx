@@ -1,5 +1,6 @@
 import { useRouter, type Href } from "expo-router";
 
+import { DeskScreen } from "../src/ui/nav/DeskScreen";
 import { SyncProblemsScreen, type ProblemEdit } from "../src/ui/screens/Settings";
 
 const FORM_ROUTES: Record<string, string> = {
@@ -22,5 +23,9 @@ export default function SyncProblemsRoute() {
     router.push(`${base}/${encodeURIComponent(recordId)}?problem=${encodeURIComponent(problemId)}` as Href);
   };
 
-  return <SyncProblemsScreen onEdit={edit} onClose={close} />;
+  return (
+    <DeskScreen>
+      <SyncProblemsScreen onEdit={edit} onClose={close} />
+    </DeskScreen>
+  );
 }

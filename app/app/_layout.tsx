@@ -23,6 +23,10 @@ import { setUpdateRequired, useUpdateRequired } from "../src/sync/updateRequired
 import { ReauthLogin } from "../src/ui/auth/LoginForms";
 import { Banner } from "../src/ui/components/Banner";
 
+// In the browser these screens show as a card above the page (see DeskScreen), so the page stays visible below.
+const FORM_PRESENTATION = Platform.OS === "web" ? "transparentModal" : "modal";
+const PAGE_PRESENTATION = Platform.OS === "web" ? "transparentModal" : "card";
+
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
     DroidSansMono: require("../assets/fonts/DroidSansMono.ttf"),
@@ -107,12 +111,12 @@ function AuthGate({ db }: { db: AppDatabase }) {
               <Stack screenOptions={{ headerShown: false }}>
                 <Stack.Protected guard={status !== "signedOut"}>
                   <Stack.Screen name="(main)" />
-                  <Stack.Screen name="transaction/[id]" options={{ presentation: "modal" }} />
-                  <Stack.Screen name="category/[id]" options={{ presentation: "modal" }} />
-                  <Stack.Screen name="account/[id]" options={{ presentation: "modal" }} />
-                  <Stack.Screen name="settings" />
-                  <Stack.Screen name="sessions" />
-                  <Stack.Screen name="sync-problems" />
+                  <Stack.Screen name="transaction/[id]" options={{ presentation: FORM_PRESENTATION }} />
+                  <Stack.Screen name="category/[id]" options={{ presentation: FORM_PRESENTATION }} />
+                  <Stack.Screen name="account/[id]" options={{ presentation: FORM_PRESENTATION }} />
+                  <Stack.Screen name="settings" options={{ presentation: PAGE_PRESENTATION }} />
+                  <Stack.Screen name="sessions" options={{ presentation: PAGE_PRESENTATION }} />
+                  <Stack.Screen name="sync-problems" options={{ presentation: PAGE_PRESENTATION }} />
                 </Stack.Protected>
                 <Stack.Protected guard={status === "signedOut"}>
                   <Stack.Screen name="(auth)/login" />

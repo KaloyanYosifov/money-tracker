@@ -33,12 +33,14 @@ export function pageFor(routeName: string): Page | undefined {
 type HeaderProps = {
   routeName: string;
   onMenu: () => void;
+  /** Opens a new transaction. The header shows "+" on Transactions, as in the mockup. */
+  onAdd?: () => void;
   topInset?: number;
   theme?: ThemeColors;
 };
 
-/** The phone header row: the period pill for pages with a period, and the ⋮ menu. */
-export function PhoneHeader({ routeName, onMenu, topInset = 0, theme = colors.light }: HeaderProps) {
+/** The phone header row: the period pill for pages with a period, "+" on Transactions, and the ⋮ menu. */
+export function PhoneHeader({ routeName, onMenu, onAdd, topInset = 0, theme = colors.light }: HeaderProps) {
   const { kind, period, settings, setPeriod } = usePeriod();
   const page = pageFor(routeName);
 
@@ -49,6 +51,13 @@ export function PhoneHeader({ routeName, onMenu, topInset = 0, theme = colors.li
           <PeriodPill period={period} kind={kind} settings={settings} onChange={setPeriod} theme={theme} />
         )}
       </View>
+      {onAdd && routeName === "transactions" ? (
+        <Pressable accessibilityRole="button" accessibilityLabel="New Transaction" onPress={onAdd} hitSlop={10} style={styles.menu}>
+          <Text allowFontScaling style={[styles.addText, { color: theme.accent }]}>
+            +
+          </Text>
+        </Pressable>
+      ) : null}
       <Pressable testID="menu" accessibilityRole="button" accessibilityLabel="Menu" onPress={onMenu} hitSlop={10} style={styles.menu}>
         <Text allowFontScaling style={[styles.menuText, { color: theme.accent }]}>
           ⋮
@@ -62,6 +71,7 @@ type Props = BottomTabBarProps & {
   position: "top" | "bottom";
   /** Opens Settings. */
   onMenu: () => void;
+  onAdd?: () => void;
   theme?: ThemeColors;
 };
 
@@ -69,7 +79,7 @@ type Props = BottomTabBarProps & {
  * The phone and narrow browser navigation. At the top it also holds the
  * header row. At the bottom the layout puts the header row above the page.
  */
-export function TabBar({ state, emitter, navigateToTab, insets, position, onMenu, theme = colors.light }: Props) {
+export function TabBar({ state, emitter, navigateToTab, insets, position, onMenu, onAdd, theme = colors.light }: Props) {
   const focusedKey = state.routes[state.index]?.key;
   const focusedName = state.routes[state.index]?.name ?? "";
   const top = position === "top";
@@ -82,7 +92,7 @@ export function TabBar({ state, emitter, navigateToTab, insets, position, onMenu
         top ? styles.barTop : [styles.barBottom, { paddingBottom: insets.bottom }],
       ]}
     >
-      {top && <PhoneHeader routeName={focusedName} onMenu={onMenu} topInset={insets.top} theme={theme} />}
+      {top && <PhoneHeader routeName={focusedName} onMenu={onMenu} onAdd={onAdd} topInset={insets.top} theme={theme} />}
       <View accessibilityRole="tablist" style={styles.tabs}>
         {PHONE_TABS.map((page) => {
           const route = state.routes.find((r) => r.name === page.name);
@@ -135,6 +145,11 @@ const styles = StyleSheet.create({
   menuText: {
     fontSize: 22,
     fontWeight: "700",
+  },
+  addText: {
+    fontSize: 32,
+    fontWeight: "200",
+    lineHeight: 34,
   },
   bar: {
     shadowColor: "#000",

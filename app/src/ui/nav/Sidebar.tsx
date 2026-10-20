@@ -50,9 +50,14 @@ export function Sidebar({ state, emitter, navigateToTab, onQuickAdd, onSettings,
         <View style={[styles.logo, { backgroundColor: theme.chalkBackground }]}>
           <Text style={[styles.logoText, { color: theme.chalkGreen }]}>€</Text>
         </View>
-        <Text allowFontScaling style={[styles.brandName, { color: theme.ink }]}>
-          Money Tracker
-        </Text>
+        <View>
+          <Text allowFontScaling style={[styles.brandName, { color: theme.ink }]}>
+            Money Tracker
+          </Text>
+          <Text allowFontScaling style={[styles.brandSub, { color: theme.accent }]}>
+            Personal finances
+          </Text>
+        </View>
       </View>
 
       <View accessibilityRole="tablist" style={styles.nav}>
@@ -166,7 +171,10 @@ export function SidebarPage({ routeName, title, children, theme = colors.light }
             <Pressable accessibilityRole="button" accessibilityLabel="Next period" onPress={() => shift(1)} hitSlop={8}>
               <Text style={[styles.arrow, { color: theme.ink }]}>›</Text>
             </Pressable>
-            <PeriodPill period={period} kind={kind} settings={settings} onChange={setPeriod} theme={theme} />
+            {/* The pill aligns itself to the start, so a wrapper centres it in the row. */}
+            <View>
+              <PeriodPill period={period} kind={kind} settings={settings} onChange={setPeriod} theme={theme} />
+            </View>
             <SegmentedControl options={KIND_OPTIONS} value={kind} onChange={onKind} theme={theme} />
           </>
         )}
@@ -209,6 +217,9 @@ const styles = StyleSheet.create({
   brandName: {
     fontSize: 16,
     fontWeight: "600",
+  },
+  brandSub: {
+    fontSize: 11,
   },
   nav: {
     paddingVertical: 12,
@@ -287,6 +298,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
+    minHeight: 36,
     marginBottom: 14,
   },
   title: {
