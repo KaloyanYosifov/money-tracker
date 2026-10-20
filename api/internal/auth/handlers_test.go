@@ -487,7 +487,7 @@ func TestRefresh(t *testing.T) {
 		rec = env.do("POST", "/api/auth/refresh", map[string]string{"refresh_token": first}, "X-Client", "native")
 		wantError(t, rec, http.StatusUnauthorized, "refresh_invalid")
 		rec = env.do("POST", "/api/auth/refresh", map[string]string{"refresh_token": second}, "X-Client", "native")
-		wantError(t, rec, http.StatusUnauthorized, "refresh_invalid")
+		wantError(t, rec, http.StatusUnauthorized, "session_revoked")
 		rec = env.do("POST", "/api/auth/refresh", map[string]string{"refresh_token": "unknown"}, "X-Client", "native")
 		wantError(t, rec, http.StatusUnauthorized, "refresh_invalid")
 	})
@@ -525,7 +525,7 @@ func TestRefresh(t *testing.T) {
 
 		req = env.request("POST", "/api/auth/refresh", nil, "X-Requested-With", "money-tracker")
 		req.AddCookie(second)
-		wantError(t, env.serve(req), http.StatusUnauthorized, "refresh_invalid")
+		wantError(t, env.serve(req), http.StatusUnauthorized, "session_revoked")
 
 		rec = env.do("POST", "/api/auth/refresh", nil, "X-Requested-With", "money-tracker")
 		wantError(t, rec, http.StatusUnauthorized, "refresh_invalid")
@@ -543,7 +543,7 @@ func TestLogout(t *testing.T) {
 			t.Fatalf("logout: %d %s", rec.Code, rec.Body)
 		}
 		rec = env.do("POST", "/api/auth/refresh", map[string]string{"refresh_token": token}, "X-Client", "native")
-		wantError(t, rec, http.StatusUnauthorized, "refresh_invalid")
+		wantError(t, rec, http.StatusUnauthorized, "session_revoked")
 	})
 
 	t.Run("web", func(t *testing.T) {
@@ -567,7 +567,7 @@ func TestLogout(t *testing.T) {
 
 		req = env.request("POST", "/api/auth/refresh", nil, "X-Requested-With", "money-tracker")
 		req.AddCookie(cookie)
-		wantError(t, env.serve(req), http.StatusUnauthorized, "refresh_invalid")
+		wantError(t, env.serve(req), http.StatusUnauthorized, "session_revoked")
 	})
 }
 

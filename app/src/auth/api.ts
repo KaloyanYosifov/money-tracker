@@ -9,6 +9,7 @@ export type AuthError =
   | "locked"
   | "setup_incomplete"
   | "refresh_invalid"
+  | "session_revoked"
   | "mfa_invalid"
   | "rate_limited"
   | "password_too_short"
@@ -26,6 +27,7 @@ const SERVER_ERRORS: ReadonlySet<string> = new Set<AuthError>([
   "locked",
   "setup_incomplete",
   "refresh_invalid",
+  "session_revoked",
   "mfa_invalid",
   "rate_limited",
   "password_too_short",

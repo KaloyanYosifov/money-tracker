@@ -20,6 +20,7 @@ var (
 	ErrTokenInvalid    = errors.New("refresh token is not valid")
 	ErrTokenExpired    = errors.New("refresh token expired")
 	ErrTokenReused     = errors.New("refresh token was used again after rotation")
+	ErrTokenRevoked    = errors.New("session was revoked")
 	ErrSessionNotFound = errors.New("session not found")
 )
 
@@ -73,7 +74,8 @@ func (s *RefreshStore) Create(ctx context.Context, userID, deviceName string) (R
 
 // Rotate replaces the token with a new token of the same session. If the
 // token was already rotated, Rotate revokes the whole session and returns
-// ErrTokenReused.
+// ErrTokenReused. A token of a session that a logout, an admin, another
+// device or a reuse ended gives ErrTokenRevoked.
 func (s *RefreshStore) Rotate(ctx context.Context, token string) (RefreshToken, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -103,7 +105,7 @@ func (s *RefreshStore) Rotate(ctx context.Context, token string) (RefreshToken, 
 
 	if revokedAt != nil {
 		if replacedBy == nil {
-			return RefreshToken{}, ErrTokenInvalid
+			return RefreshToken{}, ErrTokenRevoked
 		}
 		if _, err := tx.Exec(ctx,
 			`UPDATE refresh_tokens SET revoked_at = $2

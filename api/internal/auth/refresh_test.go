@@ -95,8 +95,8 @@ func TestReuseRevokesFamily(t *testing.T) {
 	if _, err := store.Rotate(ctx, first.Token); !errors.Is(err, auth.ErrTokenReused) {
 		t.Fatalf("reuse: err = %v, want ErrTokenReused", err)
 	}
-	if _, err := store.Rotate(ctx, second.Token); err == nil {
-		t.Fatal("the newest token of a reused family still works")
+	if _, err := store.Rotate(ctx, second.Token); !errors.Is(err, auth.ErrTokenRevoked) {
+		t.Fatalf("newest token of a reused family: err = %v, want ErrTokenRevoked", err)
 	}
 
 	var active int
@@ -166,8 +166,8 @@ func TestRevokeSession(t *testing.T) {
 	if err := store.RevokeSession(ctx, alice, phone.SessionID); err != nil {
 		t.Fatalf("RevokeSession: %v", err)
 	}
-	if _, err := store.Rotate(ctx, phone.Token); !errors.Is(err, auth.ErrTokenInvalid) {
-		t.Fatalf("revoked session: err = %v, want ErrTokenInvalid", err)
+	if _, err := store.Rotate(ctx, phone.Token); !errors.Is(err, auth.ErrTokenRevoked) {
+		t.Fatalf("revoked session: err = %v, want ErrTokenRevoked", err)
 	}
 	if _, err := store.Rotate(ctx, web.Token); err != nil {
 		t.Fatalf("other session stopped working: %v", err)
@@ -180,8 +180,8 @@ func TestRevokeSession(t *testing.T) {
 	if err := store.Revoke(ctx, logout.Token); err != nil {
 		t.Fatalf("Revoke: %v", err)
 	}
-	if _, err := store.Rotate(ctx, logout.Token); !errors.Is(err, auth.ErrTokenInvalid) {
-		t.Fatalf("logged out token: err = %v, want ErrTokenInvalid", err)
+	if _, err := store.Rotate(ctx, logout.Token); !errors.Is(err, auth.ErrTokenRevoked) {
+		t.Fatalf("logged out token: err = %v, want ErrTokenRevoked", err)
 	}
 }
 
@@ -202,8 +202,8 @@ func TestRevokeAllForUser(t *testing.T) {
 		t.Fatalf("RevokeAllForUser: %v", err)
 	}
 	for _, tok := range []auth.RefreshToken{a1, a2} {
-		if _, err := store.Rotate(ctx, tok.Token); !errors.Is(err, auth.ErrTokenInvalid) {
-			t.Fatalf("alice token: err = %v, want ErrTokenInvalid", err)
+		if _, err := store.Rotate(ctx, tok.Token); !errors.Is(err, auth.ErrTokenRevoked) {
+			t.Fatalf("alice token: err = %v, want ErrTokenRevoked", err)
 		}
 	}
 	if _, err := store.Rotate(ctx, b1.Token); err != nil {

@@ -44,18 +44,20 @@ function mockApi(): jest.Mocked<AuthApi> {
 let clock: number;
 let api: jest.Mocked<AuthApi>;
 let onUserChange: jest.Mock;
+let onSessionRevoked: jest.Mock;
 
 beforeEach(() => {
   clock = 1_000_000;
   api = mockApi();
   onUserChange = jest.fn();
+  onSessionRevoked = jest.fn();
   mockStore.refreshToken = null;
   mockStore.lastUserId = null;
 });
 
 async function renderAuth() {
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <AuthProvider api={api} onUserChange={onUserChange} now={() => clock}>
+    <AuthProvider api={api} onUserChange={onUserChange} onSessionRevoked={onSessionRevoked} now={() => clock}>
       {children}
     </AuthProvider>
   );
@@ -89,6 +91,23 @@ describe("start", () => {
     await waitFor(() => expect(result.current.status).toBe("reauthRequired"));
     expect(result.current.userId).toBe("user-1");
     expect(mockStore.refreshToken).toBeNull();
+    expect(onSessionRevoked).not.toHaveBeenCalled();
+  });
+
+  it("clears the local data and is signedOut on session_revoked", async () => {
+    mockStore.refreshToken = "refresh-old";
+    mockStore.lastUserId = "user-1";
+    api.refresh.mockResolvedValue({ ok: false, error: "session_revoked" });
+    onSessionRevoked.mockImplementation(async () => {
+      // The tokens are gone before the data, so a crash here cannot resume the session.
+      expect(mockStore.refreshToken).toBeNull();
+    });
+
+    const { result } = await renderAuth();
+    await waitFor(() => expect(result.current.status).toBe("signedOut"));
+    expect(onSessionRevoked).toHaveBeenCalledTimes(1);
+    expect(result.current.userId).toBeNull();
+    expect(mockStore.lastUserId).toBeNull();
   });
 
   it("is signedOut on refresh_invalid with no known user", async () => {
@@ -160,6 +179,20 @@ describe("getAccessToken", () => {
     });
     expect(token).toBeNull();
     expect(result.current.status).toBe("reauthRequired");
+  });
+
+  it("signs out and clears the local data when the session was revoked", async () => {
+    const { result } = await signedIn();
+    clock += 600_000;
+    api.refresh.mockResolvedValueOnce({ ok: false, error: "session_revoked" });
+
+    let token: string | null = "x";
+    await act(async () => {
+      token = await result.current.getAccessToken();
+    });
+    expect(token).toBeNull();
+    expect(onSessionRevoked).toHaveBeenCalledTimes(1);
+    expect(result.current.status).toBe("signedOut");
   });
 });
 

@@ -24,7 +24,7 @@ kubectl -n money-tracker exec deploy/money-tracker-api -c api -- \
   /mtapi admin reset-totp --email <email>
 ```
 
-The command removes the TOTP secret, revokes all sessions of the user and prints a new invite URL. Send the URL to the user. The user sets up TOTP again through it.
+The command removes the TOTP secret, revokes all sessions of the user and prints a new invite URL. The revocation deletes the local data on each device of the user, as in [Revoke sessions](#revoke-sessions). Send the URL to the user. The user sets up TOTP again through it.
 
 ### Revoke sessions
 
@@ -37,7 +37,7 @@ kubectl -n money-tracker exec deploy/money-tracker-api -c api -- \
 
 All devices of the user must log in again. Access tokens that the API issued before the revocation stay valid for up to 10 minutes.
 
-Revocation stops the sync, but it does not delete the data that is already on the device. The app keeps the local database and asks the user to log in again. On iOS the database is encrypted with SQLCipher. On the web it is not encrypted. If the device is not safe, also change the password of the user with `reset-totp`.
+When a device next connects to the API, the app deletes its local database and shows the login screen. Changes on the device that did not sync are lost. A device that stays offline keeps its data until it connects. On iOS the database is encrypted with SQLCipher. On the web it is not encrypted. If the device is not safe, also change the password of the user with `reset-totp`.
 
 ## Secrets
 
@@ -73,7 +73,7 @@ Keep a copy of `JWT_PRIVATE_KEY_PEM` and `TOTP_ENC_KEY` in the password manager.
    kubectl -n money-tracker rollout status deploy/money-tracker-powersync
    ```
 
-5. Run `/mtapi admin revoke-sessions --email <email>` for each user. All users then log in again.
+5. Run `/mtapi admin revoke-sessions --email <email>` for each user. All users then log in again. Each device deletes its local data, so ask the users to let their devices sync first.
 6. Update the copy in the password manager.
 
 ### TOTP_ENC_KEY

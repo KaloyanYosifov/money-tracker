@@ -40,13 +40,14 @@ export default function RootLayout() {
   }, []);
 
   const onUserChange = useMemo(() => (db ? clearOnUserChange(db) : undefined), [db]);
+  const onSessionRevoked = useMemo(() => (db ? () => db.disconnectAndClear() : undefined), [db]);
 
   if ((!fontsLoaded && !fontError) || !db) {
     return null;
   }
 
   return (
-    <AuthProvider onUserChange={onUserChange}>
+    <AuthProvider onUserChange={onUserChange} onSessionRevoked={onSessionRevoked}>
       <AuthGate db={db} />
     </AuthProvider>
   );

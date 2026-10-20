@@ -25,6 +25,9 @@ export interface AuthContextValue {
 /** Called with the new and the previous user ID, before the new user is published. */
 export type UserChangeHandler = (nextUserId: string, previousUserId: string | null) => void | Promise<void>;
 
+/** Called when the server says that the session was revoked, before the user is signed out. */
+export type SessionRevokedHandler = () => void | Promise<void>;
+
 const REFRESH_MARGIN_MS = 60_000;
 
 type RefreshOutcome = { kind: "ok"; tokens: TokenResponse } | { kind: "invalid" } | { kind: "failed" };
@@ -47,11 +50,13 @@ export function AuthProvider({
   children,
   api = authApi,
   onUserChange,
+  onSessionRevoked,
   now = Date.now,
 }: {
   children: ReactNode;
   api?: AuthApi;
   onUserChange?: UserChangeHandler;
+  onSessionRevoked?: SessionRevokedHandler;
   now?: () => number;
 }) {
   const [state, setState] = useState<{ status: AuthStatus; userId: string | null; sessionId: string | null }>({
@@ -62,9 +67,9 @@ export function AuthProvider({
   const access = useRef<{ token: string; expiresAt: number } | null>(null);
   const inflight = useRef<Promise<RefreshOutcome> | null>(null);
   // Props in refs keep the callbacks stable, so inline props do not restart the effect.
-  const props = useRef({ api, onUserChange, now });
+  const props = useRef({ api, onUserChange, onSessionRevoked, now });
   useLayoutEffect(() => {
-    props.current = { api, onUserChange, now };
+    props.current = { api, onUserChange, onSessionRevoked, now };
   });
 
   const keepTokens = useCallback(
@@ -100,6 +105,15 @@ export function AuthProvider({
         await tokenStore.setRefreshToken(null);
         const last = await tokenStore.getLastUserId();
         setState({ status: last ? "reauthRequired" : "signedOut", userId: last, sessionId: null });
+        return { kind: "invalid" };
+      }
+      if (result.error === "session_revoked") {
+        // A lost device or a revoke from another device: the local data goes too.
+        access.current = null;
+        await tokenStore.setRefreshToken(null);
+        await props.current.onSessionRevoked?.();
+        await tokenStore.setLastUserId(null);
+        setState({ status: "signedOut", userId: null, sessionId: null });
         return { kind: "invalid" };
       }
       return { kind: "failed" };

@@ -512,11 +512,17 @@ func (h *Handlers) refreshToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rt, err := h.refresh.Rotate(r.Context(), token)
-	if errors.Is(err, ErrTokenInvalid) || errors.Is(err, ErrTokenExpired) || errors.Is(err, ErrTokenReused) {
+	if errors.Is(err, ErrTokenInvalid) || errors.Is(err, ErrTokenExpired) ||
+		errors.Is(err, ErrTokenReused) || errors.Is(err, ErrTokenRevoked) {
 		if !isNative(r) {
 			h.setRefreshCookie(w, "", -1)
 		}
-		writeError(w, http.StatusUnauthorized, "refresh_invalid")
+		// The client deletes its local data only for session_revoked.
+		code := "refresh_invalid"
+		if errors.Is(err, ErrTokenRevoked) {
+			code = "session_revoked"
+		}
+		writeError(w, http.StatusUnauthorized, code)
 		return
 	}
 	if err != nil {
