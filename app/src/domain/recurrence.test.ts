@@ -84,12 +84,12 @@ describe("occurrenceDates", () => {
     expect(occurrenceDates(rule("monthly", "2026-10-10"), "2026-10-09").dates).toEqual([]);
   });
 
-  it("caps the list at 1000 dates and reports truncated", () => {
+  it("caps the list at the latest 1000 dates and reports truncated", () => {
     const result = occurrenceDates(rule("daily", "2020-01-01"), "2026-12-31");
     expect(MAX_OCCURRENCES).toBe(1000);
     expect(result.dates).toHaveLength(1000);
-    expect(result.dates[0]).toBe("2020-01-01");
-    expect(result.dates[999]).toBe("2022-09-26");
+    expect(result.dates[0]).toBe("2024-04-06");
+    expect(result.dates[999]).toBe("2026-12-31");
     expect(result.truncated).toBe(true);
   });
 
@@ -97,5 +97,10 @@ describe("occurrenceDates", () => {
     const result = occurrenceDates(rule("daily", "2020-01-01"), "2022-09-26");
     expect(result.dates).toHaveLength(1000);
     expect(result.truncated).toBe(false);
+  });
+
+  it("throws for an unknown frequency", () => {
+    const bad = rule("hourly" as RecurrenceRule["frequency"], "2026-10-01");
+    expect(() => occurrenceDates(bad, "2026-10-02")).toThrow("unknown frequency hourly");
   });
 });

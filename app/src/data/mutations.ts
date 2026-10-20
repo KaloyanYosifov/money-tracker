@@ -1,5 +1,6 @@
 import type { Category, UserSettings } from "../generated/schema";
 import { newId } from "../domain/ids";
+import { MAX_AMOUNT_MINOR } from "../domain/money";
 import {
   validateAccount,
   validateCategory,
@@ -188,6 +189,14 @@ export async function archiveAccount(db: MutationDb, id: string): Promise<void> 
   await db.execute("UPDATE accounts SET archived_at = ? WHERE id = ?", [new Date().toISOString(), id]);
 }
 
+export async function restoreCategory(db: MutationDb, id: string): Promise<void> {
+  await db.execute("UPDATE categories SET archived_at = NULL WHERE id = ?", [id]);
+}
+
+export async function restoreAccount(db: MutationDb, id: string): Promise<void> {
+  await db.execute("UPDATE accounts SET archived_at = NULL WHERE id = ?", [id]);
+}
+
 // The server refuses to delete a record that other rows still reference
 // (foreign keys with ON DELETE RESTRICT), so the app refuses it first.
 // usedBy is SQL with one ? parameter for each subquery. Each gets the id.
@@ -246,5 +255,23 @@ export function updateSettings(db: MutationDb, patch: SettingsPatch): Promise<vo
       values[column] = typeof value === "boolean" ? (value ? 1 : 0) : value;
     }
     await updateChanged(tx, "user_settings", settings.id, settings, values);
+  });
+}
+
+/** Inserts or updates the overall budget (no category) for one period kind. */
+export function saveOverallBudget(db: MutationDb, period: UserSettings["time_period"], amountMinor: number): Promise<SaveResult> {
+  return db.writeTransaction(async (tx) => {
+    if (!Number.isInteger(amountMinor) || amountMinor < 1 || amountMinor > MAX_AMOUNT_MINOR) {
+      return fail([{ field: "amount_minor", code: "out_of_range" }]);
+    }
+    const existing = await tx.getOptional<{ id: string }>(
+      "SELECT id FROM budgets WHERE category_id IS NULL AND period = ? ORDER BY id LIMIT 1",
+      [period],
+    );
+    const id = await write(tx, "budgets", existing?.id, { amount_minor: amountMinor }, async () => {
+      const settings = await currentSettings(tx);
+      return { user_id: settings.user_id, category_id: null, period };
+    });
+    return { ok: true, id };
   });
 }

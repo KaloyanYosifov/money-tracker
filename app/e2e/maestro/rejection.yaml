@@ -1,0 +1,71 @@
+# A permanent rejection shows the banner, later changes still sync, and Discard clears it.
+# The user is logged in (login.yaml). Env: PHASE. e2e/ios/run.ts does the server steps between the phases.
+#   add:     (offline) add an expense in the category Gifts.
+#            run.ts then deletes Gifts on the server and turns the proxies on.
+#   check:   the banner shows, and a new expense in Groceries syncs.
+#   discard: Discard the problem from the sync problems screen.
+appId: com.kyosifov.moneytracker
+name: Permanent rejection
+---
+- runFlow:
+    when:
+      true: ${PHASE == 'add'}
+    commands:
+      - runFlow:
+          file: subflows/check-sync-state.yaml
+          env:
+            STATE: Offline · 0 pending
+      - runFlow:
+          file: subflows/add-expense.yaml
+          env:
+            NAME: Gift for Ana
+            DIGIT: "9"
+            CATEGORY: Gifts
+      - runFlow:
+          file: subflows/check-sync-state.yaml
+          env:
+            STATE: Offline · 1 pending
+
+- runFlow:
+    when:
+      true: ${PHASE == 'check'}
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: banner-needs-attention
+          timeout: 60000
+      - assertVisible:
+          text: The server did not accept 1 change.
+      - runFlow:
+          file: subflows/add-expense.yaml
+          env:
+            NAME: Bread
+            DIGIT: "3"
+            CATEGORY: Groceries
+
+- runFlow:
+    when:
+      true: ${PHASE == 'discard'}
+    commands:
+      - tapOn:
+          id: banner-needs-attention-action
+      - extendedWaitUntil:
+          visible:
+            text: Sync problems
+          timeout: 10000
+      - tapOn:
+          id: discard-problem
+      - extendedWaitUntil:
+          visible:
+            text: No sync problems.
+          timeout: 10000
+      - tapOn:
+          id: back
+      - extendedWaitUntil:
+          notVisible:
+            id: banner-needs-attention
+          timeout: 10000
+      - runFlow:
+          file: subflows/check-sync-state.yaml
+          env:
+            STATE: Synced.* · 0 pending

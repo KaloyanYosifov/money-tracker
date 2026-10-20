@@ -97,10 +97,21 @@ export function createConnector(deps: ConnectorDeps): PowerSyncBackendConnector 
   };
 }
 
+// SQLite stores these as 0/1, but the server schema wants JSON booleans.
+const booleanColumns: Partial<Record<string, readonly string[]>> = {
+  user_settings: ["budget_mode", "carry_over", "hide_future", "show_note"],
+};
+
 function toUploadOp(entry: CrudEntry): UploadOp {
   const op: UploadOp = { op: entry.op, table: entry.table as UploadOp["table"], id: entry.id };
   if (entry.opData) {
-    op.data = entry.opData;
+    const data: Record<string, unknown> = { ...entry.opData };
+    for (const column of booleanColumns[entry.table] ?? []) {
+      if (typeof data[column] === "number") {
+        data[column] = data[column] !== 0;
+      }
+    }
+    op.data = data;
   }
   return op;
 }

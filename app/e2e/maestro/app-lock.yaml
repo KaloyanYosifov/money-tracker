@@ -1,0 +1,61 @@
+# App Lock with Face ID. The user is logged in (login.yaml), and Face ID is enrolled.
+# Env: PHASE. e2e/ios/run.ts sends the Face ID result between the phases.
+#   enable:   turn on App Lock and start the app again. The Face ID prompt waits.
+#             run.ts then sends a failed match.
+#   failed:   the app stays covered and shows Unlock. Tap Unlock for a new prompt.
+#             run.ts then sends a match.
+#   unlocked: the app shows again.
+appId: com.kyosifov.moneytracker
+name: App Lock
+---
+- runFlow:
+    when:
+      true: ${PHASE == 'enable'}
+    commands:
+      - tapOn:
+          id: menu
+      - scrollUntilVisible:
+          element:
+            id: app-lock-switch
+            enabled: true
+          direction: DOWN
+      - tapOn:
+          id: app-lock-switch
+      - tapOn:
+          id: back
+      - stopApp
+      - launchApp
+      - extendedWaitUntil:
+          visible:
+            id: privacy-cover
+          timeout: 15000
+      - assertNotVisible:
+          id: unlock
+
+- runFlow:
+    when:
+      true: ${PHASE == 'failed'}
+    commands:
+      # The system Face ID prompt stays open after a failed match until it is cancelled.
+      - tapOn:
+          text: Cancel
+          optional: true
+      - extendedWaitUntil:
+          visible:
+            id: unlock
+          timeout: 15000
+      - assertVisible:
+          id: privacy-cover
+      - tapOn:
+          id: unlock
+
+- runFlow:
+    when:
+      true: ${PHASE == 'unlocked'}
+    commands:
+      - extendedWaitUntil:
+          notVisible:
+            id: privacy-cover
+          timeout: 15000
+      - assertVisible:
+          id: add-expense

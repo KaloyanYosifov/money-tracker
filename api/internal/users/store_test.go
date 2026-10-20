@@ -237,6 +237,17 @@ func TestResetTOTP(t *testing.T) {
 		t.Fatalf("reset invite = %+v", inv)
 	}
 
+	second, err := store.ResetTOTP(ctx, "a@example.com")
+	if err != nil {
+		t.Fatalf("second ResetTOTP: %v", err)
+	}
+	if _, err := store.CheckInvite(ctx, token); !errors.Is(err, users.ErrInviteUsed) {
+		t.Fatalf("older reset invite after a new reset: err = %v, want ErrInviteUsed", err)
+	}
+	if _, err := store.CheckInvite(ctx, second); err != nil {
+		t.Fatalf("CheckInvite of the new reset invite: %v", err)
+	}
+
 	if _, err := store.ResetTOTP(ctx, "nobody@example.com"); !errors.Is(err, users.ErrUserNotFound) {
 		t.Fatalf("ResetTOTP unknown email: err = %v, want ErrUserNotFound", err)
 	}

@@ -44,7 +44,7 @@ CREATE TABLE recurring_rules (
     FOREIGN KEY (user_id, account_id) REFERENCES accounts (user_id, id) ON DELETE RESTRICT,
     FOREIGN KEY (user_id, to_account_id) REFERENCES accounts (user_id, id) ON DELETE RESTRICT,
     FOREIGN KEY (user_id, category_id) REFERENCES categories (user_id, id) ON DELETE RESTRICT,
-    CHECK (
+    CONSTRAINT recurring_rules_kind_check CHECK (
         (type = 'transfer' AND category_id IS NULL AND to_account_id IS NOT NULL AND to_account_id <> account_id)
         OR (type IN ('expense', 'income') AND category_id IS NOT NULL AND to_account_id IS NULL)
     )
@@ -74,7 +74,7 @@ CREATE TABLE transactions (
     FOREIGN KEY (user_id, category_id) REFERENCES categories (user_id, id) ON DELETE RESTRICT,
     FOREIGN KEY (user_id, recurring_rule_id) REFERENCES recurring_rules (user_id, id)
         ON DELETE SET NULL (recurring_rule_id),
-    CHECK (
+    CONSTRAINT transactions_kind_check CHECK (
         (type = 'transfer' AND category_id IS NULL AND to_account_id IS NOT NULL AND to_account_id <> account_id)
         OR (type IN ('expense', 'income') AND category_id IS NOT NULL AND to_account_id IS NULL)
     )

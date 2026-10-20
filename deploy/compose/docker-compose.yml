@@ -68,6 +68,9 @@ services:
       - "8474:8474"
       - "18080:18080"
       - "18081:18081"
+      # The iOS app in the cross-app suite uses its own pair of proxies.
+      - "18090:18090"
+      - "18091:18091"
     depends_on:
       - api
       - powersync

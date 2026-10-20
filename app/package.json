@@ -22,6 +22,7 @@
     "@powersync/web": "^2.5.0",
     "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~58.0.16",
+    "expo-clipboard": "~58.0.3",
     "expo-constants": "~58.0.12",
     "expo-crypto": "~58.0.7",
     "expo-device": "~58.0.5",

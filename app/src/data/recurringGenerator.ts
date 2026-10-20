@@ -90,3 +90,9 @@ export function useRecurringGenerator(): void {
     return () => clearInterval(timer);
   }, [db, hasSynced]);
 }
+
+/** Mount inside the PowerSync provider while a user is signed in. */
+export function RecurringGenerator(): null {
+  useRecurringGenerator();
+  return null;
+}

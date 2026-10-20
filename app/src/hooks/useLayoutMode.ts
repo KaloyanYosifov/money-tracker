@@ -1,4 +1,4 @@
-import { Platform, useWindowDimensions, type PlatformIOSStatic } from "react-native";
+import { Platform, useWindowDimensions } from "react-native";
 
 export type LayoutMode = "tabs" | "sidebar" | "phoneLandscape" | "tabletSplit";
 
@@ -24,6 +24,6 @@ export function layoutModeFor({ platform, width, height, isTablet }: LayoutInput
 
 export function useLayoutMode(): LayoutMode {
   const { width, height } = useWindowDimensions();
-  const isTablet = Platform.OS === "ios" && (Platform as PlatformIOSStatic).isPad;
+  const isTablet = Platform.OS === "ios" && Platform.isPad;
   return layoutModeFor({ platform: Platform.OS, width, height, isTablet });
 }

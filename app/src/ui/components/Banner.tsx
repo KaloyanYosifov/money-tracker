@@ -5,15 +5,18 @@ import { colors, type ThemeColors } from "../theme";
 type Props = {
   title: string;
   text: string;
-  actionLabel: string;
-  onAction: () => void;
+  /** Without an action label the banner has no button. */
+  actionLabel?: string;
+  onAction?: () => void;
+  /** The action button gets `${testID}-action`. */
+  testID?: string;
   theme?: ThemeColors;
 };
 
-/** A message above the content with one action, for example "Log in again". */
-export function Banner({ title, text, actionLabel, onAction, theme = colors.light }: Props) {
+/** A message above the content with at most one action, for example "Log in again". */
+export function Banner({ title, text, actionLabel, onAction, testID, theme = colors.light }: Props) {
   return (
-    <View accessibilityRole="alert" style={[styles.banner, { backgroundColor: theme.carryOver, borderColor: theme.line }]}>
+    <View testID={testID} accessibilityRole="alert" style={[styles.banner, { backgroundColor: theme.carryOver, borderColor: theme.line }]}>
       <View style={styles.body}>
         <Text allowFontScaling style={[styles.title, { color: theme.ink }]}>
           {title}
@@ -22,16 +25,19 @@ export function Banner({ title, text, actionLabel, onAction, theme = colors.ligh
           {text}
         </Text>
       </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={actionLabel}
-        onPress={onAction}
-        style={[styles.action, { borderColor: theme.accent }]}
-      >
-        <Text allowFontScaling style={[styles.actionLabel, { color: theme.accent }]}>
-          {actionLabel}
-        </Text>
-      </Pressable>
+      {actionLabel && onAction ? (
+        <Pressable
+          testID={testID ? `${testID}-action` : undefined}
+          accessibilityRole="button"
+          accessibilityLabel={actionLabel}
+          onPress={onAction}
+          style={[styles.action, { borderColor: theme.accent }]}
+        >
+          <Text allowFontScaling style={[styles.actionLabel, { color: theme.accent }]}>
+            {actionLabel}
+          </Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }

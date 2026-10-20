@@ -1,0 +1,43 @@
+# Logs in with password and TOTP from a clean install.
+# Env: EMAIL, PASSWORD, TOTP_CODE. e2e/ios/run.ts makes the code right before the flow starts.
+appId: com.kyosifov.moneytracker
+name: Log in with password and TOTP
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+- extendedWaitUntil:
+    visible:
+      id: login-email
+    timeout: 30000
+- tapOn:
+    id: login-email
+- inputText: ${EMAIL}
+- tapOn:
+    id: login-password
+- inputText: ${PASSWORD}
+- hideKeyboard
+- tapOn:
+    id: login-submit
+- extendedWaitUntil:
+    visible:
+      id: totp-code
+    timeout: 15000
+- tapOn:
+    id: totp-code
+- inputText: ${TOTP_CODE}
+# iOS can offer to save the password.
+- tapOn:
+    text: Not Now
+    optional: true
+- extendedWaitUntil:
+    visible:
+      id: tab-spending
+    timeout: 30000
+- assertVisible:
+    id: add-expense
+# The first download must finish, so that the categories and accounts exist on the device.
+- runFlow:
+    file: subflows/check-sync-state.yaml
+    env:
+      STATE: Synced.* · 0 pending

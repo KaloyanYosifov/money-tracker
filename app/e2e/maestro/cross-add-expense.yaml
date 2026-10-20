@@ -1,0 +1,12 @@
+# Cross-app scenario 1: adds an expense on iOS. The user is logged in (login.yaml).
+# Env: NAME, DIGIT, CATEGORY. The flow ends right after the save, and
+# e2e/cross/run.ts then gives the web app 10 seconds to show the row.
+appId: com.kyosifov.moneytracker
+name: Cross-app add an expense
+---
+- runFlow:
+    file: subflows/add-expense.yaml
+    env:
+      NAME: ${NAME}
+      DIGIT: ${DIGIT}
+      CATEGORY: ${CATEGORY}

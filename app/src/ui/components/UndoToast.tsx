@@ -10,6 +10,7 @@ export function UndoToast({ visible, onUndo }: Props) {
   if (!visible) return null;
   return (
     <Pressable
+      testID="undo-toast"
       accessibilityRole="button"
       accessibilityLabel="Deleted. Undo"
       accessibilityLiveRegion="polite"

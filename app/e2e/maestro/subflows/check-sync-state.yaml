@@ -1,0 +1,13 @@
+# Opens Settings, waits until the sync state matches STATE (a regex), and goes back.
+# Env: STATE, for example "Offline · 3 pending".
+appId: com.kyosifov.moneytracker
+---
+- tapOn:
+    id: menu
+- extendedWaitUntil:
+    visible:
+      id: sync-state
+      text: ${STATE}
+    timeout: 60000
+- tapOn:
+    id: back

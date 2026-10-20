@@ -24,7 +24,7 @@ function formatRowDate(date: string, locale?: string): string {
   return `${weekday}, ${rest}`;
 }
 
-function currencyName(code: string): string {
+export function currencyName(code: string): string {
   try {
     return (new Intl.DisplayNames("en", { type: "currency" }).of(code) ?? code).toLowerCase();
   } catch {

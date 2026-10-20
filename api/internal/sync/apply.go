@@ -80,6 +80,13 @@ func ApplyOp(ctx context.Context, tx pgx.Tx, userID string, op schema.UploadOp) 
 	return res, nil
 }
 
+// kindChecks are the CHECK constraints in 00001_core.sql for the transfer and
+// expense or income column rules.
+var kindChecks = map[string]bool{
+	"transactions_kind_check":    true,
+	"recurring_rules_kind_check": true,
+}
+
 // mapPgError turns a constraint error into a rejection.
 func mapPgError(e *pgconn.PgError, op schema.UploadOpOp) (Result, bool) {
 	switch {
@@ -87,7 +94,7 @@ func mapPgError(e *pgconn.PgError, op schema.UploadOpOp) (Result, bool) {
 		return reject("in_use", "other records still use this record"), true
 	case e.Code == "23503":
 		return reject("invalid_reference", "a referenced record does not exist"), true
-	case e.Code == "23514" && !strings.HasSuffix(e.ConstraintName, "amount_minor_check"):
+	case e.Code == "23514" && kindChecks[e.ConstraintName]:
 		return reject("invalid_transfer", "the record breaks the transfer rules"), true
 	case strings.HasPrefix(e.Code, "22") || strings.HasPrefix(e.Code, "23"):
 		return reject("invalid_record", e.Message), true

@@ -4,6 +4,8 @@ import {
   archiveCategory,
   deleteAccount,
   deleteCategory,
+  restoreAccount,
+  restoreCategory,
   saveAccount,
   saveCategory,
   saveRecurringRule,
@@ -242,6 +244,13 @@ describe("categories", () => {
     expect(row("categories", "food")?.archived_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
+  it("restores an archived category", async () => {
+    await archiveCategory(db, "food");
+    await restoreCategory(db, "food");
+
+    expect(row("categories", "food")?.archived_at).toBeNull();
+  });
+
   it("refuses to delete a category that transactions use", async () => {
     expect(await deleteCategory(db, "food")).toEqual({ ok: false, errors: [{ field: "id", code: "in_use" }] });
     expect(row("categories", "food")).toBeDefined();
@@ -287,6 +296,13 @@ describe("accounts", () => {
     await archiveAccount(db, "bank");
 
     expect(row("accounts", "bank")?.archived_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("restores an archived account", async () => {
+    await archiveAccount(db, "bank");
+    await restoreAccount(db, "bank");
+
+    expect(row("accounts", "bank")?.archived_at).toBeNull();
   });
 
   it("refuses to delete an account that transactions use", async () => {

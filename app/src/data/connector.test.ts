@@ -95,6 +95,22 @@ describe("uploadData", () => {
     expect(tx.execute).not.toHaveBeenCalled();
   });
 
+  it("sends the user_settings flags as JSON booleans", async () => {
+    const { db } = fakeDatabase([
+      entry(UpdateType.PATCH, "user_settings", "s1", { budget_mode: 1, carry_over: 0, theme: "dark" }),
+      entry(UpdateType.PUT, "user_settings", "s2", { hide_future: 0, show_note: 1 }),
+    ]);
+    fetchMock.mockResolvedValueOnce(respond(200, { rejected: [] }));
+
+    await createConnector(deps()).uploadData(db);
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(init?.body as string).ops).toEqual([
+      { op: "PATCH", table: "user_settings", id: "s1", data: { budget_mode: true, carry_over: false, theme: "dark" } },
+      { op: "PUT", table: "user_settings", id: "s2", data: { hide_future: false, show_note: true } },
+    ]);
+  });
+
   it("writes one sync_problems row per rejected op, then completes", async () => {
     const { db, complete, tx } = fakeDatabase(crud);
     fetchMock.mockResolvedValueOnce(

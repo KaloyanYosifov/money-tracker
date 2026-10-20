@@ -1,0 +1,37 @@
+# Cross-app scenarios 2 and 3: edits the note of a transaction while iOS is offline.
+# e2e/cross/run.ts turns off the iOS proxies (api_ios, powersync_ios) before this flow.
+# Env: NAME, NOTE.
+appId: com.kyosifov.moneytracker
+name: Cross-app edit the note offline
+---
+- tapOn:
+    id: tab-transactions
+- extendedWaitUntil:
+    visible:
+      text: "${NAME}, .*"
+    timeout: 10000
+- tapOn:
+    text: "${NAME}, .*"
+- extendedWaitUntil:
+    visible:
+      text: Edit Transaction
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: transaction-note
+    direction: DOWN
+- tapOn:
+    id: transaction-note
+- eraseText: 50
+- inputText: ${NOTE}
+- hideKeyboard
+- tapOn:
+    id: transaction-save
+- extendedWaitUntil:
+    notVisible:
+      text: Edit Transaction
+    timeout: 10000
+- runFlow:
+    file: subflows/check-sync-state.yaml
+    env:
+      STATE: Offline · 1 pending

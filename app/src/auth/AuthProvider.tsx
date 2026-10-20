@@ -10,8 +10,12 @@ export interface AuthContextValue {
   status: AuthStatus;
   /** The signed-in user, or the last known user in reauthRequired. */
   userId: string | null;
+  /** The refresh token family of this device, from the last token response. Null before one. */
+  sessionId: string | null;
   /** Returns a valid access token, or null if none can be had now. */
   getAccessToken(): Promise<string | null>;
+  /** Gets a new access token even if the cached one is still valid. Null if the refresh failed. */
+  refreshAccessToken(): Promise<string | null>;
   /** Stores the token response of a finished login or invite confirm. */
   signIn(tokens: TokenResponse): Promise<void>;
   signOut(): Promise<void>;
@@ -26,6 +30,18 @@ type RefreshOutcome = { kind: "ok"; tokens: TokenResponse } | { kind: "invalid" 
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+type LockManager = { request<T>(name: string, callback: () => Promise<T>): Promise<T> };
+
+/**
+ * Browser tabs share one refresh cookie, and the server revokes the session when a
+ * rotated token comes again. A Web Lock makes the tabs refresh one after the other,
+ * so each tab sends the newest cookie.
+ */
+function acrossTabs<T>(callback: () => Promise<T>): Promise<T> {
+  const locks = (globalThis.navigator as { locks?: LockManager } | undefined)?.locks;
+  return locks ? locks.request("money-tracker-refresh", callback) : callback();
+}
+
 export function AuthProvider({
   children,
   api = authApi,
@@ -37,9 +53,10 @@ export function AuthProvider({
   onUserChange?: UserChangeHandler;
   now?: () => number;
 }) {
-  const [state, setState] = useState<{ status: AuthStatus; userId: string | null }>({
+  const [state, setState] = useState<{ status: AuthStatus; userId: string | null; sessionId: string | null }>({
     status: "loading",
     userId: null,
+    sessionId: null,
   });
   const access = useRef<{ token: string; expiresAt: number } | null>(null);
   const inflight = useRef<Promise<RefreshOutcome> | null>(null);
@@ -70,18 +87,18 @@ export function AuthProvider({
       const result =
         stored === null && Platform.OS !== "web"
           ? ({ ok: false, error: "refresh_invalid" } as const)
-          : await props.current.api.refresh(stored);
+          : await acrossTabs(() => props.current.api.refresh(stored));
 
       if (result.ok) {
         await keepTokens(result.value);
-        setState({ status: "signedIn", userId: result.value.user_id });
+        setState({ status: "signedIn", userId: result.value.user_id, sessionId: result.value.session_id });
         return { kind: "ok", tokens: result.value };
       }
       if (result.error === "refresh_invalid") {
         access.current = null;
         await tokenStore.setRefreshToken(null);
         const last = await tokenStore.getLastUserId();
-        setState({ status: last ? "reauthRequired" : "signedOut", userId: last });
+        setState({ status: last ? "reauthRequired" : "signedOut", userId: last, sessionId: null });
         return { kind: "invalid" };
       }
       return { kind: "failed" };
@@ -101,7 +118,7 @@ export function AuthProvider({
       }
       // Offline start: a known user keeps using the local data.
       const last = await tokenStore.getLastUserId();
-      setState({ status: last ? "signedIn" : "signedOut", userId: last });
+      setState({ status: last ? "signedIn" : "signedOut", userId: last, sessionId: null });
     })();
     return () => {
       cancelled = true;
@@ -117,6 +134,11 @@ export function AuthProvider({
     return outcome.kind === "ok" ? outcome.tokens.access_token : null;
   }, [refresh]);
 
+  const refreshAccessToken = useCallback(async (): Promise<string | null> => {
+    const outcome = await refresh();
+    return outcome.kind === "ok" ? outcome.tokens.access_token : null;
+  }, [refresh]);
+
   const signIn = useCallback(
     async (tokens: TokenResponse) => {
       const previous = await tokenStore.getLastUserId();
@@ -124,7 +146,7 @@ export function AuthProvider({
         await props.current.onUserChange?.(tokens.user_id, previous);
       }
       await keepTokens(tokens);
-      setState({ status: "signedIn", userId: tokens.user_id });
+      setState({ status: "signedIn", userId: tokens.user_id, sessionId: tokens.session_id });
     },
     [keepTokens],
   );
@@ -134,12 +156,12 @@ export function AuthProvider({
     access.current = null;
     await tokenStore.setRefreshToken(null);
     await tokenStore.setLastUserId(null);
-    setState({ status: "signedOut", userId: null });
+    setState({ status: "signedOut", userId: null, sessionId: null });
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ ...state, getAccessToken, signIn, signOut }),
-    [state, getAccessToken, signIn, signOut],
+    () => ({ ...state, getAccessToken, refreshAccessToken, signIn, signOut }),
+    [state, getAccessToken, refreshAccessToken, signIn, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -1,0 +1,49 @@
+# Cross-app check of one transaction on iOS after the iOS proxies are on again.
+# Env: PHASE, NAME, AMOUNT (whole euros), NOTE.
+#   present: the row shows AMOUNT, and the form shows NOTE.
+#   gone:    the row is not in the list.
+appId: com.kyosifov.moneytracker
+name: Cross-app check a transaction
+---
+- runFlow:
+    file: subflows/check-sync-state.yaml
+    env:
+      STATE: Synced.* · 0 pending
+- tapOn:
+    id: tab-transactions
+
+- runFlow:
+    when:
+      true: ${PHASE == 'present'}
+    commands:
+      # The row label is "<name>, expense <euros> <currency>, <account>, <date>".
+      - extendedWaitUntil:
+          visible:
+            text: "${NAME}, expense ${AMOUNT} .*"
+          timeout: 30000
+      - tapOn:
+          text: "${NAME}, expense ${AMOUNT} .*"
+      - extendedWaitUntil:
+          visible:
+            text: Edit Transaction
+          timeout: 10000
+      - scrollUntilVisible:
+          element:
+            id: transaction-note
+            text: ${NOTE}
+          direction: DOWN
+      - tapOn:
+          text: Cancel
+      - extendedWaitUntil:
+          notVisible:
+            text: Edit Transaction
+          timeout: 10000
+
+- runFlow:
+    when:
+      true: ${PHASE == 'gone'}
+    commands:
+      - extendedWaitUntil:
+          notVisible:
+            text: "${NAME}, .*"
+          timeout: 30000

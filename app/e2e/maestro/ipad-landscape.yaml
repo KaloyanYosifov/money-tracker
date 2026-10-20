@@ -1,0 +1,15 @@
+# Runs on an iPad simulator. The user is logged in (login.yaml).
+# In landscape the chalkboard and the transaction list show together.
+# e2e/ios/run.ts reads the view hierarchy after this flow and checks that they are side by side.
+appId: com.kyosifov.moneytracker
+name: iPad landscape split
+---
+- setOrientation: LANDSCAPE_LEFT
+- extendedWaitUntil:
+    visible:
+      id: chalkboard-summary
+    timeout: 10000
+- extendedWaitUntil:
+    visible:
+      id: transaction-list
+    timeout: 10000

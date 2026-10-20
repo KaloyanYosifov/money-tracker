@@ -15,5 +15,4 @@ export interface Shortcuts {
 }
 
 /** Native has no keyboard shortcuts. The web version is useShortcuts.web.ts. */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function useShortcuts(_handlers: Shortcuts): void {}

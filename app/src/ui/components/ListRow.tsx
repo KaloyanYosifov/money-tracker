@@ -8,17 +8,19 @@ type Props = {
   icon?: ReactNode;
   right?: ReactNode;
   onPress?: () => void;
+  onLongPress?: () => void;
   testID?: string;
   theme?: ThemeColors;
 };
 
 /** A row with an icon and a title, as in the Categories and Accounts lists. */
-export function ListRow({ title, icon, right, onPress, testID, theme = colors.light }: Props) {
+export function ListRow({ title, icon, right, onPress, onLongPress, testID, theme = colors.light }: Props) {
   return (
     <Pressable
       accessibilityRole={onPress ? "button" : undefined}
       accessibilityLabel={title}
       onPress={onPress}
+      onLongPress={onLongPress}
       disabled={!onPress}
       testID={testID}
       style={[styles.row, { backgroundColor: theme.row, borderBottomColor: theme.line }]}

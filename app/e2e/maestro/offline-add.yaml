@@ -1,0 +1,32 @@
+# Adds three expenses while the device has no connection.
+# e2e/ios/run.ts turns the Toxiproxy proxies off before this flow and on after it.
+# The user is logged in (login.yaml).
+appId: com.kyosifov.moneytracker
+name: Add expenses offline
+---
+- runFlow:
+    file: subflows/check-sync-state.yaml
+    env:
+      STATE: Offline · 0 pending
+- runFlow:
+    file: subflows/add-expense.yaml
+    env:
+      NAME: Offline 1
+      DIGIT: "1"
+      CATEGORY: General
+- runFlow:
+    file: subflows/add-expense.yaml
+    env:
+      NAME: Offline 2
+      DIGIT: "2"
+      CATEGORY: General
+- runFlow:
+    file: subflows/add-expense.yaml
+    env:
+      NAME: Offline 3
+      DIGIT: "3"
+      CATEGORY: General
+- runFlow:
+    file: subflows/check-sync-state.yaml
+    env:
+      STATE: Offline · 3 pending

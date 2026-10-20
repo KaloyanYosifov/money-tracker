@@ -5,6 +5,13 @@ import type { MutationDb } from "../data/mutations";
 
 export type DevicePrefs = Record<string, string>;
 
+/** "top" or "bottom" (the default). */
+export const TABS_POSITION_PREF = "tabsPosition";
+/** "on" when the app lock is on. */
+export const APP_LOCK_PREF = "appLock";
+/** Seconds in the background before the app locks again: "0" (the default), "60" or "300". */
+export const LOCK_AFTER_PREF = "lockAfterSeconds";
+
 /**
  * Writes one device pref. null deletes it. The row ID is the key, so each key
  * has one row. device_prefs is local-only and never uploads.

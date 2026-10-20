@@ -1,0 +1,89 @@
+# Adds, edits and deletes an expense. The user is logged in (login.yaml).
+# Env: PHASE. e2e/ios/run.ts checks PostgreSQL after each phase.
+#   add-edit: add "E2E Coffee", rename it to "E2E Latte" and wait until it synced.
+#   delete:   swipe to delete and Undo, then delete from the form.
+appId: com.kyosifov.moneytracker
+name: Add, edit and delete an expense
+---
+- runFlow:
+    when:
+      true: ${PHASE == 'add-edit'}
+    commands:
+      - runFlow:
+          file: subflows/add-expense.yaml
+          env:
+            NAME: E2E Coffee
+            DIGIT: "4"
+            CATEGORY: Groceries
+      - tapOn:
+          id: tab-transactions
+      - extendedWaitUntil:
+          visible:
+            text: "E2E Coffee, .*"
+          timeout: 10000
+      - tapOn:
+          text: "E2E Coffee, .*"
+      - extendedWaitUntil:
+          visible:
+            text: Edit Transaction
+          timeout: 10000
+      - tapOn:
+          id: transaction-name
+      - eraseText: 20
+      - inputText: E2E Latte
+      - hideKeyboard
+      - tapOn:
+          id: transaction-save
+      - extendedWaitUntil:
+          visible:
+            text: "E2E Latte, .*"
+          timeout: 10000
+      - assertNotVisible:
+          text: "E2E Coffee, .*"
+      - runFlow:
+          file: subflows/check-sync-state.yaml
+          env:
+            STATE: Synced.* · 0 pending
+
+- runFlow:
+    when:
+      true: ${PHASE == 'delete'}
+    commands:
+      - tapOn:
+          id: tab-transactions
+      - extendedWaitUntil:
+          visible:
+            text: "E2E Latte, .*"
+          timeout: 10000
+      - swipe:
+          from:
+            text: "E2E Latte, .*"
+          direction: LEFT
+      - extendedWaitUntil:
+          visible:
+            id: undo-toast
+          timeout: 5000
+      - assertNotVisible:
+          text: "E2E Latte, .*"
+      - tapOn:
+          id: undo-toast
+      - extendedWaitUntil:
+          visible:
+            text: "E2E Latte, .*"
+          timeout: 5000
+      - tapOn:
+          text: "E2E Latte, .*"
+      - extendedWaitUntil:
+          visible:
+            text: Edit Transaction
+          timeout: 10000
+      - scrollUntilVisible:
+          element:
+            id: transaction-delete
+          direction: DOWN
+      - tapOn:
+          id: transaction-delete
+      - extendedWaitUntil:
+          notVisible:
+            text: "E2E Latte, .*"
+          timeout: 10000

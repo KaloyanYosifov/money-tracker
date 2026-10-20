@@ -89,6 +89,7 @@ export function AmountKeypad({ currency, locale, initialExpression = "", onChang
           {row.map((key) => (
             <Pressable
               key={key.value}
+              testID={`keypad-${key.label.replace(/ /g, "-")}`}
               accessibilityRole="button"
               accessibilityLabel={key.label}
               onPress={() => press(key.value)}

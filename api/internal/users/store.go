@@ -74,7 +74,14 @@ func (s *Store) createInvite(ctx context.Context, q querier, email, currency, ro
 		return "", err
 	}
 	token := base64.RawURLEncoding.EncodeToString(b)
+	// Only the newest invite for an email stays valid. An older link cannot
+	// take over the account after a TOTP reset.
 	_, err := q.Exec(ctx,
+		`UPDATE invites SET used_at = $2 WHERE email = $1 AND used_at IS NULL`, email, s.Now())
+	if err != nil {
+		return "", fmt.Errorf("invalidate old invites: %w", err)
+	}
+	_, err = q.Exec(ctx,
 		`INSERT INTO invites (token_hash, email, currency_code, role, expires_at)
 		 VALUES ($1, $2, $3, $4, $5)`,
 		hashInviteToken(token), email, currency, role, s.Now().Add(InviteTTL))

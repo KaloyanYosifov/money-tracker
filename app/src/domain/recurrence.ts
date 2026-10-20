@@ -41,17 +41,26 @@ function nthDate(frequency: RecurrenceRule["frequency"], start: string, n: numbe
       const m = first.getUTCMonth();
       return format(new Date(Date.UTC(y, m, Math.min(day, daysInMonth(y, m)))));
     }
+    default:
+      throw new Error(`unknown frequency ${String(frequency)}`);
   }
 }
 
-/** All occurrence dates from `start_date` to the lower of `upTo` and `end_date`, both inclusive. */
+/**
+ * All occurrence dates from `start_date` to the lower of `upTo` and `end_date`, both inclusive.
+ * If there are more than MAX_OCCURRENCES, only the latest ones are returned.
+ */
 export function occurrenceDates(rule: RecurrenceRule, upTo: string): Occurrences {
   const limit = rule.end_date != null && rule.end_date < upTo ? rule.end_date : upTo;
   const dates: string[] = [];
+  let truncated = false;
   for (let n = 0; ; n++) {
     const date = nthDate(rule.frequency, rule.start_date, n);
-    if (date > limit) return { dates, truncated: false };
-    if (dates.length === MAX_OCCURRENCES) return { dates, truncated: true };
+    if (date > limit) return { dates, truncated };
+    if (dates.length === MAX_OCCURRENCES) {
+      dates.shift();
+      truncated = true;
+    }
     dates.push(date);
   }
 }

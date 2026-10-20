@@ -10,5 +10,17 @@
     "listen": "0.0.0.0:18081",
     "upstream": "powersync:8080",
     "enabled": true
+  },
+  {
+    "name": "api_ios",
+    "listen": "0.0.0.0:18090",
+    "upstream": "api:8080",
+    "enabled": true
+  },
+  {
+    "name": "powersync_ios",
+    "listen": "0.0.0.0:18091",
+    "upstream": "powersync:8080",
+    "enabled": true
   }
 ]

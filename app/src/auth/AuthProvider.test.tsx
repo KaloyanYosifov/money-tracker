@@ -75,6 +75,7 @@ describe("start", () => {
     await act(async () => resolve({ ok: true, value: tokens("user-1", 1) }));
     await waitFor(() => expect(result.current.status).toBe("signedIn"));
     expect(result.current.userId).toBe("user-1");
+    expect(result.current.sessionId).toBe("session-user-1");
     expect(api.refresh).toHaveBeenCalledWith("refresh-user-1-0");
     expect(mockStore.refreshToken).toBe("refresh-user-1-1");
   });
@@ -162,6 +163,24 @@ describe("getAccessToken", () => {
   });
 });
 
+describe("refreshAccessToken", () => {
+  it("refreshes even when the cached token is still valid", async () => {
+    mockStore.refreshToken = "refresh-user-1-0";
+    mockStore.lastUserId = "user-1";
+    api.refresh.mockResolvedValueOnce({ ok: true, value: tokens("user-1", 1) });
+    const { result } = await renderAuth();
+    await waitFor(() => expect(result.current.status).toBe("signedIn"));
+
+    api.refresh.mockResolvedValueOnce({ ok: true, value: tokens("user-1", 2) });
+    let token: string | null = null;
+    await act(async () => {
+      token = await result.current.refreshAccessToken();
+    });
+    expect(token).toBe("access-user-1-2");
+    expect(api.refresh).toHaveBeenLastCalledWith("refresh-user-1-1");
+  });
+});
+
 describe("signIn", () => {
   it("fires onUserChange before it publishes a different user", async () => {
     mockStore.refreshToken = "refresh-old";
@@ -197,5 +216,36 @@ describe("signIn", () => {
 
     expect(onUserChange).not.toHaveBeenCalled();
     expect(result.current.status).toBe("signedIn");
+  });
+});
+
+describe("Web Locks", () => {
+  afterEach(() => {
+    delete (globalThis.navigator as { locks?: unknown }).locks;
+  });
+
+  it("sends the refresh inside a lock that all browser tabs share", async () => {
+    let inLock = false;
+    const request = jest.fn(async (_name: string, cb: () => Promise<unknown>) => {
+      inLock = true;
+      try {
+        return await cb();
+      } finally {
+        inLock = false;
+      }
+    });
+    Object.assign(globalThis.navigator, { locks: { request } });
+    mockStore.refreshToken = "refresh-user-1-0";
+    mockStore.lastUserId = "user-1";
+    let calledInLock = false;
+    api.refresh.mockImplementation(async () => {
+      calledInLock = inLock;
+      return { ok: true, value: tokens("user-1", 1) };
+    });
+
+    const { result } = await renderAuth();
+    await waitFor(() => expect(result.current.status).toBe("signedIn"));
+    expect(request).toHaveBeenCalledWith("money-tracker-refresh", expect.any(Function));
+    expect(calledInLock).toBe(true);
   });
 });
