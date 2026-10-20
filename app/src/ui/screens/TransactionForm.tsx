@@ -649,7 +649,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   switchValue: {
-    alignItems: "flex-end",
+    alignSelf: "stretch",
+    flexDirection: "row",
+    justifyContent: "flex-end",
   },
   error: {
     fontSize: 13,

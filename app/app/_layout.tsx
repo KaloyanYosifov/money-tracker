@@ -1,3 +1,5 @@
+import "../src/polyfills";
+
 import { PowerSyncContext, useQuery } from "@powersync/react";
 import { useFonts } from "expo-font";
 import { Stack, useRouter, type Href } from "expo-router";

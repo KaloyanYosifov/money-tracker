@@ -313,7 +313,13 @@ export function FormHeader({
           {web ? "✕" : "Cancel"}
         </Text>
       </Pressable>
-      <Text allowFontScaling accessibilityRole="header" numberOfLines={1} style={[styles.title, { color: theme.ink }]}>
+      <Text
+        allowFontScaling
+        accessibilityRole="header"
+        numberOfLines={1}
+        // iOS centres the title between Cancel and Save, as in a navigation bar.
+        style={[styles.title, !web && styles.titleCentred, { color: theme.ink }]}
+      >
         {title}
       </Text>
       <Pressable
@@ -508,6 +514,11 @@ const styles = StyleSheet.create({
   title: {
     flex: 1,
     fontSize: 20,
+  },
+  titleCentred: {
+    fontSize: 17,
+    fontWeight: "600",
+    textAlign: "center",
   },
   field: {
     flexDirection: "row",
