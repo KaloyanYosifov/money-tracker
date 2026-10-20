@@ -57,5 +57,8 @@
   },
   "op-sqlite": {
     "sqlcipher": true
+  },
+  "volta": {
+    "extends": "../package.json"
   }
 }

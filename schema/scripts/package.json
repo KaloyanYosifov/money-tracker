@@ -8,5 +8,8 @@
   },
   "config": {
     "goJsonschema": "github.com/atombender/go-jsonschema@v0.24.1"
+  },
+  "volta": {
+    "extends": "../../package.json"
   }
 }
