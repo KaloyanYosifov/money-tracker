@@ -34,6 +34,8 @@ type Deps struct {
 	Tokens       *Tokens
 	TOTPKey      []byte
 	CookieSecure bool
+	// TOTPDisabled skips the TOTP step at login and at invite confirm.
+	TOTPDisabled bool
 	// ClientIP returns the IP of the client for the rate limit.
 	ClientIP func(*http.Request) netip.Addr
 	// Now is the clock of the handlers and of their stores. Nil means time.Now.
@@ -46,6 +48,7 @@ type Handlers struct {
 	tokens       *Tokens
 	totpKey      []byte
 	cookieSecure bool
+	totpDisabled bool
 	clientIP     func(*http.Request) netip.Addr
 	now          func() time.Time
 
@@ -65,6 +68,7 @@ func NewHandlers(d Deps) *Handlers {
 		tokens:       d.Tokens,
 		totpKey:      d.TOTPKey,
 		cookieSecure: d.CookieSecure,
+		totpDisabled: d.TOTPDisabled,
 		clientIP:     d.ClientIP,
 		now:          now,
 		users:        users.NewStore(d.Pool),
@@ -199,7 +203,11 @@ func (h *Handlers) inviteAccept(w http.ResponseWriter, r *http.Request) {
 		writeInternal(w)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"otpauth_url": otpURL, "secret": secret})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"otpauth_url":   otpURL,
+		"secret":        secret,
+		"totp_required": !h.totpDisabled,
+	})
 }
 
 func (h *Handlers) inviteConfirm(w http.ResponseWriter, r *http.Request) {
@@ -245,10 +253,14 @@ func (h *Handlers) inviteConfirm(w http.ResponseWriter, r *http.Request) {
 		writeInternal(w)
 		return
 	}
-	step, ok := Verify(string(secret), req.Code, h.now(), 0)
-	if !ok {
-		writeError(w, http.StatusBadRequest, "invalid_code")
-		return
+	var step int64
+	if !h.totpDisabled {
+		var ok bool
+		step, ok = Verify(string(secret), req.Code, h.now(), 0)
+		if !ok {
+			writeError(w, http.StatusBadRequest, "invalid_code")
+			return
+		}
 	}
 
 	codes, hashes, err := GenerateRecoveryCodes()
@@ -327,6 +339,10 @@ func (h *Handlers) login(w http.ResponseWriter, r *http.Request) {
 	}
 	if !enabled {
 		writeError(w, http.StatusForbidden, "setup_incomplete")
+		return
+	}
+	if h.totpDisabled {
+		h.startSession(w, r, userID, deviceName(r, ""), nil)
 		return
 	}
 	mfa, err := h.tokens.IssueMFAToken(userID, h.now())

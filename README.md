@@ -25,6 +25,7 @@ An offline-first money tracker for iPhone, iPad and the browser. The data syncs 
 | `make test-app` | Runs the app tests (`npm --workspace app test`) |
 | `make test` | Runs `test-api` and `test-app` |
 | `make stack-up` | Builds and starts the local stack with Docker Compose, and waits until it is healthy |
+| `DISABLE_TOTP=true make stack-up` | Starts the local stack with no TOTP step at login and invite setup. Only for manual tests: the e2e suites need TOTP, and the API refuses the flag unless `PUBLIC_URL` is a localhost URL |
 | `make stack-down` | Stops the local stack and deletes its volumes |
 | `make e2e-web` | Runs the Playwright web suite (`npm --workspace e2e run test:web`) |
 

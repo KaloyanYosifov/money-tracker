@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -22,6 +23,9 @@ type Config struct {
 	CookieSecure      bool
 	TrustedProxyCIDRs []netip.Prefix
 	CORSOrigins       []string
+	// TOTPDisabled skips the TOTP step at login and at invite setup. Only for
+	// local tests: Load refuses it unless PUBLIC_URL is a localhost URL.
+	TOTPDisabled bool
 }
 
 // Load reads the configuration through getenv (os.Getenv in production).
@@ -76,6 +80,18 @@ func Load(getenv func(string) string) (*Config, error) {
 		cfg.CookieSecure = b
 	}
 
+	if v := strings.TrimSpace(getenv("DISABLE_TOTP")); v != "" {
+		b, err := strconv.ParseBool(v)
+		switch {
+		case err != nil:
+			errs = append(errs, fmt.Errorf("DISABLE_TOTP: %w", err))
+		case b && !isLocalhostURL(cfg.PublicURL):
+			errs = append(errs, errors.New("DISABLE_TOTP: allowed only when PUBLIC_URL is a localhost URL"))
+		default:
+			cfg.TOTPDisabled = b
+		}
+	}
+
 	for _, s := range splitList(getenv("TRUSTED_PROXY_CIDRS")) {
 		p, err := netip.ParsePrefix(s)
 		if err != nil {
@@ -105,6 +121,18 @@ func parseEd25519PEM(s string) (ed25519.PrivateKey, error) {
 		return nil, fmt.Errorf("key type %T is not Ed25519", key)
 	}
 	return ed, nil
+}
+
+func isLocalhostURL(s string) bool {
+	u, err := url.Parse(s)
+	if err != nil {
+		return false
+	}
+	switch u.Hostname() {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	}
+	return false
 }
 
 func splitList(s string) []string {

@@ -17,6 +17,7 @@ export function getPendingMfaToken(): string | null {
 }
 
 export function LoginForm({ onMfaToken }: { onMfaToken: (mfaToken: string) => void }) {
+  const { signIn } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -28,7 +29,12 @@ export function LoginForm({ onMfaToken }: { onMfaToken: (mfaToken: string) => vo
     const result = await authApi.login(email.trim(), password);
     setBusy(false);
     if (result.ok) {
-      onMfaToken(result.value.mfa_token);
+      const value = result.value;
+      if ("access_token" in value) {
+        await signIn(value);
+      } else {
+        onMfaToken(value.mfa_token);
+      }
     } else {
       setError(authErrorMessage(result.error));
     }

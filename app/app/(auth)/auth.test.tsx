@@ -136,6 +136,17 @@ describe("login", () => {
     expect(await screen.findByText(message)).toBeOnTheScreen();
     expect(mockApi.login).toHaveBeenCalledWith("ana@example.com", "wrong password!");
   });
+
+  it("signs in without the TOTP step when the login returns tokens (DISABLE_TOTP)", async () => {
+    mockApi.login.mockResolvedValue({ ok: true, value: tokens });
+    await renderApp("/login");
+
+    await fireEvent.changeText(await screen.findByLabelText("Email"), "ana@example.com");
+    await fireEvent.changeText(screen.getByLabelText("Password"), "correct horse battery");
+    await fireEvent.press(screen.getByRole("button", { name: "Log in" }));
+
+    await waitFor(() => expect(mockAuth.signIn).toHaveBeenCalledWith(tokens));
+  });
 });
 
 describe("login TOTP", () => {
@@ -208,6 +219,24 @@ describe("invite", () => {
     expect(finish).toBeEnabled();
     await fireEvent.press(finish);
     expect(mockAuth.signIn).toHaveBeenCalledWith({ ...tokens, recovery_codes: RECOVERY_CODES });
+  });
+
+  it("skips the TOTP step when the API does not require TOTP (DISABLE_TOTP)", async () => {
+    mockApi.acceptInvite.mockResolvedValue({
+      ok: true,
+      value: { otpauth_url: "otpauth://totp/Money%20Tracker:ana", secret: "JBSWY3DPEHPK3PXP", totp_required: false },
+    });
+    mockApi.confirmInvite.mockResolvedValue({ ok: true, value: { ...tokens, recovery_codes: RECOVERY_CODES } });
+    await renderApp("/invite?token=invite-1");
+
+    const next = await screen.findByRole("button", { name: "Continue" });
+    await fireEvent.changeText(screen.getByLabelText("Password"), "long enough password");
+    await fireEvent.changeText(screen.getByLabelText("Repeat password"), "long enough password");
+    await fireEvent.press(next);
+
+    expect(await screen.findByText("code-0")).toBeOnTheScreen();
+    expect(mockApi.confirmInvite).toHaveBeenCalledWith("invite-1", "");
+    expect(screen.queryByLabelText("6-digit code")).toBeNull();
   });
 });
 

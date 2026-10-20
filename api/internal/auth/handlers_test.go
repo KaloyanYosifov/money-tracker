@@ -42,6 +42,12 @@ type authEnv struct {
 
 func newAuthEnv(t *testing.T, cookieSecure bool) *authEnv {
 	t.Helper()
+	return newAuthEnvWith(t, auth.Deps{CookieSecure: cookieSecure})
+}
+
+// newAuthEnvWith fills the pool, keys, clock and client IP of deps.
+func newAuthEnvWith(t *testing.T, deps auth.Deps) *authEnv {
+	t.Helper()
 	pool := testutil.StartPostgres(t)
 	_, key, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -61,14 +67,12 @@ func newAuthEnv(t *testing.T, cookieSecure bool) *authEnv {
 		now:     &now,
 	}
 	env.users.Now = func() time.Time { return *env.now }
-	h := auth.NewHandlers(auth.Deps{
-		Pool:         pool,
-		Tokens:       env.tokens,
-		TOTPKey:      totpKey,
-		CookieSecure: cookieSecure,
-		ClientIP:     func(r *http.Request) netip.Addr { return httpserver.ClientIP(r, nil) },
-		Now:          func() time.Time { return *env.now },
-	})
+	deps.Pool = pool
+	deps.Tokens = env.tokens
+	deps.TOTPKey = totpKey
+	deps.ClientIP = func(r *http.Request) netip.Addr { return httpserver.ClientIP(r, nil) }
+	deps.Now = func() time.Time { return *env.now }
+	h := auth.NewHandlers(deps)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	env.handler = mux
@@ -143,7 +147,7 @@ func (e *authEnv) register(email string, headers ...string) registered {
 	if rec.Code != http.StatusOK {
 		e.t.Fatalf("accept: %d %s", rec.Code, rec.Body)
 	}
-	secret := decodeBody[map[string]string](e.t, rec)["secret"]
+	secret := decodeBody[acceptBody](e.t, rec).Secret
 	rec = e.do("POST", "/api/auth/invite/confirm",
 		map[string]string{"token": token, "code": e.code(secret), "device_name": "Test device"}, headers...)
 	if rec.Code != http.StatusOK {
@@ -169,6 +173,12 @@ func (e *authEnv) mfaToken(email string) string {
 		e.t.Fatalf("login: %d %s", rec.Code, rec.Body)
 	}
 	return decodeBody[map[string]string](e.t, rec)["mfa_token"]
+}
+
+type acceptBody struct {
+	OTPAuthURL   string `json:"otpauth_url"`
+	Secret       string `json:"secret"`
+	TOTPRequired bool   `json:"totp_required"`
 }
 
 type tokenBody struct {
@@ -218,9 +228,9 @@ func TestInviteAccept(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("accept: %d %s", rec.Code, rec.Body)
 	}
-	body := decodeBody[map[string]string](t, rec)
-	if body["secret"] == "" || !strings.HasPrefix(body["otpauth_url"], "otpauth://totp/") {
-		t.Fatalf("body = %v, want secret and otpauth_url", body)
+	body := decodeBody[acceptBody](t, rec)
+	if body.Secret == "" || !strings.HasPrefix(body.OTPAuthURL, "otpauth://totp/") || !body.TOTPRequired {
+		t.Fatalf("body = %+v, want secret, otpauth_url and totp_required", body)
 	}
 
 	readUser := func() (id, hash string, sealed []byte, enabled bool) {
@@ -240,11 +250,11 @@ func TestInviteAccept(t *testing.T) {
 	if enabled {
 		t.Fatal("totp_enabled is true before the confirm step")
 	}
-	if bytes.Contains(sealed, []byte(body["secret"])) {
+	if bytes.Contains(sealed, []byte(body.Secret)) {
 		t.Fatal("the TOTP secret is stored in plain text")
 	}
 	plain, err := auth.Open(env.totpKey, sealed, id)
-	if err != nil || string(plain) != body["secret"] {
+	if err != nil || string(plain) != body.Secret {
 		t.Fatalf("Open = %q, %v; want the returned secret", plain, err)
 	}
 	if _, err := env.users.CheckInvite(ctx, token); err != nil {
@@ -255,8 +265,8 @@ func TestInviteAccept(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("second accept: %d %s", rec.Code, rec.Body)
 	}
-	second := decodeBody[map[string]string](t, rec)["secret"]
-	if second == body["secret"] {
+	second := decodeBody[acceptBody](t, rec).Secret
+	if second == body.Secret {
 		t.Fatal("second accept returned the same secret")
 	}
 	id2, _, sealed, _ := readUser()
@@ -278,7 +288,7 @@ func TestInviteConfirm(t *testing.T) {
 	env := newAuthEnv(t, true)
 	token := env.invite("new@example.com")
 	rec := env.do("POST", "/api/auth/invite/accept", map[string]string{"token": token, "password": testPassword})
-	secret := decodeBody[map[string]string](t, rec)["secret"]
+	secret := decodeBody[acceptBody](t, rec).Secret
 
 	wrong := "000000"
 	if env.code(secret) == wrong {
@@ -677,4 +687,34 @@ func TestRateLimitedRoutes(t *testing.T) {
 	if rec := fromIP("192.0.2.1", "/api/auth/refresh"); rec.Code == http.StatusTooManyRequests {
 		t.Fatal("the IP is still limited after one minute")
 	}
+}
+
+func TestTOTPDisabled(t *testing.T) {
+	env := newAuthEnvWith(t, auth.Deps{TOTPDisabled: true})
+	token := env.invite("nototp@example.com")
+
+	rec := env.do("POST", "/api/auth/invite/accept", map[string]string{"token": token, "password": testPassword})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("accept: %d %s", rec.Code, rec.Body)
+	}
+	if decodeBody[acceptBody](t, rec).TOTPRequired {
+		t.Fatal("totp_required = true, want false")
+	}
+	rec = env.do("POST", "/api/auth/invite/confirm", map[string]string{"token": token, "code": ""})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("confirm without a code: %d %s", rec.Code, rec.Body)
+	}
+	if body := decodeBody[tokenBody](t, rec); body.AccessToken == "" || len(body.RecoveryCodes) == 0 {
+		t.Fatalf("confirm body = %+v, want tokens and recovery codes", body)
+	}
+
+	rec = env.do("POST", "/api/auth/login", map[string]string{"email": "nototp@example.com", "password": testPassword})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login: %d %s", rec.Code, rec.Body)
+	}
+	if body := decodeBody[tokenBody](t, rec); body.AccessToken == "" {
+		t.Fatalf("login body = %+v, want an access token without the TOTP step", body)
+	}
+	rec = env.do("POST", "/api/auth/login", map[string]string{"email": "nototp@example.com", "password": "wrong password"})
+	wantError(t, rec, http.StatusUnauthorized, "invalid_credentials")
 }

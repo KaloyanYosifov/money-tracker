@@ -29,6 +29,7 @@ func New(cfg *config.Config, logger *slog.Logger, pool *pgxpool.Pool) *http.Serv
 		Tokens:       auth.NewTokens(cfg.JWTPrivateKey, cfg.JWTIssuer),
 		TOTPKey:      cfg.TOTPEncKey,
 		CookieSecure: cfg.CookieSecure,
+		TOTPDisabled: cfg.TOTPDisabled,
 		ClientIP:     func(r *http.Request) netip.Addr { return ClientIP(r, cfg.TrustedProxyCIDRs) },
 	})
 	authHandlers.Register(mux)

@@ -142,3 +142,37 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadDisableTOTP(t *testing.T) {
+	cases := []struct {
+		publicURL string
+		value     string
+		want      bool
+		wantErr   bool
+	}{
+		{"http://localhost:8088", "true", true, false},
+		{"http://127.0.0.1:8088", "true", true, false},
+		{"http://[::1]:8088", "true", true, false},
+		{"https://money.example.com", "true", false, true},
+		{"https://money.example.com", "false", false, false},
+		{"http://localhost:8088", "maybe", false, true},
+	}
+	for _, c := range cases {
+		env, _, _ := validEnv(t)
+		env["PUBLIC_URL"] = c.publicURL
+		env["DISABLE_TOTP"] = c.value
+		cfg, err := Load(envFunc(env))
+		if c.wantErr {
+			if err == nil || !strings.Contains(err.Error(), "DISABLE_TOTP") {
+				t.Errorf("%s %s: err = %v, want a DISABLE_TOTP error", c.publicURL, c.value, err)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("%s %s: Load: %v", c.publicURL, c.value, err)
+		}
+		if cfg.TOTPDisabled != c.want {
+			t.Errorf("%s %s: TOTPDisabled = %v, want %v", c.publicURL, c.value, cfg.TOTPDisabled, c.want)
+		}
+	}
+}

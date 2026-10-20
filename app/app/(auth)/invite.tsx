@@ -46,7 +46,14 @@ export default function InviteScreen() {
           onSubmit={async (password) => {
             setError(null);
             const result = await authApi.acceptInvite(token, password);
-            if (result.ok) {
+            if (result.ok && result.value.totp_required === false) {
+              const confirmed = await authApi.confirmInvite(token, "");
+              if (confirmed.ok) {
+                setStep({ kind: "codes", tokens: confirmed.value });
+              } else {
+                setError(authErrorMessage(confirmed.error));
+              }
+            } else if (result.ok) {
               setStep({ kind: "totp", otpauthUrl: result.value.otpauth_url, secret: result.value.secret });
             } else {
               setError(authErrorMessage(result.error));

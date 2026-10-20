@@ -38,6 +38,9 @@ services:
       dockerfile: deploy/docker/api.Dockerfile
     command: ["serve"]
     env_file: dev.env
+    environment:
+      # Run "DISABLE_TOTP=true make stack-up" to log in without TOTP. Keep it off for the e2e suites.
+      DISABLE_TOTP: ${DISABLE_TOTP:-false}
     depends_on:
       migrate:
         condition: service_completed_successfully

@@ -50,13 +50,17 @@ export interface TokenResponse {
 }
 
 export interface AuthApi {
-  login(email: string, password: string): Promise<AuthResult<{ mfa_token: string }>>;
+  /** Returns the tokens without the TOTP step when the API runs with DISABLE_TOTP. */
+  login(email: string, password: string): Promise<AuthResult<{ mfa_token: string } | TokenResponse>>;
   loginTotp(input: {
     mfaToken: string;
     code?: string;
     recoveryCode?: string;
   }): Promise<AuthResult<TokenResponse>>;
-  acceptInvite(token: string, password: string): Promise<AuthResult<{ otpauth_url: string; secret: string }>>;
+  acceptInvite(
+    token: string,
+    password: string,
+  ): Promise<AuthResult<{ otpauth_url: string; secret: string; totp_required?: boolean }>>;
   confirmInvite(token: string, code: string): Promise<AuthResult<TokenResponse>>;
   /** On the web, pass null: the browser sends the cookie. */
   refresh(refreshToken: string | null): Promise<AuthResult<TokenResponse>>;

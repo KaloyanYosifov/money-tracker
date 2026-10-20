@@ -58,6 +58,9 @@ func serve(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	if cfg.TOTPDisabled {
+		logger.Warn("DISABLE_TOTP is set: login and invite setup skip the TOTP step. Use this only for local tests.")
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
