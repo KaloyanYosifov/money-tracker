@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Build context: the repository root.
-FROM --platform=$BUILDPLATFORM golang:1.26.9 AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.3 AS build
 ARG TARGETOS
 ARG TARGETARCH
 WORKDIR /src/api

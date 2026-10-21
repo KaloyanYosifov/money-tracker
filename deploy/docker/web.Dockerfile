@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Build context: the repository root.
-FROM --platform=$BUILDPLATFORM node:24.22.0-bookworm-slim AS build
+FROM --platform=$BUILDPLATFORM node:26.12.1-bookworm-slim AS build
 WORKDIR /src
 COPY package.json package-lock.json ./
 COPY app/package.json app/

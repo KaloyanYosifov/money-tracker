@@ -8,6 +8,7 @@ import {
   Text,
   useColorScheme,
   View,
+  type ViewStyle,
   type GestureResponderEvent,
   type LayoutChangeEvent,
 } from "react-native";
@@ -448,7 +449,8 @@ const styles = StyleSheet.create({
     minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
-    cursor: "grab",
+    // react-native-web accepts any CSS cursor. The React Native types list only "auto" and "pointer".
+    cursor: "grab" as ViewStyle["cursor"],
   },
   handleText: {
     fontSize: 16,
