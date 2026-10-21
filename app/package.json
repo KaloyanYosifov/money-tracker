@@ -5,7 +5,7 @@
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
-    "ios": "expo run:ios",
+    "ios": "expo run:ios --device \"iPhone 17\"",
     "web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",

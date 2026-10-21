@@ -2,8 +2,8 @@
  * Runs the cross-app scenarios: one user on the iOS simulator and in Playwright Chromium.
  * It needs macOS with Xcode, an iPhone simulator, the Maestro CLI and the Compose stack.
  *
- * The iOS build talks to the stack through the Toxiproxy pair api_ios (18090) and
- * powersync_ios (18091), so the scenarios can take iOS offline and keep the web online.
+ * The iOS build talks to the stack through the Toxiproxy pair api_ios (28090 on the host) and
+ * powersync_ios (28091 on the host), so the scenarios can take iOS offline and keep the web online.
  * Env: IOS_PHONE_SIMULATOR selects the simulator by name. Without it the first available iPhone is used.
  */
 import { execFileSync, spawnSync } from "node:child_process";
@@ -18,8 +18,8 @@ import { scenarios, type CrossContext } from "./scenarios.ts";
 
 const APP_DIR = fileURLToPath(new URL("../../app/", import.meta.url));
 const FLOWS_DIR = fileURLToPath(new URL("../../app/e2e/maestro/", import.meta.url));
-const IOS_API_URL = process.env.E2E_IOS_API_URL ?? "http://localhost:18090";
-const IOS_POWERSYNC_URL = process.env.E2E_IOS_POWERSYNC_URL ?? "http://localhost:18091";
+const IOS_API_URL = process.env.E2E_IOS_API_URL ?? "http://localhost:28090";
+const IOS_POWERSYNC_URL = process.env.E2E_IOS_POWERSYNC_URL ?? "http://localhost:28091";
 
 function run(command: string, args: string[], options: { cwd?: string; env?: NodeJS.ProcessEnv } = {}): void {
   const result = spawnSync(command, args, { stdio: "inherit", ...options });

@@ -27,7 +27,11 @@ An offline-first money tracker for iPhone, iPad and the browser. The data syncs 
 | `make stack-up` | Builds and starts the local stack with Docker Compose, and waits until it is healthy |
 | `DISABLE_TOTP=true make stack-up` | Starts the local stack with no TOTP step at login and invite setup. Only for manual tests: the e2e suites need TOTP, and the API refuses the flag unless `PUBLIC_URL` is a localhost URL |
 | `make stack-down` | Stops the local stack and deletes its volumes |
-| `make e2e-web` | Runs the Playwright web suite (`npm --workspace e2e run test:web`) |
+| `make e2e-stack-up` | Starts the e2e stack: a second Compose project (`money-tracker-e2e`) with its own database, on the dev ports plus 10000 (API 28080, PowerSync 28081, web 28088). The e2e suites use only this stack and delete its data before they run, so the dev data stays |
+| `make e2e-stack-down` | Stops the e2e stack and deletes its volumes |
+| `make e2e-web` | Runs the Playwright web suite (`npm --workspace e2e run test:web`) against the e2e stack |
+| `make e2e-ios` | Runs the Maestro iOS suite against the e2e stack, on the `IOS_PHONE_SIMULATOR` (default "iPhone 17e") and `IOS_TABLET_SIMULATOR` (default "iPad (A16)") simulators, so the dev simulators keep their dev build |
+| `make e2e-cross` | Runs the cross-app scenarios (web and iOS) against the e2e stack |
 
 The npm scripts `npm run generate` and `npm run check-generated` do the same as the `make` targets.
 

@@ -1,4 +1,4 @@
-const TOXIPROXY_URL = process.env.E2E_TOXIPROXY_URL ?? "http://localhost:8474";
+const TOXIPROXY_URL = process.env.E2E_TOXIPROXY_URL ?? "http://localhost:28474";
 
 /** Proxy names from deploy/compose/toxiproxy.json. */
 export type ProxyName = "api" | "powersync" | "api_ios" | "powersync_ios";

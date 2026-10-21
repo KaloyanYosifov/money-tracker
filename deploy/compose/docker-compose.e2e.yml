@@ -1,0 +1,25 @@
+# The e2e stack: the dev stack in its own Compose project, so it has its own database
+# and the suites never delete dev data. Host ports are the dev ports plus 10000, so both
+# stacks can run at the same time. Use "make e2e-stack-up" and "make e2e-stack-down".
+name: money-tracker-e2e
+
+services:
+  api:
+    environment:
+      # The e2e suites log in with TOTP.
+      DISABLE_TOTP: "false"
+
+  toxiproxy:
+    ports: !override
+      - "28474:8474"
+      - "28080:18080"
+      - "28081:18081"
+      - "28090:18090"
+      - "28091:18091"
+
+  web:
+    environment:
+      POWERSYNC_URL: http://localhost:28081
+      POWERSYNC_WS_URL: ws://localhost:28081
+    ports: !override
+      - "28088:8080"

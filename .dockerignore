@@ -7,6 +7,6 @@ app/public/@powersync
 api/bin
 e2e/test-results
 e2e/playwright-report
-.env*
+**/.env*
 *.secret.plaintext.yaml
 docs

@@ -2,18 +2,20 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = fileURLToPath(new URL("../../", import.meta.url));
-const COMPOSE_FILE = "deploy/compose/docker-compose.yml";
+// The e2e stack is its own Compose project with its own database (see docker-compose.e2e.yml),
+// so resetData never touches the dev stack.
+const COMPOSE_FILES = ["deploy/compose/docker-compose.yml", "deploy/compose/docker-compose.e2e.yml"];
 
 /** The API through the Toxiproxy `api` proxy. */
-export const API_URL = process.env.E2E_API_URL ?? "http://localhost:18080";
+export const API_URL = process.env.E2E_API_URL ?? "http://localhost:28080";
 /** PowerSync through the Toxiproxy `powersync` proxy. */
-export const POWERSYNC_URL = process.env.E2E_POWERSYNC_URL ?? "http://localhost:18081";
+export const POWERSYNC_URL = process.env.E2E_POWERSYNC_URL ?? "http://localhost:28081";
 /** The web app (nginx), which also proxies /api. */
-export const WEB_URL = process.env.E2E_WEB_URL ?? "http://localhost:8088";
+export const WEB_URL = process.env.E2E_WEB_URL ?? "http://localhost:28088";
 
-/** Runs `docker compose <args>` for the local stack and returns stdout. */
+/** Runs `docker compose <args>` for the e2e stack and returns stdout. */
 export function compose(args: string[], input?: string): string {
-  return execFileSync("docker", ["compose", "-f", COMPOSE_FILE, ...args], {
+  return execFileSync("docker", ["compose", ...COMPOSE_FILES.flatMap((file) => ["-f", file]), ...args], {
     cwd: REPO_ROOT,
     input,
     encoding: "utf8",
@@ -82,7 +84,7 @@ export async function waitForStack(timeoutMs = 60_000): Promise<void> {
     if (failing.length === 0) return;
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
-  throw new Error(`stack is not healthy: ${failing.join(", ")} did not answer. Run "make stack-up".`);
+  throw new Error(`stack is not healthy: ${failing.join(", ")} did not answer. Run "make e2e-stack-up".`);
 }
 
 const USER_TABLES = [
