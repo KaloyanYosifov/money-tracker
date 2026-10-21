@@ -122,7 +122,14 @@ export function TabIcon({
 }: Props) {
   const draw = isFilled ? filled[name] : outline[name];
   return (
-    <Svg width={size} height={size} viewBox="0 0 48 48" testID={`tab-icon-${name}-${isFilled ? "filled" : "outline"}`}>
+    <Svg
+      // A new key per variant mounts new shapes. iOS keeps a fill that a re-render removes, so outline icons stayed filled.
+      key={isFilled ? "filled" : "outline"}
+      width={size}
+      height={size}
+      viewBox="0 0 48 48"
+      testID={`tab-icon-${name}-${isFilled ? "filled" : "outline"}`}
+    >
       {draw({ color, background })}
     </Svg>
   );

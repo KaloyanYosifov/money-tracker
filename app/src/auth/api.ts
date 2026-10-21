@@ -69,8 +69,32 @@ export interface AuthApi {
   logout(refreshToken: string | null): Promise<AuthResult<void>>;
 }
 
-export function createAuthApi(options: { apiUrl: string; platform: "native" | "web" }): AuthApi {
+/** A readable name for the Devices list, for example "Chrome on macOS". */
+export function webDeviceName(userAgent: string): string {
+  const browser =
+    [
+      ["Edge", /Edg\//],
+      ["Firefox", /Firefox\//],
+      ["Chrome", /Chrome\//],
+      ["Safari", /Safari\//],
+    ].find(([, pattern]) => (pattern as RegExp).test(userAgent))?.[0] ?? "Browser";
+  const os =
+    [
+      ["iOS", /iPhone|iPad/],
+      ["Android", /Android/],
+      ["macOS", /Mac OS X/],
+      ["Windows", /Windows/],
+      ["Linux", /Linux/],
+    ].find(([, pattern]) => (pattern as RegExp).test(userAgent))?.[0];
+  return os ? `${browser} on ${os}` : (browser as string);
+}
+
+export function createAuthApi(options: { apiUrl: string; platform: "native" | "web"; deviceName?: string }): AuthApi {
   const isNative = options.platform === "native";
+  // Native sends X-Device-Name. The web sends the name in the body of the calls that start a session,
+  // because a custom header needs a CORS preflight.
+  const sessionBody = <T extends object>(body: T) =>
+    !isNative && options.deviceName ? { ...body, device_name: options.deviceName } : body;
 
   async function post<T>(path: string, body?: object): Promise<AuthResult<T>> {
     const headers: Record<string, string> = {};
@@ -115,11 +139,11 @@ export function createAuthApi(options: { apiUrl: string; platform: "native" | "w
     isNative ? { refresh_token: refreshToken ?? "" } : undefined;
 
   return {
-    login: (email, password) => post("/api/auth/login", { email, password }),
+    login: (email, password) => post("/api/auth/login", sessionBody({ email, password })),
     loginTotp: ({ mfaToken, code, recoveryCode }) =>
-      post("/api/auth/login/totp", { mfa_token: mfaToken, code, recovery_code: recoveryCode }),
+      post("/api/auth/login/totp", sessionBody({ mfa_token: mfaToken, code, recovery_code: recoveryCode })),
     acceptInvite: (token, password) => post("/api/auth/invite/accept", { token, password }),
-    confirmInvite: (token, code) => post("/api/auth/invite/confirm", { token, code }),
+    confirmInvite: (token, code) => post("/api/auth/invite/confirm", sessionBody({ token, code })),
     refresh: (refreshToken) => post("/api/auth/refresh", tokenBody(refreshToken)),
     logout: (refreshToken) => post("/api/auth/logout", tokenBody(refreshToken)),
   };
@@ -128,4 +152,5 @@ export function createAuthApi(options: { apiUrl: string; platform: "native" | "w
 export const authApi: AuthApi = createAuthApi({
   apiUrl: API_URL,
   platform: Platform.OS === "web" ? "web" : "native",
+  deviceName: typeof navigator !== "undefined" && navigator.userAgent ? webDeviceName(navigator.userAgent) : undefined,
 });

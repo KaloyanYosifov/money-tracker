@@ -725,12 +725,37 @@ func TestTOTPDisabled(t *testing.T) {
 		t.Fatalf("confirm body = %+v, want tokens and recovery codes", body)
 	}
 
-	rec = env.do("POST", "/api/auth/login", map[string]string{"email": "nototp@example.com", "password": testPassword})
+	rec = env.do("POST", "/api/auth/login",
+		map[string]string{"email": "nototp@example.com", "password": testPassword, "device_name": "Firefox on Linux"})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("login: %d %s", rec.Code, rec.Body)
 	}
-	if body := decodeBody[tokenBody](t, rec); body.AccessToken == "" {
-		t.Fatalf("login body = %+v, want an access token without the TOTP step", body)
+	login := decodeBody[tokenBody](t, rec)
+	if login.AccessToken == "" {
+		t.Fatalf("login body = %+v, want an access token without the TOTP step", login)
+	}
+	rec = env.do("GET", "/api/auth/sessions", nil, "Authorization", "Bearer "+login.AccessToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("sessions: %d %s", rec.Code, rec.Body)
+	}
+	type sessionList struct {
+		Sessions []struct {
+			ID         string `json:"id"`
+			DeviceName string `json:"device_name"`
+		} `json:"sessions"`
+	}
+	sessions := decodeBody[sessionList](t, rec)
+	found := false
+	for _, s := range sessions.Sessions {
+		if s.ID == login.SessionID {
+			found = true
+			if s.DeviceName != "Firefox on Linux" {
+				t.Fatalf("device name = %q, want the name from the login body", s.DeviceName)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("the login session is not in %+v", sessions)
 	}
 	rec = env.do("POST", "/api/auth/login", map[string]string{"email": "nototp@example.com", "password": "wrong password"})
 	wantError(t, rec, http.StatusUnauthorized, "invalid_credentials")

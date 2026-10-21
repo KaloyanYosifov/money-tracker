@@ -1,6 +1,7 @@
 import { usePowerSync, useQuery } from "@powersync/react";
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, type PressableStateCallbackType } from "react-native";
+import { SafeAreaInsetsContext } from "react-native-safe-area-context";
 
 import { saveOverallBudget, updateSettings, type SettingsPatch } from "../../data/mutations";
 import type { DeviceSession, SessionsApi } from "../../data/session";
@@ -300,8 +301,10 @@ function rowBackground(state: PressableStateCallbackType, theme: ThemeColors): s
 }
 
 function ScreenHeader({ title, onBack, theme }: { title: string; onBack: () => void; theme: ThemeColors }) {
+  // Settings, Devices and Sync problems fill the screen on iOS, so the header starts below the status bar.
+  const top = useContext(SafeAreaInsetsContext)?.top ?? 0;
   return (
-    <View style={[styles.header, { borderBottomColor: theme.line }]}>
+    <View style={[styles.header, { borderBottomColor: theme.line, paddingTop: top }]}>
       <Pressable
         testID="back"
         accessibilityRole="button"

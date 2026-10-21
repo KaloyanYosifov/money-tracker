@@ -11,7 +11,7 @@ import { PeriodPill } from "../components/PeriodPill";
 import { SegmentedControl } from "../components/SegmentedControl";
 import { TabIcon } from "../icons/tabIcons";
 import { Texture } from "../Texture";
-import { colors, MONO_FONT, type ThemeColors } from "../theme";
+import { colors, MONO_FONT, paperTint, type ThemeColors } from "../theme";
 import { usePeriod } from "./PeriodContext";
 import { PAGES, pageFor } from "./TabBar";
 
@@ -46,7 +46,7 @@ export function Sidebar({ state, emitter, navigateToTab, onQuickAdd, onSettings,
   const focusedKey = state.routes[state.index]?.key;
 
   return (
-    <Texture kind="paper" style={[styles.side, { borderRightColor: theme.line }]}>
+    <Texture kind="paper" tint={paperTint(theme)} style={[styles.side, { borderRightColor: theme.line }]}>
       <View style={[styles.brand, { borderBottomColor: theme.line }]}>
         <View style={[styles.logo, { backgroundColor: theme.chalkBackground }]}>
           <Text style={[styles.logoText, { color: theme.chalkGreen }]}>€</Text>
@@ -174,7 +174,7 @@ export function SidebarPage({ routeName, title, children, theme = colors.light }
   };
 
   return (
-    <Texture kind="paper" style={styles.desk}>
+    <Texture kind="paper" tint={paperTint(theme)} style={styles.desk}>
       <View style={styles.pageHeader}>
         <Text accessibilityRole="header" allowFontScaling style={[styles.title, { color: theme.ink }]}>
           {title}

@@ -1,4 +1,4 @@
-import { createAuthApi, type TokenResponse } from "./api";
+import { createAuthApi, webDeviceName, type TokenResponse } from "./api";
 
 jest.mock("expo-device", () => ({ modelName: "iPhone 15" }));
 
@@ -122,5 +122,37 @@ describe("error mapping", () => {
       },
     } as unknown as Response);
     expect(await api.refresh("refresh-1")).toEqual({ ok: false, error: "server" });
+  });
+});
+
+describe("web device name", () => {
+  const MAC_CHROME =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
+  const IPHONE_SAFARI =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1";
+  const WINDOWS_FIREFOX = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0";
+
+  it("names the browser and the system", () => {
+    expect(webDeviceName(MAC_CHROME)).toBe("Chrome on macOS");
+    expect(webDeviceName(IPHONE_SAFARI)).toBe("Safari on iOS");
+    expect(webDeviceName(WINDOWS_FIREFOX)).toBe("Firefox on Windows");
+  });
+
+  it("goes in the body of the calls that start a session, and not in refresh", async () => {
+    const api = createAuthApi({ apiUrl: "https://money.test", platform: "web", deviceName: "Chrome on macOS" });
+    fetchMock.mockResolvedValue(jsonResponse(200, TOKENS));
+
+    await api.login("a@b.c", "password-long-enough");
+    expect(lastRequest().body).toEqual({
+      email: "a@b.c",
+      password: "password-long-enough",
+      device_name: "Chrome on macOS",
+    });
+    await api.loginTotp({ mfaToken: "mfa", code: "123456" });
+    expect(lastRequest().body).toMatchObject({ mfa_token: "mfa", device_name: "Chrome on macOS" });
+    await api.confirmInvite("invite", "123456");
+    expect(lastRequest().body).toMatchObject({ token: "invite", device_name: "Chrome on macOS" });
+    await api.refresh(null);
+    expect(lastRequest().body).toBeUndefined();
   });
 });

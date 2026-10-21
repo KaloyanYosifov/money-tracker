@@ -1,0 +1,124 @@
+# Opens every screen once and adds an expense with a decimal amount. The user is logged in (login.yaml).
+# It covers what only fails on the device: Hermes has no global crypto (a save failed) and no
+# NumberFormat.formatToParts (Settings crashed, and the decimal separator was wrong).
+# e2e/ios/run.ts then checks that "E2E Decimal" synced with 4250 minor units.
+appId: com.kyosifov.moneytracker
+name: Every screen, and a decimal amount
+---
+# A decimal amount from the keypad.
+- tapOn:
+    id: tab-spending
+- tapOn:
+    id: add-expense
+- extendedWaitUntil:
+    visible:
+      text: New Expense
+    timeout: 10000
+- tapOn:
+    id: transaction-amount
+- tapOn:
+    id: keypad-4
+- tapOn:
+    id: keypad-2
+- tapOn:
+    id: keypad-decimal-point
+- tapOn:
+    id: keypad-5
+- tapOn:
+    id: keypad-0
+- assertVisible:
+    id: transaction-amount
+    text: "Amount, €42.50"
+- tapOn:
+    id: transaction-amount
+- tapOn:
+    id: transaction-name
+- inputText: E2E Decimal
+- hideKeyboard
+- tapOn:
+    id: category-option-Groceries
+- tapOn:
+    id: transaction-save
+- extendedWaitUntil:
+    notVisible:
+      id: transaction-save
+    timeout: 10000
+- tapOn:
+    id: tab-transactions
+- extendedWaitUntil:
+    visible:
+      text: "E2E Decimal, expense 42 .* 50, .*"
+    timeout: 10000
+
+# The period picker and the week label.
+- tapOn:
+    text: "Period, .*"
+- tapOn:
+    text: Week
+- extendedWaitUntil:
+    visible:
+      text: "Period, .* – .*"
+    timeout: 5000
+- tapOn:
+    text: "Period, .*"
+- tapOn:
+    text: Month
+
+# Categories and the category form.
+- tapOn:
+    id: tab-categories
+- tapOn:
+    text: New category
+- extendedWaitUntil:
+    visible:
+      text: New Category
+    timeout: 10000
+- tapOn:
+    text: Cancel
+
+# Accounts and the transfer form.
+- tapOn:
+    id: tab-accounts
+- tapOn:
+    text: Transfer
+    index: 0
+- extendedWaitUntil:
+    visible:
+      text: New Transfer
+    timeout: 10000
+- tapOn:
+    text: Cancel
+
+# Settings, the currency symbol and Devices.
+- tapOn:
+    id: menu
+- extendedWaitUntil:
+    visible:
+      text: "Currency Symbol, €"
+    timeout: 10000
+- tapOn:
+    text: Devices
+- extendedWaitUntil:
+    visible:
+      text: This device
+    timeout: 15000
+- tapOn:
+    id: back
+- tapOn:
+    id: back
+
+# Reports in phone landscape.
+- tapOn:
+    id: tab-spending
+- setOrientation: LANDSCAPE_LEFT
+- extendedWaitUntil:
+    visible:
+      id: reports
+    timeout: 10000
+- assertVisible:
+    id: pie-summary
+- setOrientation: PORTRAIT
+- extendedWaitUntil:
+    visible:
+      id: chalkboard-summary
+    timeout: 10000

@@ -63,6 +63,11 @@ export const colors: Record<ThemeName, ThemeColors> = {
   },
 };
 
+/** The paper texture is light. In the dark theme a layer of the dark paper colour covers most of it. */
+export function paperTint(theme: ThemeColors): string | undefined {
+  return theme === colors.dark ? `${colors.dark.paper}e6` : undefined;
+}
+
 /** Font family name that the root layout registers with expo-font. */
 export const MONO_FONT = "DroidSansMono";
 

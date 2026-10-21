@@ -12,11 +12,13 @@ const TILE = 256;
 type Props = {
   kind: keyof typeof sources;
   style?: StyleProp<ViewStyle>;
+  /** A colour on top of the tiles, for example to darken the paper in the dark theme. */
+  tint?: string;
   children?: ReactNode;
 };
 
 /** Tiles the paper or chalk texture behind its children. */
-export function Texture({ kind, style, children }: Props) {
+export function Texture({ kind, style, tint, children }: Props) {
   return (
     <View style={style}>
       {Platform.OS === "web" ? (
@@ -24,6 +26,7 @@ export function Texture({ kind, style, children }: Props) {
       ) : (
         <NativeTiles source={sources[kind]} />
       )}
+      {tint ? <View pointerEvents="none" style={[styles.fill, { backgroundColor: tint }]} /> : null}
       {children}
     </View>
   );

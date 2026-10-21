@@ -233,6 +233,8 @@ export function CategoryIcon({
   const def = categoryIcons[icon];
   return (
     <Svg
+      // A new key per variant mounts new shapes. iOS keeps a stroke or fill that a re-render removes.
+      key={variant}
       width={size}
       height={size}
       viewBox="0 0 32 32"

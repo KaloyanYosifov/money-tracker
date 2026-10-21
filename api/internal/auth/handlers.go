@@ -296,8 +296,9 @@ func (h *Handlers) inviteConfirm(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) login(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
+		Email      string `json:"email"`
+		Password   string `json:"password"`
+		DeviceName string `json:"device_name"`
 	}
 	if !decode(w, r, &req) {
 		return
@@ -341,7 +342,7 @@ func (h *Handlers) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.totpDisabled {
-		h.startSession(w, r, userID, deviceName(r, ""), nil)
+		h.startSession(w, r, userID, deviceName(r, req.DeviceName), nil)
 		return
 	}
 	mfa, err := h.tokens.IssueMFAToken(userID, h.now())

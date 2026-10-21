@@ -9,7 +9,7 @@ import type { Account } from "../../generated/schema";
 import { isHovered } from "../components/interaction";
 import { PaperBar } from "../components/PaperBar";
 import { Texture } from "../Texture";
-import type { ThemeColors } from "../theme";
+import { paperTint, type ThemeColors } from "../theme";
 import {
   ColorPalette,
   defaultPlatform,
@@ -89,7 +89,7 @@ export function AccountsScreen({ platform, onOpen, onNew, onTransfer }: ScreenPr
           onRestore={(id) => void restoreAccount(db, id)}
         />
       </View>
-      <Texture kind="paper" style={[styles.footer, { borderTopColor: theme.line }]}>
+      <Texture kind="paper" tint={paperTint(theme)} style={[styles.footer, { borderTopColor: theme.line }]}>
         <Text allowFontScaling style={[styles.footerText, { color: theme.accent }]}>
           {ACCOUNTS_HINT}
         </Text>
