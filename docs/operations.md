@@ -211,7 +211,7 @@ If the database volume is lost, run `./deploy.sh money-tracker install` to make 
 
 ## Self-hosted Mac runner for the iOS e2e tests
 
-The workflow `.github/workflows/ios-e2e.yml` runs each night at 03:00 UTC and on a manual dispatch. It runs on a Mac with the runner labels `self-hosted`, `macOS` and `money-tracker`.
+The workflow `.github/workflows/ios-e2e.yml` runs only on a manual dispatch. It runs on a Mac with the runner labels `self-hosted`, `macOS` and `money-tracker`.
 
 ### Requirements
 
