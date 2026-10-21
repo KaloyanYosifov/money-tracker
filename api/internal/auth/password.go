@@ -64,9 +64,9 @@ func VerifyPassword(password, hash string) bool {
 		return false
 	}
 	want, err := b64.DecodeString(parts[5])
-	if err != nil || len(want) == 0 {
+	if err != nil || len(want) != argonKeyLen {
 		return false
 	}
-	got := argon2.IDKey([]byte(password), salt, time, memory, threads, uint32(len(want)))
+	got := argon2.IDKey([]byte(password), salt, time, memory, threads, argonKeyLen)
 	return subtle.ConstantTimeCompare(got, want) == 1
 }

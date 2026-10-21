@@ -628,7 +628,8 @@ func (h *Handlers) revokeSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) setRefreshCookie(w http.ResponseWriter, value string, maxAge int) {
-	http.SetCookie(w, &http.Cookie{
+	// Secure comes from COOKIE_SECURE. It is false only for local HTTP development.
+	http.SetCookie(w, &http.Cookie{ // #nosec G124
 		Name:     RefreshCookieName,
 		Value:    value,
 		Path:     refreshCookiePath,
