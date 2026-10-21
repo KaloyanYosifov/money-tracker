@@ -4,7 +4,10 @@ E2E_COMPOSE := docker compose -f $(COMPOSE_FILE) -f deploy/compose/docker-compos
 IOS_PHONE_SIMULATOR ?= iPhone 17e
 IOS_TABLET_SIMULATOR ?= iPad (A16)
 
-.PHONY: generate check-generated test-api test-app test stack-up stack-up-no-otp stack-down e2e-stack-up e2e-stack-down e2e-web e2e-ios e2e-cross
+.PHONY: setup generate check-generated test-api test-app test stack-up stack-up-no-otp stack-down e2e-stack-up e2e-stack-down e2e-web e2e-ios e2e-cross
+
+setup:
+	./scripts/setup-macos.sh
 
 generate:
 	npm --prefix schema/scripts ci --no-audit --no-fund --silent

@@ -227,12 +227,27 @@ func patch(ctx context.Context, tx pgx.Tx, userID, table, id string, set []strin
 	var got string
 	err := tx.QueryRow(ctx, sql, string(payload), id, userID).Scan(&got)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return reject("not_found", "the record does not exist"), nil
+		return rejectPatchTarget(ctx, tx, table, id)
 	}
 	if err != nil {
 		return Result{}, fmt.Errorf("patch %s: %w", table, err)
 	}
 	return Result{Status: Applied}, nil
+}
+
+// rejectPatchTarget rejects a PATCH whose record the user does not have. Like PUT and
+// DELETE, a record of another user is forbidden. A record that does not exist is not_found.
+func rejectPatchTarget(ctx context.Context, tx pgx.Tx, table, id string) (Result, error) {
+	var other bool
+	err := tx.QueryRow(ctx, fmt.Sprintf(`SELECT EXISTS (SELECT 1 FROM %s WHERE id = $1)`, pgx.Identifier{table}.Sanitize()), id).
+		Scan(&other)
+	if err != nil {
+		return Result{}, fmt.Errorf("check owner: %w", err)
+	}
+	if other {
+		return reject("forbidden", "the record belongs to another user"), nil
+	}
+	return reject("not_found", "the record does not exist"), nil
 }
 
 func applyDelete(ctx context.Context, tx pgx.Tx, userID, table, id string) (Result, error) {
@@ -279,7 +294,10 @@ func checkKind(ctx context.Context, tx pgx.Tx, userID, table string, op schema.U
 			 FROM %s WHERE id = $1 AND user_id = $2 FOR UPDATE`, pgx.Identifier{table}.Sanitize()),
 			op.ID, userID).Scan(&k.typ, &k.categoryID, &k.accountID, &k.toAccountID)
 		if errors.Is(err, pgx.ErrNoRows) {
-			r := reject("not_found", "the record does not exist")
+			r, err := rejectPatchTarget(ctx, tx, table, op.ID)
+			if err != nil {
+				return nil, err
+			}
 			return &r, nil
 		}
 		if err != nil {

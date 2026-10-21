@@ -19,6 +19,7 @@ An offline-first money tracker for iPhone, iPad and the browser. The data syncs 
 
 | Command | What it does |
 |---|---|
+| `make setup` | Runs `scripts/setup-macos.sh`: installs Java 17 and Maestro with Homebrew, and builds AXe from source into Homebrew (macOS only) |
 | `make generate` | Generates `app/src/generated/schema.ts` and `api/internal/schema/types_gen.go` from `schema/` |
 | `make check-generated` | Runs `make generate`, then fails if the generated files differ from the committed files |
 | `make test-api` | Runs the Go tests (`go -C api test ./...`) |
@@ -41,3 +42,4 @@ The npm scripts `npm run generate` and `npm run check-generated` do the same as 
 - Go 1.25 or newer
 - Docker with Compose, for the local stack and the e2e tests
 - Xcode and a development build (`npx expo run:ios`) for iOS. Expo Go does not work.
+- Java 17, the Maestro CLI and AXe, for the iOS e2e tests. On macOS, run `make setup` to install them with Homebrew.

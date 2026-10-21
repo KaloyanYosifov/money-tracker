@@ -214,6 +214,19 @@ func TestApply(t *testing.T) {
 		}
 	})
 
+	t.Run("patch_other_users_row_rejected", func(t *testing.T) {
+		id := newID(t, pool)
+		wantStatus(t, apply(t, pool, b.userID, put("transactions", id, expense(t, b, 700))), sync.Applied, "")
+		wantStatus(t, apply(t, pool, a.userID, patch("transactions", id, data(t, `{"name":"x"}`))), sync.Rejected, "forbidden")
+		var name string
+		if err := pool.QueryRow(ctx, `SELECT name FROM transactions WHERE id = $1`, id).Scan(&name); err != nil {
+			t.Fatal(err)
+		}
+		if name == "x" {
+			t.Error("the patch of another user changed the row")
+		}
+	})
+
 	t.Run("patch_missing_rejected", func(t *testing.T) {
 		id := newID(t, pool)
 		wantStatus(t, apply(t, pool, a.userID, patch("transactions", id, data(t, `{"name":"x"}`))), sync.Rejected, "not_found")
