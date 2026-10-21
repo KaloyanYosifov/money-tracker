@@ -6,3 +6,6 @@ expo-env.d.ts
 # @end expo-cli.screenshots/
 
 .screenshots
+
+# Local env overrides, for example the API URLs of the local stack.
+.env*.local

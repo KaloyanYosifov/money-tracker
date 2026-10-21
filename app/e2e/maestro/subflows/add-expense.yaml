@@ -17,7 +17,9 @@ appId: com.kyosifov.moneytracker
 - tapOn:
     id: transaction-name
 - inputText: ${NAME}
-- hideKeyboard
+# No keyboard shows when the simulator uses the Mac keyboard, so this step may do nothing.
+- hideKeyboard:
+    optional: true
 - scrollUntilVisible:
     element:
       id: category-option-${CATEGORY}

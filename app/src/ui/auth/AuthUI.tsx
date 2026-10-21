@@ -30,7 +30,7 @@ export function authErrorMessage(error: AuthError): string {
 export function AuthScreen({ title, text, children }: { title: string; text?: string; children: ReactNode }) {
   return (
     <Texture kind="paper" style={styles.fill}>
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <View style={[styles.card, { backgroundColor: theme.row, borderColor: theme.line }]}>
           <Text style={[styles.brand, { color: theme.accent }]}>Money Tracker</Text>
           <Text accessibilityRole="header" allowFontScaling style={[styles.title, { color: theme.ink }]}>

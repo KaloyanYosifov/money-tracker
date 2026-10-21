@@ -31,7 +31,9 @@ name: Add, edit and delete an expense
           id: transaction-name
       - eraseText: 20
       - inputText: E2E Latte
-      - hideKeyboard
+      # No keyboard shows when the simulator uses the Mac keyboard, so this step may do nothing.
+      - hideKeyboard:
+          optional: true
       - tapOn:
           id: transaction-save
       - extendedWaitUntil:

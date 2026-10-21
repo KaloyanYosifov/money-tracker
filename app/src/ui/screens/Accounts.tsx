@@ -185,7 +185,7 @@ function AccountFormBody({
         onSave={() => void save()}
         theme={theme}
       />
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={formStyles.content}>
+      <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={formStyles.content}>
         <FormField
           label="Name"
           error={nameTouched && nameError ? (nameError.code === "too_long" ? "Too long" : "Required") : undefined}

@@ -20,6 +20,9 @@ test: test-api test-app
 stack-up:
 	docker compose -f $(COMPOSE_FILE) up -d --build --wait
 
+stack-up-no-otp:
+	DISABLE_TOTP=true docker compose -f $(COMPOSE_FILE) up -d --build --wait
+
 stack-down:
 	docker compose -f $(COMPOSE_FILE) down -v
 

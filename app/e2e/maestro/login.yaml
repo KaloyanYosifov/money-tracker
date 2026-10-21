@@ -16,7 +16,9 @@ name: Log in with password and TOTP
 - tapOn:
     id: login-password
 - inputText: ${PASSWORD}
-- hideKeyboard
+# No keyboard shows when the simulator uses the Mac keyboard, so this step may do nothing.
+- hideKeyboard:
+    optional: true
 - tapOn:
     id: login-submit
 - extendedWaitUntil:

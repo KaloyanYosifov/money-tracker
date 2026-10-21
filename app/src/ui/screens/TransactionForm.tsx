@@ -286,7 +286,7 @@ function FormBody({
         saveTestID="transaction-save"
         theme={theme}
       />
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={formStyles.content}>
+      <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={formStyles.content}>
         <View style={formStyles.typeBar}>
           <SegmentedControl options={TYPES} value={type} onChange={changeType} theme={theme} />
         </View>

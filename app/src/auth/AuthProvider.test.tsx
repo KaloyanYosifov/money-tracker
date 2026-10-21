@@ -306,7 +306,8 @@ describe("Web Locks", () => {
         inLock = false;
       }
     });
-    Object.assign(globalThis.navigator, { locks: { request } });
+    // Node 24 has a read-only navigator.locks getter, so an own property shadows it.
+    Object.defineProperty(globalThis.navigator, "locks", { value: { request }, configurable: true });
     mockStore.refreshToken = "refresh-user-1-0";
     mockStore.lastUserId = "user-1";
     let calledInLock = false;

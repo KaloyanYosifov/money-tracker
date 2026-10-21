@@ -34,7 +34,9 @@ name: Every screen, and a decimal amount
 - tapOn:
     id: transaction-name
 - inputText: E2E Decimal
-- hideKeyboard
+# No keyboard shows when the simulator uses the Mac keyboard, so this step may do nothing.
+- hideKeyboard:
+    optional: true
 - tapOn:
     id: category-option-Groceries
 - tapOn:
@@ -53,16 +55,21 @@ name: Every screen, and a decimal amount
 # The period picker and the week label.
 - tapOn:
     text: "Period, .*"
+- waitForAnimationToEnd
 - tapOn:
     text: Week
 - extendedWaitUntil:
     visible:
       text: "Period, .* – .*"
     timeout: 5000
-- tapOn:
-    text: "Period, .*"
-- tapOn:
-    text: Month
+# A restart goes back to the default period (Month). Maestro does not see the picker
+# the second time it opens, because XCTest keeps the closed modal window.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: tab-categories
+    timeout: 20000
 
 # Categories and the category form.
 - tapOn:

@@ -196,7 +196,7 @@ function CategoryFormBody({
         onSave={() => void save()}
         theme={theme}
       />
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={formStyles.content}>
+      <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={formStyles.content}>
         {/* Existing transactions must keep a category of their own type. */}
         {used ? null : (
           <View style={formStyles.typeBar}>
