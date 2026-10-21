@@ -5,7 +5,7 @@ import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useColorS
 import { saveRecurringRule, saveTransaction, type SaveResult } from "../../data/mutations";
 import { deleteSyncProblem, problemRecord, useSyncProblem } from "../../data/syncProblems";
 import { useUndo } from "../../data/UndoProvider";
-import { formatAmount, minorUnits } from "../../domain/money";
+import { amountInputText, currencySymbol, parseAmount } from "../../domain/money";
 import { today as localToday } from "../../domain/period";
 import {
   validateRecurringRule,
@@ -16,7 +16,6 @@ import {
 import type { Category, RecurringRule, Transaction, UserSettings } from "../../generated/schema";
 import { setDevicePref } from "../../hooks/useDevicePrefs";
 import { useShortcuts } from "../../hooks/useShortcuts";
-import { AmountKeypad } from "../components/AmountKeypad";
 import { GroupedSection } from "../components/GroupedSection";
 import { isHovered } from "../components/interaction";
 import { SegmentedControl } from "../components/SegmentedControl";
@@ -76,14 +75,6 @@ function message(error: FieldError, today: string): string {
   if ((error.field === "date" || error.field === "end_date") && error.code === "invalid") return `Use a date like ${today}`;
   if (error.field === "end_date" && error.code === "out_of_range") return "Must not be before the start";
   return MESSAGES[error.code];
-}
-
-/** Minor units as a keypad expression, for example 1499 EUR as "14.99". */
-function minorToExpression(minor: number, currency: string): string {
-  const digits = minorUnits(currency);
-  if (digits === 0) return String(minor);
-  const text = String(minor).padStart(digits + 1, "0");
-  return `${text.slice(0, -digits)}.${text.slice(-digits)}`;
 }
 
 /** Loads the records, then shows the form for a new or an existing transaction. */
@@ -170,9 +161,7 @@ function FormBody({
   const defaultAccount =
     accounts.find((a) => a.id === lastAccountId)?.id ?? accounts[0]?.id ?? "";
   const [type, setType] = useState<TransactionType>(existing?.type ?? initialType);
-  const [amount, setAmount] = useState<number | null>(existing?.amount_minor ?? null);
-  const [expression, setExpression] = useState(existing ? minorToExpression(existing.amount_minor, currency) : "");
-  const [keypadOpen, setKeypadOpen] = useState(false);
+  const [amountText, setAmountText] = useState(existing ? amountInputText(existing.amount_minor, currency, locale) : "");
   const [name, setName] = useState(existing?.name ?? "");
   const [date, setDate] = useState(existing?.date ?? today);
   const [categoryId, setCategoryId] = useState<string | null>(existing?.category_id ?? null);
@@ -186,6 +175,7 @@ function FormBody({
   const [serverErrors, setServerErrors] = useState<FieldError[]>([]);
   const [saving, setSaving] = useState(false);
 
+  const amount = amountText.trim() === "" ? null : parseAmount(amountText, currency, locale);
   const transfer = type === "transfer";
   // A manual transaction has no rule. Only a new transaction or an occurrence of a rule can repeat.
   const canRepeat = !existing || Boolean(rule);
@@ -292,35 +282,40 @@ function FormBody({
         </View>
 
         <View style={[styles.amountRow, { backgroundColor: theme.row, borderBottomColor: theme.line }]}>
-          <Pressable
-            testID="transaction-amount"
-            accessibilityRole="button"
-            accessibilityLabel={`Amount, ${amount === null ? "empty" : formatAmount(amount, currency, locale)}`}
-            onPress={() => setKeypadOpen((open) => !open)}
-          >
+          <View style={styles.amountLine}>
             <Text allowFontScaling style={[styles.amount, { color: amountColor(type, amount, theme) }]}>
-              {formatAmount(amount ?? 0, currency, locale)}
+              {currencySymbol(currency, locale)}
             </Text>
-          </Pressable>
+            {/* The hidden copy sets the width, so the symbol stays next to the number on the right. */}
+            <View style={styles.amountBox}>
+              <Text allowFontScaling style={[styles.amount, styles.amountSizer]} importantForAccessibility="no" accessibilityElementsHidden>
+                {amountText || amountInputText(0, currency, locale)}
+              </Text>
+            <TextInput
+              testID="transaction-amount"
+              accessibilityLabel="Amount"
+              allowFontScaling
+              // A new transaction starts with the number pad open, so an amount takes one tap less.
+              autoFocus={!existing}
+              inputMode="decimal"
+              keyboardType="decimal-pad"
+              placeholder={amountInputText(0, currency, locale)}
+              placeholderTextColor={theme.accent}
+              value={amountText}
+              onChangeText={(text) => {
+                setAmountText(text);
+                touch("amount_minor");
+              }}
+              style={[styles.amount, styles.amountInput, { color: amountColor(type, amount, theme) }]}
+            />
+            </View>
+          </View>
           {errorFor("amount_minor") ? (
             <Text allowFontScaling testID="error-amount_minor" style={[styles.error, { color: theme.listRed }]}>
               {message(errorFor("amount_minor") as FieldError, today)}
             </Text>
           ) : null}
         </View>
-        {keypadOpen ? (
-          <AmountKeypad
-            currency={currency}
-            locale={locale}
-            initialExpression={expression}
-            theme={theme}
-            onChange={(minor, next) => {
-              setAmount(minor);
-              setExpression(next);
-              touch("amount_minor");
-            }}
-          />
-        ) : null}
 
         <GroupedSection title="Transaction Details" theme={theme}>
           <Field label="Name" error={errorFor("name")} today={today} theme={theme}>
@@ -342,6 +337,7 @@ function FormBody({
             <TextInput
               allowFontScaling
               accessibilityLabel="Date"
+              keyboardType="numbers-and-punctuation"
               placeholder="YYYY-MM-DD"
               placeholderTextColor={theme.accent}
               value={date}
@@ -451,6 +447,7 @@ function FormBody({
                   <TextInput
                     allowFontScaling
                     accessibilityLabel="End Date"
+                    keyboardType="numbers-and-punctuation"
                     placeholder="Never"
                     placeholderTextColor={theme.accent}
                     value={endDate}
@@ -610,10 +607,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderBottomWidth: 1,
   },
+  amountLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    alignSelf: "stretch",
+  },
   amount: {
     fontSize: 40,
     fontWeight: "300",
     textAlign: "right",
+  },
+  amountBox: {
+    marginLeft: 4,
+    minWidth: 40,
+  },
+  amountSizer: {
+    opacity: 0,
+    paddingRight: 4,
+  },
+  amountInput: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    padding: 0,
   },
   grid: {
     flexDirection: "row",

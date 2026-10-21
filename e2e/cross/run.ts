@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 
 import { chromium } from "@playwright/test";
 
+import { runMaestroFlow } from "../support/maestro.ts";
 import { resetData, waitForStack } from "../support/stack.ts";
 import { resetProxies } from "../support/toxiproxy.ts";
 import { logIn, newAppContext, newUser, nextCode, waitForSynced } from "../web/fixtures.ts";
@@ -64,9 +65,8 @@ function buildApp(sim: Simulator): void {
 }
 
 function maestro(sim: Simulator, flow: string, env: Record<string, string>): void {
-  const envArgs = Object.entries(env).flatMap(([key, value]) => ["-e", `${key}=${value}`]);
   console.log(`\n▶ ${flow} on ${sim.name}`);
-  run("maestro", ["--device", sim.udid, "test", `${FLOWS_DIR}${flow}`, ...envArgs]);
+  runMaestroFlow(sim.udid, `${FLOWS_DIR}${flow}`, env);
 }
 
 async function main(): Promise<void> {

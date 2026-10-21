@@ -19,7 +19,7 @@ name: Permanent rejection
           file: subflows/add-expense.yaml
           env:
             NAME: Gift for Ana
-            DIGIT: "9"
+            AMOUNT: "9"
             CATEGORY: Gifts
       - runFlow:
           file: subflows/check-sync-state.yaml
@@ -40,7 +40,7 @@ name: Permanent rejection
           file: subflows/add-expense.yaml
           env:
             NAME: Bread
-            DIGIT: "3"
+            AMOUNT: "3"
             CATEGORY: Groceries
 
 - runFlow:

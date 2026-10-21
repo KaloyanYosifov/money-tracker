@@ -13,7 +13,7 @@ name: Add, edit and delete an expense
           file: subflows/add-expense.yaml
           env:
             NAME: E2E Coffee
-            DIGIT: "4"
+            AMOUNT: "4"
             CATEGORY: Groceries
       - tapOn:
           id: tab-transactions

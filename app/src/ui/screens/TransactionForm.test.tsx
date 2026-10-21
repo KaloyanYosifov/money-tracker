@@ -103,11 +103,8 @@ function isDisabled(element: ReturnType<typeof saveButton>) {
   return Boolean(element.props.accessibilityState?.disabled);
 }
 
-async function typeAmount(...keys: string[]) {
-  await fireEvent.press(screen.getByRole("button", { name: /^Amount/ }));
-  for (const key of keys) {
-    await fireEvent.press(screen.getByRole("button", { name: key }));
-  }
+async function typeAmount(text: string) {
+  await fireEvent.changeText(screen.getByLabelText("Amount"), text);
 }
 
 async function saveAndWait() {
@@ -164,19 +161,24 @@ describe("TransactionForm", () => {
     expect(screen.getByLabelText("To")).toBeTruthy();
   });
 
-  it("opens the keypad from the amount field", async () => {
-    await renderForm();
-    expect(screen.queryByRole("button", { name: "plus" })).toBeNull();
+  it("takes the amount from a decimal field, with either separator", async () => {
+    const onClose = await renderForm();
+    const field = screen.getByLabelText("Amount");
+    expect(field.props.keyboardType).toBe("decimal-pad");
 
-    await typeAmount("1", "4", "decimal point", "9", "9");
+    await typeAmount("14,99");
+    await fireEvent.changeText(screen.getByPlaceholderText("Name"), "Coffee");
+    await fireEvent.press(within(screen.getByLabelText("Category")).getByRole("radio", { name: "Groceries" }));
+    await saveAndWait();
 
-    expect(screen.getByRole("button", { name: "Amount, €14.99" })).toBeTruthy();
+    expect(onClose).toHaveBeenCalled();
+    expect(mockDb.prepare("SELECT amount_minor FROM transactions WHERE name = 'Coffee'").get()).toEqual({ amount_minor: 1499 });
   });
 
   it("saves a new expense and remembers the account", async () => {
     const onClose = await renderForm();
 
-    await typeAmount("1", "2");
+    await typeAmount("12");
     await fireEvent.changeText(screen.getByPlaceholderText("Name"), "Bread");
     await fireEvent.press(within(screen.getByLabelText("Category")).getByRole("radio", { name: "Groceries" }));
     await fireEvent.press(within(screen.getByLabelText("Account")).getByRole("radio", { name: "Bank" }));
@@ -231,7 +233,7 @@ describe("TransactionForm", () => {
     const onClose = await renderForm({ id: "lunch" });
 
     expect(screen.getByText("Edit Transaction")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Amount, €14.99" })).toBeTruthy();
+    expect(screen.getByLabelText("Amount").props.value).toBe("14.99");
     expect(screen.getByPlaceholderText("Name").props.value).toBe("Lunch");
     expect(screen.getByDisplayValue("2026-10-05")).toBeTruthy();
     expect(within(screen.getByLabelText("Account")).getByRole("radio", { name: "Bank" }).props.accessibilityState).toEqual(
@@ -252,7 +254,7 @@ describe("TransactionForm", () => {
   it("creates a rule for a repeating transaction and runs the generator", async () => {
     await renderForm();
 
-    await typeAmount("5", "0");
+    await typeAmount("50");
     await fireEvent.changeText(screen.getByPlaceholderText("Name"), "Gym");
     await fireEvent.press(within(screen.getByLabelText("Category")).getByRole("radio", { name: "Rent" }));
     await fireEvent.changeText(screen.getByDisplayValue(TODAY), "2026-09-19");

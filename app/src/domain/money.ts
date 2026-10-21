@@ -29,7 +29,8 @@ function decimalToMinor(text: string, digits: number): bigint | null {
 
 export function parseAmount(text: string, currency = "EUR", locale?: string): number | null {
   const separator = decimalSeparator(locale);
-  const normalized = text.replace(/\s/g, "").split(separator).join(".");
+  // The number pad shows the separator of the device region, so accept "," and "." either way.
+  const normalized = text.replace(/\s/g, "").split(separator).join(".").replace(/,/g, ".");
   const minor = decimalToMinor(normalized, minorUnits(currency));
   if (minor === null || minor <= 0n || minor > MAX_BIG) return null;
   return Number(minor);
@@ -49,53 +50,22 @@ export function formatAmount(
   }).format(minor / 10 ** digits);
 }
 
-// Divides and rounds half away from zero.
-function divRound(numerator: bigint, denominator: bigint): bigint {
-  const negative = numerator < 0n !== denominator < 0n;
-  const n = numerator < 0n ? -numerator : numerator;
-  const d = denominator < 0n ? -denominator : denominator;
-  const q = (2n * n + d) / (2n * d);
-  return negative ? -q : q;
+/** Minor units as text for an amount field, with the locale's decimal separator: 1499 EUR as "14.99" or "14,99". */
+export function amountInputText(minor: number, currency: string, locale?: string): string {
+  const digits = minorUnits(currency);
+  const text = (minor / 10 ** digits).toFixed(digits);
+  return digits === 0 ? text : text.replace(".", decimalSeparator(locale));
 }
 
-// Evaluates a keypad expression with + - * / and normal precedence.
-// Operands and the result are in minor units of the currency.
-export function evaluateExpression(expression: string, currency = "EUR"): number | null {
-  const digits = minorUnits(currency);
-  const scale = 10n ** BigInt(digits);
-  const tokens = expression.replace(/\s/g, "").match(/\d+(?:\.\d+)?|[-+*/]|./g) ?? [];
-  if (tokens.length === 0 || tokens.length % 2 === 0) return null;
-
-  const terms: bigint[] = [];
-  const signs: bigint[] = [1n];
-  let current: bigint | null = null;
-  let operator = "";
-  for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i];
-    if (i % 2 === 0) {
-      const value = decimalToMinor(token, digits);
-      if (value === null) return null;
-      if (current === null) {
-        current = value;
-      } else if (operator === "*") {
-        current = divRound(current * value, scale);
-      } else {
-        if (value === 0n) return null;
-        current = divRound(current * scale, value);
-      }
-    } else if (token === "*" || token === "/") {
-      operator = token;
-    } else if (token === "+" || token === "-") {
-      terms.push(current as bigint);
-      signs.push(token === "+" ? 1n : -1n);
-      current = null;
-    } else {
-      return null;
-    }
+/** The currency symbol, for example "€" for EUR. */
+export function currencySymbol(currency: string, locale?: string): string {
+  const format = new Intl.NumberFormat(locale, { style: "currency", currency });
+  // Hermes on iOS has no NumberFormat.formatToParts. Without it, remove the number ("0.00") from "€0.00".
+  if (typeof format.formatToParts !== "function") {
+    const digits = format.resolvedOptions().maximumFractionDigits ?? 2;
+    const number = new Intl.NumberFormat(locale, { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(0);
+    return format.format(0).replace(number, "").trim() || currency;
   }
-  terms.push(current as bigint);
-
-  const result = terms.reduce((sum, term, i) => sum + signs[i] * term, 0n);
-  if (result > MAX_BIG || result < -MAX_BIG) return null;
-  return Number(result);
+  const part = format.formatToParts(0).find((p) => p.type === "currency");
+  return part?.value ?? currency;
 }

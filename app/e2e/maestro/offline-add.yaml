@@ -12,19 +12,19 @@ name: Add expenses offline
     file: subflows/add-expense.yaml
     env:
       NAME: Offline 1
-      DIGIT: "1"
+      AMOUNT: "1"
       CATEGORY: General
 - runFlow:
     file: subflows/add-expense.yaml
     env:
       NAME: Offline 2
-      DIGIT: "2"
+      AMOUNT: "2"
       CATEGORY: General
 - runFlow:
     file: subflows/add-expense.yaml
     env:
       NAME: Offline 3
-      DIGIT: "3"
+      AMOUNT: "3"
       CATEGORY: General
 - runFlow:
     file: subflows/check-sync-state.yaml

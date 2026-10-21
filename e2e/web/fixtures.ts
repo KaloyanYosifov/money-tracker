@@ -44,6 +44,15 @@ export async function newUser(options: CreateUserOptions = {}): Promise<TestUser
 
 let ipCounter = 0;
 
+/** The Playwright worker, or 0 outside a test, for example in the cross-app runner. */
+function currentWorker(): number {
+  try {
+    return test.info().parallelIndex;
+  } catch {
+    return 0;
+  }
+}
+
 /**
  * Sends a different X-Real-IP for each browser context to the API. The login
  * rate limit is per IP, and all browsers of the suite share one real IP.
@@ -51,7 +60,7 @@ let ipCounter = 0;
  */
 async function useOwnClientIp(context: BrowserContext): Promise<string> {
   ipCounter += 1;
-  const worker = test.info().parallelIndex % 50;
+  const worker = currentWorker() % 50;
   const ip = `10.${200 + worker}.${Math.floor(ipCounter / 250) % 250}.${(ipCounter % 250) + 1}`;
   await context.route(
     (url) => url.href.startsWith(`${WEB_URL}/api/`),
@@ -147,11 +156,9 @@ export async function goToPage(page: Page, name: keyof typeof PAGE_KEYS): Promis
   await expect(page).toHaveURL(new RegExp(`/${name}`));
 }
 
-const KEYPAD_LABELS: Record<string, string> = { ".": "decimal point" };
-
 export interface NewTransaction {
   type: "expense" | "income" | "transfer";
-  /** Keypad input, for example "12.50". */
+  /** The amount as typed, for example "12.50". */
   amount: string;
   name: string;
   category?: string;
@@ -167,10 +174,7 @@ export async function addTransaction(page: Page, t: NewTransaction): Promise<voi
   const title = page.getByRole("heading", { name: FORM_TITLES[t.type] });
   await expect(title).toBeVisible();
 
-  await page.getByRole("button", { name: /^Amount, / }).click();
-  for (const key of t.amount) {
-    await page.getByRole("button", { name: KEYPAD_LABELS[key] ?? key, exact: true }).click();
-  }
+  await page.getByLabel("Amount", { exact: true }).fill(t.amount);
   const name = page.getByPlaceholder("Name", { exact: true });
   await name.fill(t.name);
   if (t.category) {

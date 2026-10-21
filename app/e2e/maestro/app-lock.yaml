@@ -25,9 +25,11 @@ name: App Lock
           id: back
       - stopApp
       - launchApp
+      # The app starts locked and asks for Face ID. The system prompt hides the app's cover from
+      # Maestro, so wait for the prompt itself.
       - extendedWaitUntil:
           visible:
-            id: privacy-cover
+            text: Face ID
           timeout: 15000
       - assertNotVisible:
           id: unlock

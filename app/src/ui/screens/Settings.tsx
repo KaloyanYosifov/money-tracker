@@ -6,7 +6,7 @@ import { SafeAreaInsetsContext } from "react-native-safe-area-context";
 import { saveOverallBudget, updateSettings, type SettingsPatch } from "../../data/mutations";
 import type { DeviceSession, SessionsApi } from "../../data/session";
 import { deleteSyncProblem, EDITABLE_TABLES, type SyncProblem } from "../../data/syncProblems";
-import { minorUnits, parseAmount } from "../../domain/money";
+import { amountInputText, currencySymbol, parseAmount } from "../../domain/money";
 import type { UserSettings } from "../../generated/schema";
 import { APP_LOCK_PREF, LOCK_AFTER_PREF, TABS_POSITION_PREF, useDevicePrefs } from "../../hooks/useDevicePrefs";
 import { useAppLockAvailable } from "../../security/AppLock";
@@ -56,23 +56,6 @@ const LOCK_AFTER: Option<"0" | "60" | "300">[] = [
   { value: "60", label: "After 1 minute" },
   { value: "300", label: "After 5 minutes" },
 ];
-
-function currencySymbol(currency: string): string {
-  const format = new Intl.NumberFormat(undefined, { style: "currency", currency });
-  // Hermes on iOS has no NumberFormat.formatToParts. Without it, remove the number ("0.00") from "€0.00".
-  if (typeof format.formatToParts !== "function") {
-    const digits = format.resolvedOptions().maximumFractionDigits ?? 2;
-    const number = new Intl.NumberFormat(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(0);
-    return format.format(0).replace(number, "").trim() || currency;
-  }
-  const part = format.formatToParts(0).find((p) => p.type === "currency");
-  return part?.value ?? currency;
-}
-
-/** Minor units as text for the input, for example 25000 EUR as "250.00". */
-function amountText(minor: number, currency: string): string {
-  return (minor / 10 ** minorUnits(currency)).toFixed(minorUnits(currency));
-}
 
 type SettingsProps = {
   platform?: ScreenPlatform;
@@ -257,7 +240,7 @@ function BudgetAmountInput({
 }) {
   const db = usePowerSync();
   const currency = settings.currency_code;
-  const [text, setText] = useState(stored === undefined ? "" : amountText(stored, currency));
+  const [text, setText] = useState(stored === undefined ? "" : amountInputText(stored, currency));
   const [invalid, setInvalid] = useState(false);
 
   function save() {

@@ -1,5 +1,5 @@
 # Adds an expense from the Spending tab.
-# Env: NAME, DIGIT (one keypad digit, the amount in euro), CATEGORY.
+# Env: NAME, AMOUNT (the amount in euro, for example "4" or "12.50"), CATEGORY.
 appId: com.kyosifov.moneytracker
 ---
 - tapOn:
@@ -10,10 +10,10 @@ appId: com.kyosifov.moneytracker
     visible:
       text: New Expense
     timeout: 10000
+# A new expense opens with the amount field in focus.
 - tapOn:
     id: transaction-amount
-- tapOn:
-    id: keypad-${DIGIT}
+- inputText: ${AMOUNT}
 - tapOn:
     id: transaction-name
 - inputText: ${NAME}

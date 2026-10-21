@@ -101,7 +101,8 @@ export function PeriodPicker({ visible, kind, period, settings, onSelect, onClos
                   placeholder="YYYY-MM-DD"
                   autoCapitalize="none"
                   autoCorrect={false}
-                  inputMode="numeric"
+                  // Digits and "-": the plain number pad has no "-" for YYYY-MM-DD.
+                  keyboardType="numbers-and-punctuation"
                   style={[styles.input, { color: theme.ink, borderColor: theme.line }]}
                 />
               </View>

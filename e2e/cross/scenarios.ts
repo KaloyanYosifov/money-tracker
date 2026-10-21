@@ -38,14 +38,10 @@ function serverAmount(id: string): number | null {
   return row ? Number(row[0]) : null;
 }
 
-/** Sets the amount of a transaction on the web with the keypad, in whole euros. */
+/** Sets the amount of a transaction on the web, in whole euros. */
 async function editAmountOnWeb(page: Page, name: string, euros: string): Promise<void> {
   await openTransaction(page, name);
-  await page.getByRole("button", { name: /^Amount, / }).click();
-  const del = page.getByRole("button", { name: "delete", exact: true });
-  // The keypad starts with the old amount, for example "7.00".
-  for (let i = 0; i < 10; i++) await del.click();
-  for (const key of euros) await page.getByRole("button", { name: key, exact: true }).click();
+  await page.getByLabel("Amount", { exact: true }).fill(euros);
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("heading", { name: "Edit Transaction" })).toBeHidden();
 }
@@ -62,7 +58,7 @@ async function withIosOffline(work: () => Promise<void>): Promise<void> {
 /** 1. An expense added on iOS shows on the web within 10 seconds. */
 export async function addOnIosShowsOnWeb({ user, page, maestro }: CrossContext): Promise<void> {
   await goToPage(page, "transactions");
-  maestro("cross-add-expense.yaml", { NAME, DIGIT: "7", CATEGORY });
+  maestro("cross-add-expense.yaml", { NAME, AMOUNT: "7", CATEGORY });
   await expect(transactionRow(page, NAME)).toBeVisible({ timeout: 10_000 });
 
   const rows = query("SELECT id FROM transactions WHERE user_id = :'user_id' AND name = :'name';", {
@@ -88,7 +84,7 @@ export async function editsOnBothSurvive({ page, maestro }: CrossContext): Promi
 
   await waitForSynced(page);
   await openTransaction(page, NAME);
-  await expect(page.getByRole("button", { name: /^Amount, .*12/ })).toBeVisible();
+  await expect(page.getByLabel("Amount", { exact: true })).toHaveValue("12.00");
   await expect(page.getByPlaceholder("Add a note", { exact: true })).toHaveValue(note);
   await page.getByRole("button", { name: "Close" }).click();
 

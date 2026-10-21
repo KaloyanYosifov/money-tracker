@@ -1,4 +1,4 @@
-import { evaluateExpression, formatAmount, minorUnits, parseAmount } from "./money";
+import { amountInputText, currencySymbol, formatAmount, minorUnits, parseAmount } from "./money";
 
 describe("parseAmount", () => {
   it("parses a dot decimal into minor units", () => {
@@ -7,6 +7,9 @@ describe("parseAmount", () => {
 
   it("uses the locale decimal separator", () => {
     expect(parseAmount("12,34", "EUR", "bg-BG")).toBe(1234);
+    // The number pad shows the separator of the device region, so both work.
+    expect(parseAmount("12,34", "EUR", "en-IE")).toBe(1234);
+    expect(parseAmount("12.34", "EUR", "bg-BG")).toBe(1234);
   });
 
   it("rejects zero, negative and non-numeric input", () => {
@@ -38,12 +41,21 @@ describe("minorUnits", () => {
   });
 });
 
-describe("evaluateExpression", () => {
-  it("uses normal operator precedence", () => {
-    expect(evaluateExpression("12.50+3*2")).toBe(1850);
+describe("amountInputText", () => {
+  it("writes minor units with the locale's decimal separator", () => {
+    expect(amountInputText(1499, "EUR", "en-IE")).toBe("14.99");
+    expect(amountInputText(1499, "EUR", "de-DE")).toBe("14,99");
+    expect(amountInputText(500, "JPY", "en-IE")).toBe("500");
   });
 
-  it("returns null for a division by zero", () => {
-    expect(evaluateExpression("5/0")).toBeNull();
+  it("gives text that parseAmount reads back", () => {
+    expect(parseAmount(amountInputText(4250, "EUR", "de-DE"), "EUR", "de-DE")).toBe(4250);
+  });
+});
+
+describe("currencySymbol", () => {
+  it("returns the symbol of the currency", () => {
+    expect(currencySymbol("EUR", "en-IE")).toBe("€");
+    expect(currencySymbol("USD", "en-US")).toBe("$");
   });
 });

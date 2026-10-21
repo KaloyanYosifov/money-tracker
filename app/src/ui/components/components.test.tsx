@@ -4,7 +4,6 @@ import { fireEvent, render, screen } from "@testing-library/react-native";
 import type { TransactionListRow } from "../../data/queries";
 import { periodLabel } from "../../domain/period";
 import { colors } from "../theme";
-import { AmountKeypad } from "./AmountKeypad";
 import { Banner } from "./Banner";
 import { PeriodPill } from "./PeriodPill";
 import { SegmentedControl } from "./SegmentedControl";
@@ -165,35 +164,5 @@ describe("UndoToast", () => {
   it("renders nothing when not visible", async () => {
     await render(<UndoToast visible={false} onUndo={jest.fn()} />);
     expect(screen.queryByText("Deleted · Undo")).toBeNull();
-  });
-});
-
-describe("AmountKeypad", () => {
-  it("builds an expression and shows the evaluated amount", async () => {
-    const onChange = jest.fn();
-    await render(<AmountKeypad currency="EUR" locale="en-IE" onChange={onChange} />);
-    for (const key of ["1", "2", "decimal point", "5", "0", "plus", "3", "times", "2"]) {
-      await fireEvent.press(screen.getByRole("button", { name: key }));
-    }
-    expect(screen.getByText("12.50+3×2")).toBeTruthy();
-    expect(screen.getByText("€18.50")).toBeTruthy();
-    expect(onChange).toHaveBeenLastCalledWith(1850, "12.50+3*2");
-  });
-
-  it("replaces a repeated operator and deletes the last key", async () => {
-    await render(<AmountKeypad currency="EUR" locale="en-IE" />);
-    for (const key of ["9", "plus", "minus", "1", "delete"]) {
-      await fireEvent.press(screen.getByRole("button", { name: key }));
-    }
-    expect(screen.getByText("9-")).toBeTruthy();
-    expect(screen.getByText("€9.00")).toBeTruthy();
-  });
-
-  it("does not accept more fraction digits than the currency has", async () => {
-    await render(<AmountKeypad currency="EUR" locale="en-IE" />);
-    for (const key of ["1", "decimal point", "2", "3", "4"]) {
-      await fireEvent.press(screen.getByRole("button", { name: key }));
-    }
-    expect(screen.getByText("1.23")).toBeTruthy();
   });
 });

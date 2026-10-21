@@ -5,7 +5,7 @@
 appId: com.kyosifov.moneytracker
 name: Every screen, and a decimal amount
 ---
-# A decimal amount from the keypad.
+# A decimal amount in the amount field.
 - tapOn:
     id: tab-spending
 - tapOn:
@@ -16,21 +16,10 @@ name: Every screen, and a decimal amount
     timeout: 10000
 - tapOn:
     id: transaction-amount
-- tapOn:
-    id: keypad-4
-- tapOn:
-    id: keypad-2
-- tapOn:
-    id: keypad-decimal-point
-- tapOn:
-    id: keypad-5
-- tapOn:
-    id: keypad-0
+- inputText: "42.50"
 - assertVisible:
     id: transaction-amount
-    text: "Amount, €42.50"
-- tapOn:
-    id: transaction-amount
+    text: "42.50"
 - tapOn:
     id: transaction-name
 - inputText: E2E Decimal
