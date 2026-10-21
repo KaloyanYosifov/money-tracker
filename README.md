@@ -43,3 +43,13 @@ The npm scripts `npm run generate` and `npm run check-generated` do the same as 
 - Docker with Compose, for the local stack and the e2e tests
 - Xcode and a development build (`npx expo run:ios`) for iOS. Expo Go does not work.
 - Java 17, the Maestro CLI and AXe, for the iOS e2e tests. On macOS, run `make setup` to install them with Homebrew.
+
+## Binaries
+
+The iOS build, the simulator and the iOS e2e tests need these binaries on the Mac:
+
+- `xcrun`
+- `axe`
+- `make`
+- `npm`
+- `maestro`
