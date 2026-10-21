@@ -42,7 +42,14 @@ function NativeTiles({ source }: { source: number }) {
   const columns = Math.ceil(size.width / TILE);
   const rows = Math.ceil(size.height / TILE);
   return (
-    <View pointerEvents="none" onLayout={onLayout} style={[styles.fill, styles.clip]}>
+    <View
+      pointerEvents="none"
+      onLayout={onLayout}
+      // The tiles are decoration. VoiceOver skips them.
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={[styles.fill, styles.clip]}
+    >
       {Array.from({ length: rows }, (_, row) => (
         <View key={row} style={styles.row}>
           {Array.from({ length: columns }, (_, column) => (

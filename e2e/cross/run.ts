@@ -70,17 +70,19 @@ function maestro(sim: Simulator, flow: string, env: Record<string, string>): voi
 }
 
 async function main(): Promise<void> {
-  await waitForStack();
-  await resetProxies();
-  resetData();
-
   const phone = findPhone(process.env.IOS_PHONE_SIMULATOR);
   boot(phone);
+  // Build before the first request to the stack: Docker closes idle keep-alive connections during the build.
   buildApp(phone);
+
+  // A run that stopped while offline leaves the proxies off, so reset them before the health check.
+  await resetProxies();
+  await waitForStack();
+  resetData();
 
   const user = await newUser();
   // nextCode never gives the same TOTP step twice, so the two logins do not trip the replay check.
-  maestro(phone, "login.yaml", { EMAIL: user.email, PASSWORD: user.password, TOTP_CODE: await nextCode(user.totpSecret) });
+  maestro(phone, "login.yaml", { EMAIL: user.email, PASSWORD: user.password, TOTP_CODE: await nextCode(user.totpSecret, 15_000) });
 
   const browser = await chromium.launch();
   try {

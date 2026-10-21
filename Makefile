@@ -47,4 +47,4 @@ e2e-ios:
 	IOS_PHONE_SIMULATOR="$(IOS_PHONE_SIMULATOR)" IOS_TABLET_SIMULATOR="$(IOS_TABLET_SIMULATOR)" npm --workspace e2e run test:ios
 
 e2e-cross:
-	npm --workspace e2e run test:cross
+	IOS_PHONE_SIMULATOR="$(IOS_PHONE_SIMULATOR)" npm --workspace e2e run test:cross

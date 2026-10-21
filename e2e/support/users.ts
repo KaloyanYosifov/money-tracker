@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { fetchWithRetry } from "./http.ts";
 import { API_URL, compose } from "./stack.ts";
 import { freshCode } from "./totp.ts";
 
@@ -17,7 +18,7 @@ export interface CreateUserOptions {
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetchWithRetry(`${API_URL}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Client": "native" },
     body: JSON.stringify(body),

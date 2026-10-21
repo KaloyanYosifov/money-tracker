@@ -2,6 +2,7 @@ import { test as base, expect, type Browser, type BrowserContext, type Page, typ
 
 import { query } from "../support/db.ts";
 import { waitForStack, WEB_URL } from "../support/stack.ts";
+import { resetProxies } from "../support/toxiproxy.ts";
 import { codeAt, msLeftInStep } from "../support/totp.ts";
 import { createUser, type CreateUserOptions, type TestUser } from "../support/users.ts";
 
@@ -21,12 +22,12 @@ function markStepUsed(secret: string, at = Date.now()): void {
   lastStep.set(secret, Math.max(lastStep.get(secret) ?? -1, Math.floor(at / STEP_MS)));
 }
 
-/** A TOTP code of a step that the API did not see yet, with at least 5 seconds left. */
-export async function nextCode(secret: string): Promise<string> {
+/** A TOTP code of a step that the API did not see yet, with at least minLeftMs (default 5 seconds) left. */
+export async function nextCode(secret: string, minLeftMs = MIN_LEFT_MS): Promise<string> {
   for (;;) {
     const now = Date.now();
     const step = Math.floor(now / STEP_MS);
-    if (step > (lastStep.get(secret) ?? -1) && msLeftInStep(now) >= MIN_LEFT_MS) {
+    if (step > (lastStep.get(secret) ?? -1) && msLeftInStep(now) >= minLeftMs) {
       lastStep.set(secret, step);
       return codeAt(secret, now);
     }
@@ -70,6 +71,9 @@ export async function newAppContext(browser: Browser): Promise<{ context: Browse
 export const test = base.extend<{ clientIp: string }, { stack: void }>({
   stack: [
     async ({}, use) => {
+      // A run that stopped in offline.spec.ts leaves the proxies off. offline.spec.ts runs alone,
+      // after the other specs, so no other test uses the proxies at this time.
+      await resetProxies();
       await waitForStack();
       await use();
     },

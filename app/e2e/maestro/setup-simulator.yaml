@@ -1,0 +1,33 @@
+# Opens Settings > General > AutoFill & Passwords. e2e/ios/run.ts then turns the switch off:
+# with AutoFill on, iOS shows a "Save Password?" sheet after the login. The sheet covers the
+# app, and Maestro cannot see it, because it belongs to a system process.
+appId: com.apple.Preferences
+name: Open the AutoFill settings
+---
+- launchApp:
+    stopApp: true
+- runFlow:
+    when:
+      visible:
+        id: BackButton
+    commands:
+      # Settings opens on the page it showed last. Go back to the top.
+      - repeat:
+          while:
+            visible:
+              id: BackButton
+          commands:
+            - tapOn:
+                id: BackButton
+- tapOn:
+    id: com.apple.settings.general
+- scrollUntilVisible:
+    element:
+      id: com.apple.settings.general.autoFillAndPasswords
+    direction: DOWN
+- tapOn:
+    id: com.apple.settings.general.autoFillAndPasswords
+- extendedWaitUntil:
+    visible:
+      id: AutoFillToggle
+    timeout: 5000

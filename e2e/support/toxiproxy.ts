@@ -1,10 +1,12 @@
+import { fetchWithRetry } from "./http.ts";
+
 const TOXIPROXY_URL = process.env.E2E_TOXIPROXY_URL ?? "http://localhost:28474";
 
 /** Proxy names from deploy/compose/toxiproxy.json. */
 export type ProxyName = "api" | "powersync" | "api_ios" | "powersync_ios";
 
 async function call(path: string, body?: unknown): Promise<void> {
-  const res = await fetch(`${TOXIPROXY_URL}${path}`, {
+  const res = await fetchWithRetry(`${TOXIPROXY_URL}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),

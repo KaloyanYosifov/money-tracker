@@ -21,17 +21,25 @@ name: Log in with password and TOTP
     optional: true
 - tapOn:
     id: login-submit
+# iOS offers to save the password once the login form goes. The sheet covers the app and can
+# come before or after the TOTP screen shows, so close it on both sides of that step.
+- extendedWaitUntil:
+    visible: Not Now
+    timeout: 8000
+    optional: true
+- tapOn:
+    text: Not Now
+    optional: true
 - extendedWaitUntil:
     visible:
       id: totp-code
     timeout: 15000
 - tapOn:
-    id: totp-code
-- inputText: ${TOTP_CODE}
-# iOS can offer to save the password.
-- tapOn:
     text: Not Now
     optional: true
+- tapOn:
+    id: totp-code
+- inputText: ${TOTP_CODE}
 - extendedWaitUntil:
     visible:
       id: tab-spending
