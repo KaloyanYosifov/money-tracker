@@ -2,12 +2,20 @@ import { defineConfig, devices } from "@playwright/test";
 
 import { WEB_URL } from "../support/stack.ts";
 
-// The specs share one Compose stack, one database and one Toxiproxy, so they run one at a time.
+const BROWSERS = [
+  { name: "chromium", device: devices["Desktop Chrome"] },
+  { name: "firefox", device: devices["Desktop Firefox"] },
+  { name: "webkit", device: devices["Desktop Safari"] },
+];
+
+// The specs share one Compose stack and one database. Each test makes its own users, so the
+// spec files run in parallel. offline.spec.ts changes the one shared Toxiproxy, so it runs
+// alone: after all other specs, and one browser after the other.
 export default defineConfig({
   testDir: ".",
   testMatch: "*.spec.ts",
   fullyParallel: false,
-  workers: 1,
+  workers: process.env.E2E_WORKERS ? Number(process.env.E2E_WORKERS) : 4,
   // TOTP codes work once per 30-second step, so a login can wait up to 30 seconds.
   timeout: 240_000,
   expect: { timeout: 15_000 },
@@ -19,8 +27,16 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    { name: "firefox", use: { ...devices["Desktop Firefox"] } },
-    { name: "webkit", use: { ...devices["Desktop Safari"] } },
+    ...BROWSERS.map(({ name, device }) => ({
+      name,
+      testIgnore: "offline.spec.ts",
+      use: { ...device },
+    })),
+    ...BROWSERS.map(({ name, device }, index) => ({
+      name: `${name}-offline`,
+      testMatch: "offline.spec.ts",
+      dependencies: index === 0 ? BROWSERS.map((b) => b.name) : [`${BROWSERS[index - 1].name}-offline`],
+      use: { ...device },
+    })),
   ],
 });

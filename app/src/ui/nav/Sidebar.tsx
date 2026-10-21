@@ -75,7 +75,7 @@ export function Sidebar({ state, emitter, navigateToTab, onQuickAdd, onSettings,
               key={page.name}
               accessibilityRole="tab"
               accessibilityLabel={page.title}
-              accessibilityState={{ selected: focused }}
+              accessibilityState={{ selected: focused }} aria-selected={focused}
               onPress={onPress}
               style={(state) => [
                 styles.item,

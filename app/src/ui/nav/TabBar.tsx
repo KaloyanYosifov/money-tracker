@@ -108,7 +108,7 @@ export function TabBar({ state, emitter, navigateToTab, insets, position, onMenu
               testID={`tab-${page.name}`}
               accessibilityRole="tab"
               accessibilityLabel={page.title}
-              accessibilityState={{ selected: focused }}
+              accessibilityState={{ selected: focused }} aria-selected={focused}
               onPress={onPress}
               style={[
                 styles.tab,

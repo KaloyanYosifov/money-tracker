@@ -1,4 +1,3 @@
-import { resetData } from "../support/stack.ts";
 import {
   addTransaction,
   deleteWithKey,
@@ -11,8 +10,6 @@ import {
   transactionRow,
   waitForSynced,
 } from "./fixtures.ts";
-
-test.beforeAll(() => resetData());
 
 test("add, check totals and Carry Over, and delete with and without Undo", async ({ page }) => {
   const user = await newUser();

@@ -364,7 +364,7 @@ function FormBody({
                       testID={`category-option-${category.name}`}
                       accessibilityRole="radio"
                       accessibilityLabel={category.name}
-                      accessibilityState={{ checked: selected }}
+                      accessibilityState={{ checked: selected }} aria-checked={selected}
                       onPress={() => {
                         setCategoryId(category.id);
                         touch("category_id");
@@ -583,7 +583,7 @@ function Chip({
     <Pressable
       accessibilityRole="radio"
       accessibilityLabel={label}
-      accessibilityState={{ checked: selected }}
+      accessibilityState={{ checked: selected }} aria-checked={selected}
       onPress={onPress}
       style={(state) => [
         styles.chip,

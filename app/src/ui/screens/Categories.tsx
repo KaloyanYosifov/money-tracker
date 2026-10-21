@@ -229,7 +229,7 @@ function CategoryFormBody({
                   key={key}
                   accessibilityRole="radio"
                   accessibilityLabel={categoryIcons[key].label}
-                  accessibilityState={{ checked: selected }}
+                  accessibilityState={{ checked: selected }} aria-checked={selected}
                   onPress={() => setIcon(key)}
                   style={[styles.iconCell, selected && { backgroundColor: theme.row, borderColor: theme.accent }]}
                 >

@@ -1,4 +1,4 @@
-import { psql, resetData } from "../support/stack.ts";
+import { psql } from "../support/stack.ts";
 import {
   addTransaction,
   blockUploads,
@@ -13,8 +13,6 @@ import {
   unblockUploads,
   waitForSynced,
 } from "./fixtures.ts";
-
-test.beforeAll(() => resetData());
 
 test("a permanent rejection shows the banner, later changes sync, and Discard clears it", async ({ browser, page }) => {
   const user = await newUser();

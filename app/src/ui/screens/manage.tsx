@@ -67,7 +67,7 @@ export function ColorPalette({
             key={option.hex}
             accessibilityRole="radio"
             accessibilityLabel={option.label}
-            accessibilityState={{ checked: selected }}
+            accessibilityState={{ checked: selected }} aria-checked={selected}
             onPress={() => onChange(option.hex)}
             style={[styles.swatch, { backgroundColor: option.hex, borderColor: selected ? theme.ink : "transparent" }]}
           />
@@ -156,7 +156,7 @@ export function ReorderList<T extends ListItem>({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Archived (${archived.length})`}
-            accessibilityState={{ expanded: archivedOpen }}
+            accessibilityState={{ expanded: archivedOpen }} aria-expanded={archivedOpen}
             onPress={() => setArchivedOpen((open) => !open)}
             style={[styles.archivedHeader, { borderColor: theme.line }]}
           >
@@ -326,7 +326,7 @@ export function FormHeader({
         testID={saveTestID}
         accessibilityRole="button"
         accessibilityLabel="Save"
-        accessibilityState={{ disabled: !canSave }}
+        accessibilityState={{ disabled: !canSave }} aria-disabled={!canSave}
         disabled={!canSave}
         onPress={onSave}
         hitSlop={8}

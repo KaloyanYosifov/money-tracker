@@ -1,6 +1,5 @@
 import type { Browser, Page } from "@playwright/test";
 
-import { resetData } from "../support/stack.ts";
 import type { TestUser } from "../support/users.ts";
 import {
   addTransaction,
@@ -13,15 +12,13 @@ import {
   newUser,
   openTransaction,
   serverTransactionById,
-  serverTransactions,
   syncState,
   test,
   transactionRow,
   unblockUploads,
+  waitForServerTransaction,
   waitForSynced,
 } from "./fixtures.ts";
-
-test.beforeAll(() => resetData());
 
 /** Edits the name and the note of a transaction in the form and saves it. */
 async function edit(page: Page, name: string, change: { name?: string; note?: string }): Promise<void> {
@@ -48,8 +45,7 @@ async function twoDevices(browser: Browser, page: Page, name: string) {
   await waitForSynced(page);
   await addTransaction(page, { type: "expense", amount: "8", name, category: "Eating Out" });
   await waitForSynced(page);
-  const [row] = serverTransactions(user.userId, name);
-  expect(row).toBeDefined();
+  const row = await waitForServerTransaction(user.userId, name);
 
   const second = await newAppContext(browser);
   await logIn(second.page, user);

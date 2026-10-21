@@ -1,4 +1,3 @@
-import { resetData } from "../support/stack.ts";
 import { addLatency, goOffline, goOnline, resetProxies, setProxyEnabled } from "../support/toxiproxy.ts";
 import {
   addTransaction,
@@ -12,7 +11,9 @@ import {
   waitForSynced,
 } from "./fixtures.ts";
 
-test.beforeAll(() => resetData());
+// This spec changes the one shared Toxiproxy, so playwright.config.ts runs it alone, after the other specs.
+test.beforeEach(() => resetProxies());
+test.afterEach(() => resetProxies());
 
 test("changes made offline sync once, also after an upload that fails half way", async ({ page }) => {
   const user = await newUser();

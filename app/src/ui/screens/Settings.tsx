@@ -377,7 +377,7 @@ function ChoiceRow<T extends string>({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${label}, ${current}`}
-        accessibilityState={{ expanded: open }}
+        accessibilityState={{ expanded: open }} aria-expanded={open}
         onPress={() => setOpen((o) => !o)}
         style={(state) => [styles.row, { backgroundColor: rowBackground(state, theme), borderBottomColor: theme.line }]}
       >
@@ -396,7 +396,7 @@ function ChoiceRow<T extends string>({
                 key={option.value}
                 accessibilityRole="radio"
                 accessibilityLabel={option.label}
-                accessibilityState={{ checked }}
+                accessibilityState={{ checked }} aria-checked={checked}
                 onPress={() => {
                   setOpen(false);
                   if (!checked) onChange(option.value);

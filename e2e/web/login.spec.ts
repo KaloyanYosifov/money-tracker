@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 
 import { userIdByEmail } from "../support/db.ts";
-import { resetData } from "../support/stack.ts";
 import { codeAt } from "../support/totp.ts";
 import { createInvite } from "../support/users.ts";
 import {
@@ -19,8 +18,6 @@ import {
   unblockUploads,
   waitForSynced,
 } from "./fixtures.ts";
-
-test.beforeAll(() => resetData());
 
 test("an invite sets up the account through the UI", async ({ page }) => {
   const email = `invite-${randomUUID()}@example.test`;

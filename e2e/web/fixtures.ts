@@ -3,7 +3,6 @@ import { test as base, expect, type Browser, type BrowserContext, type Page, typ
 import { query } from "../support/db.ts";
 import { waitForStack, WEB_URL } from "../support/stack.ts";
 import { codeAt, msLeftInStep } from "../support/totp.ts";
-import { resetProxies } from "../support/toxiproxy.ts";
 import { createUser, type CreateUserOptions, type TestUser } from "../support/users.ts";
 
 export { expect };
@@ -47,10 +46,12 @@ let ipCounter = 0;
 /**
  * Sends a different X-Real-IP for each browser context to the API. The login
  * rate limit is per IP, and all browsers of the suite share one real IP.
+ * The second byte is the worker, so parallel workers never share an IP.
  */
 async function useOwnClientIp(context: BrowserContext): Promise<string> {
   ipCounter += 1;
-  const ip = `10.250.${Math.floor(ipCounter / 250) % 250}.${(ipCounter % 250) + 1}`;
+  const worker = test.info().parallelIndex % 50;
+  const ip = `10.${200 + worker}.${Math.floor(ipCounter / 250) % 250}.${(ipCounter % 250) + 1}`;
   await context.route(
     (url) => url.href.startsWith(`${WEB_URL}/api/`),
     (route) => route.fallback({ headers: { ...route.request().headers(), "x-real-ip": ip } }),
@@ -66,7 +67,7 @@ export async function newAppContext(browser: Browser): Promise<{ context: Browse
   return { context, page };
 }
 
-export const test = base.extend<{ clientIp: string; proxies: void }, { stack: void }>({
+export const test = base.extend<{ clientIp: string }, { stack: void }>({
   stack: [
     async ({}, use) => {
       await waitForStack();
@@ -77,15 +78,6 @@ export const test = base.extend<{ clientIp: string; proxies: void }, { stack: vo
   clientIp: [
     async ({ context }, use) => {
       await use(await useOwnClientIp(context));
-    },
-    { auto: true },
-  ],
-  // Every test starts and ends with both proxies on and no toxics.
-  proxies: [
-    async ({}, use) => {
-      await resetProxies();
-      await use();
-      await resetProxies();
     },
     { auto: true },
   ],
@@ -218,6 +210,15 @@ export function serverTransactions(userId: string, name: string): { id: string; 
     "SELECT id, name, coalesce(note, '') FROM transactions WHERE user_id = :'user_id' AND name = :'name' ORDER BY id;",
     { user_id: userId, name },
   ).map(([id, rowName, note]) => ({ id, name: rowName, note }));
+}
+
+/**
+ * Waits until the server has the transaction and returns it. Right after a save the sidebar can
+ * still show the old "Synced · 0 pending", so waitForSynced alone does not prove the upload.
+ */
+export async function waitForServerTransaction(userId: string, name: string): Promise<{ id: string; name: string; note: string }> {
+  await expect.poll(() => serverTransactions(userId, name).length, { timeout: 30_000 }).toBe(1);
+  return serverTransactions(userId, name)[0];
 }
 
 export function serverTransactionCount(userId: string): number {

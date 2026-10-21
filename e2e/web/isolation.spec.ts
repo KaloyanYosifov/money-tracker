@@ -1,4 +1,4 @@
-import { resetData, WEB_URL } from "../support/stack.ts";
+import { WEB_URL } from "../support/stack.ts";
 import {
   addTransaction,
   expect,
@@ -7,13 +7,11 @@ import {
   newAppContext,
   newUser,
   serverTransactionById,
-  serverTransactions,
   test,
   transactionRow,
+  waitForServerTransaction,
   waitForSynced,
 } from "./fixtures.ts";
-
-test.beforeAll(() => resetData());
 
 test("user B never sees the rows of user A and cannot change them", async ({ browser, page }) => {
   const userA = await newUser();
@@ -23,8 +21,7 @@ test("user B never sees the rows of user A and cannot change them", async ({ bro
   await waitForSynced(page);
   await addTransaction(page, { type: "expense", amount: "99", name: "Secret of A", category: "Gifts" });
   await waitForSynced(page);
-  const [rowA] = serverTransactions(userA.userId, "Secret of A");
-  expect(rowA).toBeDefined();
+  const rowA = await waitForServerTransaction(userA.userId, "Secret of A");
 
   const b = await newAppContext(browser);
   const tokenB = await logIn(b.page, userB);

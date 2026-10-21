@@ -11,11 +11,18 @@ function isTextInput(target: EventTarget | null): boolean {
   return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }
 
+function isControl(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement) || isTextInput(target)) return false;
+  const role = target.getAttribute("role") ?? "";
+  return target.tagName === "BUTTON" || ["button", "tab", "radio", "switch", "checkbox", "menuitem"].includes(role);
+}
+
 /** Runs the matching handler and returns true if the key was used. */
 export function handleShortcut(event: KeyboardEvent, handlers: Shortcuts): boolean {
   if (event.ctrlKey || event.metaKey || event.altKey) return false;
 
-  if (event.key === "Enter" && !event.shiftKey && handlers.save) {
+  // Enter on a focused button (Delete, Cancel) belongs to that button, not to save.
+  if (event.key === "Enter" && !event.shiftKey && handlers.save && !isControl(event.target)) {
     handlers.save();
     return true;
   }
@@ -52,7 +59,9 @@ export function useShortcuts(handlers: Shortcuts): void {
     const onKeyDown = (event: KeyboardEvent) => {
       if (handleShortcut(event, current.current)) event.preventDefault();
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    // Capture phase: react-native-web's TextInput stops the propagation of every keydown,
+    // so a bubble listener never sees Enter (save) or Escape (cancel) in a form field.
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
   }, []);
 }

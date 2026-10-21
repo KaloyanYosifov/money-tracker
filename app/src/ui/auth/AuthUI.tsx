@@ -111,7 +111,7 @@ export function AuthButton({
       testID={testID}
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ disabled: !!disabled }}
+      accessibilityState={{ disabled: !!disabled }} aria-disabled={!!disabled}
       disabled={disabled}
       onPress={onPress}
       style={[styles.button, { backgroundColor: theme.accent }, disabled && styles.disabled]}
@@ -139,7 +139,7 @@ export function AuthCheckbox({ label, checked, onChange }: { label: string; chec
     <Pressable
       accessibilityRole="checkbox"
       accessibilityLabel={label}
-      accessibilityState={{ checked }}
+      accessibilityState={{ checked }} aria-checked={checked}
       onPress={() => onChange(!checked)}
       style={styles.checkboxRow}
     >

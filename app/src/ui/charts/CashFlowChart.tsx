@@ -71,7 +71,7 @@ export function CashFlowChart({ points, colors, formatAmount, spokenAmount, heig
             testID={`cash-flow-point-${i}`}
             accessibilityRole="button"
             accessibilityLabel={`${p.label}: income ${spokenAmount(p.income)}, expense ${spokenAmount(p.expense)}`}
-            accessibilityState={{ selected: selected === i }}
+            accessibilityState={{ selected: selected === i }} aria-selected={selected === i}
             onPress={() => setSelected(i)}
             style={[styles.hit, { left: x(i) - hitWidth / 2, width: hitWidth }]}
           />

@@ -93,7 +93,7 @@ function OptionMenu({
               key={option.value}
               accessibilityRole="menuitem"
               accessibilityLabel={option.label}
-              accessibilityState={{ selected: option.selected }}
+              accessibilityState={{ selected: option.selected }} aria-selected={option.selected}
               onPress={() => onSelect(option.value)}
               style={[styles.menuItem, { borderTopColor: theme.line }]}
             >

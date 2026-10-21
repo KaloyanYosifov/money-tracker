@@ -22,7 +22,7 @@ export function SegmentedControl<T extends string>({ options, value, onChange, t
             key={option.value}
             accessibilityRole="tab"
             accessibilityLabel={option.label}
-            accessibilityState={{ selected }}
+            accessibilityState={{ selected }} aria-selected={selected}
             onPress={() => onChange(option.value)}
             style={(state) => [
               styles.item,

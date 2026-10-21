@@ -61,7 +61,7 @@ export function PeriodPicker({ visible, kind, period, settings, onSelect, onClos
             key={option.kind}
             accessibilityRole="button"
             accessibilityLabel={option.label}
-            accessibilityState={{ selected: option.kind === kind }}
+            accessibilityState={{ selected: option.kind === kind }} aria-selected={option.kind === kind}
             onPress={() => onSelect(option.kind, periodFor(anchor, option.kind, settings))}
             style={itemStyle}
           >
@@ -73,7 +73,7 @@ export function PeriodPicker({ visible, kind, period, settings, onSelect, onClos
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Custom"
-          accessibilityState={{ selected: kind === "custom", expanded: custom }}
+          accessibilityState={{ selected: kind === "custom", expanded: custom }} aria-selected={kind === "custom"} aria-expanded={custom}
           onPress={() => setCustom(true)}
           style={itemStyle}
         >
