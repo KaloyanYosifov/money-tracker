@@ -45,7 +45,7 @@ describe("accounts and categories", () => {
     });
     expect(op(ops, "accounts", importId("account", 3, USER_ID))?.data.sort_order).toBe(3);
     expect(op(ops, "accounts", importId("account", 4, USER_ID))?.data.sort_order).toBe(4);
-    expect(counts.accounts).toBe(3);
+    expect(counts.accounts).toBe(4);
   });
 
   it("uses the existing account for a match, and gives no op for a skip", () => {
@@ -238,8 +238,23 @@ describe("transactions", () => {
     expect(op(ops, "transactions", importId("transfer", 201, USER_ID))).toBeUndefined();
   });
 
+  it("puts rows without an account in a new archived account", () => {
+    const { ops } = plan();
+    const id = importId("account", "none", USER_ID);
+    expect(op(ops, "accounts", id)?.data).toMatchObject({ name: "No account", archived_at: "2026-10-22T00:00:00Z", sort_order: 5 });
+    expect(transactionWithExternalId(ops, "st:120")?.data.account_id).toBe(id);
+  });
+
+  it("does not import an unpaired transfer half without an account", () => {
+    const source = sourceFixture();
+    source.transactions.push(row({ Id: 280, Type: "Transfer", Amount: -5, ProfileId: null, CategoryId: 14 }));
+    expect(transactionWithExternalId(plan(source).ops, "st:280")).toBeUndefined();
+  });
+
   it("skips or maps a row without an account", () => {
-    const skipped = plan();
+    const skipped = plan(sourceFixture(), (m) => {
+      m.rows_without_account = { action: "skip" };
+    });
     expect(skipped.problems).toContainEqual(expect.objectContaining({ kind: "no_account", sourceIds: [120] }));
     expect(transactionWithExternalId(skipped.ops, "st:120")).toBeUndefined();
 

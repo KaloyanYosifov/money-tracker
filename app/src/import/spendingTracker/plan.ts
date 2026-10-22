@@ -1,5 +1,6 @@
 import { occurrenceId } from "../../domain/ids.ts";
 import { occurrenceDates, type RecurrenceRule } from "../../domain/recurrence.ts";
+import { PALETTE } from "../../ui/palette.ts";
 import type { RecurringRule } from "../../generated/schema.ts";
 import { cleanName, colorFor, iconFor, importId, splitNote, ticksToDate, toMinor } from "./convert.ts";
 import { categoryType, findCategoryTarget, findTarget, rowCategory } from "./mapping.ts";
@@ -167,8 +168,25 @@ export function buildPlan(source: SourceData, mapping: Mapping, existing: Existi
   const carryCategories = new Set(source.categories.filter((c) => c.Type === "Carry").map((c) => c.Id));
 
   let withoutAccount: string | undefined;
-  if (mapping.rows_without_account.action === "match") {
-    withoutAccount = resolve(existing.accounts, mapping.rows_without_account.target);
+  const without = mapping.rows_without_account;
+  if (without.action === "match") {
+    withoutAccount = resolve(existing.accounts, without.target);
+  } else if (without.action === "create") {
+    withoutAccount = importId("account", "none", userId);
+    accountOps.push({
+      op: "PUT",
+      table: "accounts",
+      id: withoutAccount,
+      data: {
+        user_id: userId,
+        name: cleanName(without.name),
+        color: PALETTE[PALETTE.length - 1].hex,
+        sort_order: accountSort++,
+        opening_balance_minor: 0,
+        archived_at: `${today}T00:00:00Z`,
+      },
+    });
+    counts.accounts += 1;
   }
   const accountFor = (profileId: number | null) =>
     profileId === null ? withoutAccount : accountIds.get(profileId);
@@ -317,7 +335,9 @@ export function buildPlan(source: SourceData, mapping: Mapping, existing: Existi
       if (!pairs) {
         const type = t.Amount < 0 ? "expense" : "income";
         const categoryId = unpairedCategory(type);
-        const accountId = accountFor(t.ProfileId);
+        // A half with no account stays out: Spending Tracker counts it as a
+        // transfer, so it is in no monthly total there.
+        const accountId = t.ProfileId === null ? undefined : accountFor(t.ProfileId);
         const amount = toMinor(t.Amount, currency);
         const imported = categoryId !== undefined && accountId !== undefined && amount > 0;
         problems.push({

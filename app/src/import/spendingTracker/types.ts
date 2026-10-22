@@ -94,7 +94,14 @@ export interface Mapping {
   categories: Record<string, CategoryEntry>;
   /** Source transaction IDs of the Carry rows that are opening balances. */
   opening_balances: number[];
-  rows_without_account: { action: "skip" } | { action: "match"; target: string };
+  /**
+   * Rows with no ProfileId. create puts them in a new archived account, so
+   * they count in their month but not in Carry Over or the balances.
+   */
+  rows_without_account:
+    | { action: "skip" }
+    | { action: "match"; target: string }
+    | { action: "create"; name: string };
   /**
    * Transfer rows with no partner row. import makes an expense of a negative
    * row and income of a positive row, in categories with these names.

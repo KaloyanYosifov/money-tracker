@@ -83,6 +83,7 @@ export function findCategoryTarget(
 }
 
 export const UNPAIRED_EXPENSE = "General";
+export const NO_ACCOUNT = "No account";
 
 /** The earliest Carry row of each profile. Rows on the same date go by the lower ID. */
 function proposeOpeningBalances(source: SourceData): number[] {
@@ -147,7 +148,9 @@ export function proposeMapping(source: SourceData, existing: Existing): Mapping 
     accounts,
     categories,
     opening_balances,
-    rows_without_account: { action: "skip" },
+    rows_without_account: source.transactions.some((t) => t.ProfileId === null && t.Type !== "Transfer")
+      ? { action: "create", name: NO_ACCOUNT }
+      : { action: "skip" },
     unpaired_transfers: { action: "import", expense_category: UNPAIRED_EXPENSE, income_category: CARRY_TARGET },
     carry_adjustments: { action: "import", category: CARRY_TARGET },
   };
@@ -248,6 +251,7 @@ export function validateMapping(source: SourceData, mapping: Mapping, existing: 
   }
 
   const without = mapping.rows_without_account;
+  if (without.action === "create" && cleanName(without.name) === "") errors.push("rows_without_account: the name is empty");
   if (without.action === "match") {
     const result = findTarget(existing.accounts, without.target);
     if ("error" in result) errors.push(`rows_without_account: target ${result.error}`);

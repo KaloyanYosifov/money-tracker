@@ -103,8 +103,14 @@ describe("proposeMapping", () => {
     });
   });
 
-  it("skips rows without an account", () => {
-    expect(proposeMapping(sourceFixture(), existingFixture()).rows_without_account).toEqual({ action: "skip" });
+  it("creates an account for rows without an account, or skips when there are none", () => {
+    expect(proposeMapping(sourceFixture(), existingFixture()).rows_without_account).toEqual({
+      action: "create",
+      name: "No account",
+    });
+    const source = sourceFixture();
+    source.transactions = source.transactions.filter((t) => t.ProfileId !== null);
+    expect(proposeMapping(source, existingFixture()).rows_without_account).toEqual({ action: "skip" });
   });
 });
 
