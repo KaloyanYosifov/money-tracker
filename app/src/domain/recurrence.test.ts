@@ -48,6 +48,16 @@ describe("occurrenceDates", () => {
     ]);
   });
 
+  it("repeats quarterly from the start date and clamps the day like monthly", () => {
+    expect(occurrenceDates(rule("quarterly", "2026-11-30"), "2027-11-30").dates).toEqual([
+      "2026-11-30",
+      "2027-02-28",
+      "2027-05-30",
+      "2027-08-30",
+      "2027-11-30",
+    ]);
+  });
+
   it("uses 28 Feb for a yearly rule from 29 Feb in non-leap years", () => {
     expect(occurrenceDates(rule("yearly", "2024-02-29"), "2028-12-31").dates).toEqual([
       "2024-02-29",

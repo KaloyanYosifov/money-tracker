@@ -65,7 +65,17 @@ func ApplyOp(ctx context.Context, tx pgx.Tx, userID string, op schema.UploadOp) 
 			}
 		}
 	}
-	if err != nil || res.Status == Rejected {
+	// A DELETE of another batch can commit while this op waits for the row
+	// lock. The write then sees no row and inserts it again (PUT) or does not
+	// find it (PATCH). The tombstone is visible now, and delete wins.
+	if err == nil && op.Op != schema.UploadOpOpDELETE && (res.Status == Applied || res.Code == "not_found") {
+		var deleted bool
+		deleted, err = tombstoned(ctx, sp, table, op.ID)
+		if deleted {
+			res = Result{Status: Ignored}
+		}
+	}
+	if err != nil || res.Status != Applied {
 		if rbErr := sp.Rollback(ctx); rbErr != nil && err == nil {
 			err = fmt.Errorf("rollback savepoint: %w", rbErr)
 		}
@@ -110,12 +120,9 @@ func applyOp(ctx context.Context, tx pgx.Tx, userID, table string, cols []string
 		return applyDelete(ctx, tx, userID, table, op.ID)
 	}
 
-	var deleted bool
-	err := tx.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM deleted_records WHERE table_name = $1 AND id = $2)`,
-		table, op.ID).Scan(&deleted)
+	deleted, err := tombstoned(ctx, tx, table, op.ID)
 	if err != nil {
-		return Result{}, fmt.Errorf("check tombstone: %w", err)
+		return Result{}, err
 	}
 	if deleted {
 		return Result{Status: Ignored}, nil
@@ -159,6 +166,20 @@ func applyOp(ctx context.Context, tx pgx.Tx, userID, table string, cols []string
 		}
 	}
 
+	if typ, ok := data["type"].(string); ok && table == "categories" {
+		var used bool
+		err := tx.QueryRow(ctx,
+			`SELECT EXISTS (SELECT 1 FROM transactions WHERE user_id = $1 AND category_id = $2 AND type <> $3)
+			     OR EXISTS (SELECT 1 FROM recurring_rules WHERE user_id = $1 AND category_id = $2 AND type <> $3)`,
+			userID, op.ID, typ).Scan(&used)
+		if err != nil {
+			return Result{}, fmt.Errorf("check category use: %w", err)
+		}
+		if used {
+			return reject("invalid_category_type", "records of the other type use this category"), nil
+		}
+	}
+
 	// Only whitelisted column names reach the SQL text. The schema already
 	// rejects other properties, so this is a second guard.
 	var set []string
@@ -174,12 +195,29 @@ func applyOp(ctx context.Context, tx pgx.Tx, userID, table string, cols []string
 	}
 
 	if op.Op == schema.UploadOpOpPUT {
-		return put(ctx, tx, userID, table, op.ID, set, payload)
+		// A recurring occurrence has a UUIDv5 from the rule and the date, so
+		// each device makes the same ID. A PUT of an occurrence that exists
+		// keeps the stored row, so that it does not undo an edit from
+		// another device. An import sets external_id, and a second import
+		// updates the rows of the first one, so its PUT writes the row.
+		keep := table == "transactions" && data["source"] == "recurring" && data["external_id"] == nil
+		return put(ctx, tx, userID, table, op.ID, set, payload, keep)
 	}
 	return patch(ctx, tx, userID, table, op.ID, set, payload)
 }
 
-func put(ctx context.Context, tx pgx.Tx, userID, table, id string, set []string, payload []byte) (Result, error) {
+func tombstoned(ctx context.Context, tx pgx.Tx, table, id string) (bool, error) {
+	var deleted bool
+	err := tx.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM deleted_records WHERE table_name = $1 AND id = $2)`,
+		table, id).Scan(&deleted)
+	if err != nil {
+		return false, fmt.Errorf("check tombstone: %w", err)
+	}
+	return deleted, nil
+}
+
+func put(ctx context.Context, tx pgx.Tx, userID, table, id string, set []string, payload []byte, keepExisting bool) (Result, error) {
 	t := pgx.Identifier{table}.Sanitize()
 	insertCols := []string{"id", "user_id"}
 	selectCols := []string{"$2::uuid", "$3::uuid"}
@@ -191,16 +229,31 @@ func put(ctx context.Context, tx pgx.Tx, userID, table, id string, set []string,
 		updates = append(updates, q+" = EXCLUDED."+q)
 	}
 	updates = append(updates, "updated_at = now()")
+	conflict := fmt.Sprintf("DO UPDATE SET %s WHERE %s.user_id = $3::uuid", strings.Join(updates, ", "), t)
+	if keepExisting {
+		conflict = "DO NOTHING"
+	}
 	sql := fmt.Sprintf(
 		`INSERT INTO %[1]s (%[2]s)
 		 SELECT %[3]s FROM jsonb_populate_record(NULL::%[1]s, $1::jsonb) AS r
-		 ON CONFLICT (id) DO UPDATE SET %[4]s WHERE %[1]s.user_id = $3::uuid
+		 ON CONFLICT (id) %[4]s
 		 RETURNING id`,
-		t, strings.Join(insertCols, ", "), strings.Join(selectCols, ", "), strings.Join(updates, ", "))
+		t, strings.Join(insertCols, ", "), strings.Join(selectCols, ", "), conflict)
 
 	var got string
 	err := tx.QueryRow(ctx, sql, string(payload), id, userID).Scan(&got)
 	if errors.Is(err, pgx.ErrNoRows) {
+		if keepExisting {
+			var own bool
+			err := tx.QueryRow(ctx, fmt.Sprintf(`SELECT EXISTS (SELECT 1 FROM %s WHERE id = $1 AND user_id = $2)`, t), id, userID).
+				Scan(&own)
+			if err != nil {
+				return Result{}, fmt.Errorf("check owner: %w", err)
+			}
+			if own {
+				return Result{Status: Applied}, nil
+			}
+		}
 		return reject("forbidden", "the record belongs to another user"), nil
 	}
 	if err != nil {

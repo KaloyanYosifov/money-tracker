@@ -11,6 +11,11 @@ function isTextInput(target: EventTarget | null): boolean {
   return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }
 
+/** A multi-line field: Enter types a new line there. react-native-web renders a multiline TextInput as a textarea. */
+function isMultiline(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && (target.isContentEditable || target.tagName === "TEXTAREA");
+}
+
 function isControl(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement) || isTextInput(target)) return false;
   const role = target.getAttribute("role") ?? "";
@@ -19,10 +24,22 @@ function isControl(target: EventTarget | null): boolean {
 
 /** Runs the matching handler and returns true if the key was used. */
 export function handleShortcut(event: KeyboardEvent, handlers: Shortcuts): boolean {
+  // Cmd+Enter or Ctrl+Enter saves from anywhere, also from a multi-line field.
+  if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && !event.altKey && handlers.save) {
+    handlers.save();
+    return true;
+  }
   if (event.ctrlKey || event.metaKey || event.altKey) return false;
 
   // Enter on a focused button (Delete, Cancel) belongs to that button, not to save.
-  if (event.key === "Enter" && !event.shiftKey && handlers.save && !isControl(event.target)) {
+  // Enter in a multi-line field (Note) types a new line.
+  if (
+    event.key === "Enter" &&
+    !event.shiftKey &&
+    handlers.save &&
+    !isControl(event.target) &&
+    !isMultiline(event.target)
+  ) {
     handlers.save();
     return true;
   }

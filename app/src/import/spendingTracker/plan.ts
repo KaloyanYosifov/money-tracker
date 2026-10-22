@@ -1,5 +1,5 @@
 import { occurrenceId } from "../../domain/ids.ts";
-import { occurrenceDates, type RecurrenceRule } from "../../domain/recurrence.ts";
+import { occurrenceDates } from "../../domain/recurrence.ts";
 import { PALETTE } from "../../ui/palette.ts";
 import type { RecurringRule } from "../../generated/schema.ts";
 import { cleanName, colorFor, iconFor, importId, splitNote, ticksToDate, toMinor } from "./convert.ts";
@@ -28,26 +28,10 @@ const FREQUENCIES: Record<string, RecurringRule["frequency"]> = {
   "Weekly/1": "weekly",
   "Weekly/2": "biweekly",
   "Monthly/1": "monthly",
+  "Monthly/3": "quarterly",
+  "Monthly/12": "yearly",
   "Yearly/1": "yearly",
 };
-
-function addDays(date: string, days: number): string {
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
-/**
- * The first scheduled date of a rule after `after`, on the day of the month of
- * the start date, so that later dates keep the schedule. Null if the rule ends first.
- */
-function nextStart(rule: RecurrenceRule, after: string): string | null {
-  const day = rule.start_date.slice(8);
-  const sameDay = rule.frequency === "monthly" || rule.frequency === "yearly";
-  // Two years cover the next date with the same day for each frequency.
-  const dates = occurrenceDates(rule, addDays(after, 2 * 366)).dates;
-  return dates.find((d) => d > after && (!sameDay || d.slice(8) === day)) ?? null;
-}
 
 /** The month after a YYYY-MM month. */
 function nextMonth(month: string): string {
@@ -57,6 +41,11 @@ function nextMonth(month: string): string {
 
 function nextSortOrder(records: { sort_order: number }[]): number {
   return records.reduce((max, r) => Math.max(max, r.sort_order + 1), 0);
+}
+
+/** The sort order of a record that an earlier import created, so that a second import keeps it. */
+function keptSortOrder(records: { id: string; sort_order: number }[], id: string): number | undefined {
+  return records.find((r) => r.id === id)?.sort_order;
 }
 
 function resolve(records: { id: string; name: string; archived: boolean }[], name: string | undefined): string | undefined {
@@ -123,7 +112,7 @@ export function buildPlan(source: SourceData, mapping: Mapping, existing: Existi
           user_id: userId,
           name: cleanName(entry.name),
           color: entry.color ?? colorFor(p.Colour, index),
-          sort_order: accountSort++,
+          sort_order: keptSortOrder(existing.accounts, id) ?? accountSort++,
           opening_balance_minor: balance,
         },
       });
@@ -159,7 +148,7 @@ export function buildPlan(source: SourceData, mapping: Mapping, existing: Existi
           name: cleanName(entry.name),
           icon: entry.icon ?? iconFor(c.Icon),
           color: entry.color ?? colorFor(c.Colour, index),
-          sort_order: categorySort++,
+          sort_order: keptSortOrder(existing.categories, id) ?? categorySort++,
         },
       });
       counts.categories += 1;
@@ -181,7 +170,7 @@ export function buildPlan(source: SourceData, mapping: Mapping, existing: Existi
         user_id: userId,
         name: cleanName(without.name),
         color: PALETTE[PALETTE.length - 1].hex,
-        sort_order: accountSort++,
+        sort_order: keptSortOrder(existing.accounts, withoutAccount) ?? accountSort++,
         opening_balance_minor: 0,
         archived_at: `${today}T00:00:00Z`,
       },
@@ -255,6 +244,14 @@ export function buildPlan(source: SourceData, mapping: Mapping, existing: Existi
       start_date: ticksToDate(r.Date),
       end_date: r.EndDate === null ? null : ticksToDate(r.EndDate),
     };
+    if (rule.end_date !== null && rule.end_date < rule.start_date) {
+      problems.push({
+        kind: "unsupported_recurrence",
+        sourceIds: [r.Id],
+        message: `rule ${r.Id}: ends on ${rule.end_date}, before it starts on ${rule.start_date}; its rows import as normal rows`,
+      });
+      continue;
+    }
 
     // Linked rows after today also become occurrences. The generator skips an
     // occurrence ID that already exists, so it creates no second row on that date.
@@ -267,23 +264,20 @@ export function buildPlan(source: SourceData, mapping: Mapping, existing: Existi
       if (scheduled.has(date) && !claimed.has(date)) claimed.set(date, t.Id);
     }
 
-    // The user deleted a past occurrence, and the generator creates a row for
-    // each missing date. So the rule starts after the last missing date, and
-    // the linked rows before that start import as normal rows.
-    const missing = occurrenceDates(rule, today).dates.filter((date) => !claimed.has(date));
+    // The old app created the occurrences up to the date of the rule's latest
+    // row. A scheduled date before it with no row was deleted by the user, so
+    // generated_through stops the app from creating it again. The app creates
+    // the due dates after it, which the old app had not created yet. A rule
+    // with no rows lost all its past dates, up to today.
+    const latest = rows.reduce((max, t) => (ticksToDate(t.Date) > max ? ticksToDate(t.Date) : max), "");
+    const created = occurrenceDates(rule, latest !== "" && latest < today ? latest : today).dates;
+    const missing = created.filter((date) => !claimed.has(date));
     if (missing.length > 0) {
-      const gap = missing[missing.length - 1];
-      const start = nextStart(rule, gap);
       problems.push({
         kind: "missing_occurrence",
         sourceIds: [r.Id],
-        message: start
-          ? `rule ${r.Id}: no row on ${missing.join(", ")}; the rule starts on ${start}, and the rows before it import as normal rows`
-          : `rule ${r.Id}: no row on ${missing.join(", ")}; the rule has no date after it, so its rows import as normal rows`,
+        message: `rule ${r.Id}: no row on ${missing.join(", ")}; the app does not create these dates again`,
       });
-      if (!start) continue;
-      rule.start_date = start;
-      for (const date of [...claimed.keys()]) if (date < start) claimed.delete(date);
     }
 
     for (const [date, id] of claimed) occurrences.set(id, { ruleId, date });
@@ -291,7 +285,7 @@ export function buildPlan(source: SourceData, mapping: Mapping, existing: Existi
       op: "PUT",
       table: "recurring_rules",
       id: ruleId,
-      data: { ...values, type: r.Type.toLowerCase(), ...rule },
+      data: { ...values, type: r.Type.toLowerCase(), ...rule, generated_through: created.at(-1) ?? null },
     });
     counts.recurring_rules += 1;
   }

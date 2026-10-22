@@ -160,6 +160,11 @@ func (s *Store) ResetTOTP(ctx context.Context, email string) (string, error) {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// FOR UPDATE waits for a running token rotation (see auth.RefreshStore),
+	// so that the revoke below also ends the new token.
+	if _, err := tx.Exec(ctx, `SELECT 1 FROM users WHERE email = $1 FOR UPDATE`, strings.TrimSpace(email)); err != nil {
+		return "", fmt.Errorf("lock user: %w", err)
+	}
 	var userID, userEmail, role string
 	err = tx.QueryRow(ctx,
 		`UPDATE users SET totp_secret_enc = NULL, totp_enabled = false, totp_last_step = NULL

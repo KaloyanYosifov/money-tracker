@@ -10,7 +10,7 @@ import { ReportsPage } from "./reports";
 export default function TransactionsScreen() {
   const router = useRouter();
   const { period, shift } = usePeriod();
-  const { categoryId, accountId } = useLocalSearchParams<{ categoryId?: string; accountId?: string }>();
+  const { categoryId, accountId, tap } = useLocalSearchParams<{ categoryId?: string; accountId?: string; tap?: string }>();
   const mode = useLayoutMode();
 
   if (reportsReplacesPage(mode, "transactions")) return <ReportsPage variant="landscape" />;
@@ -28,7 +28,7 @@ export default function TransactionsScreen() {
   return (
     <TransactionList
       // Spending opens this tab with new filter params. A new key starts the list with them.
-      key={`${accountId ?? ""}:${categoryId ?? ""}`}
+      key={`${accountId ?? ""}:${categoryId ?? ""}:${tap ?? ""}`}
       period={period}
       // The narrow browser uses the phone layout, with the bottom toolbar.
       layout={mode === "sidebar" ? "web" : "phone"}

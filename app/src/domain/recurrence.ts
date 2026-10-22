@@ -24,6 +24,8 @@ function daysInMonth(year: number, month: number): number {
   return new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
 }
 
+const MONTHS = { monthly: 1, quarterly: 3, yearly: 12 } as const;
+
 // Occurrence n is computed from the start date, not from occurrence n-1, so a short month does not move later dates.
 function nthDate(frequency: RecurrenceRule["frequency"], start: string, n: number): string {
   const { year, month, day } = parse(start);
@@ -35,8 +37,9 @@ function nthDate(frequency: RecurrenceRule["frequency"], start: string, n: numbe
     case "biweekly":
       return format(new Date(Date.UTC(year, month, day + 14 * n)));
     case "monthly":
+    case "quarterly":
     case "yearly": {
-      const first = new Date(Date.UTC(year, month + (frequency === "monthly" ? n : 12 * n), 1));
+      const first = new Date(Date.UTC(year, month + MONTHS[frequency] * n, 1));
       const y = first.getUTCFullYear();
       const m = first.getUTCMonth();
       return format(new Date(Date.UTC(y, m, Math.min(day, daysInMonth(y, m)))));

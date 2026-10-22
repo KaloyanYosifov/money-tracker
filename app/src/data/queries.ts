@@ -1,6 +1,7 @@
 import { useQuery } from "@powersync/react";
 
 import type { Transaction } from "../generated/schema";
+import { useUndo } from "./UndoProvider";
 import { shiftPeriod, today as localToday, type Period, type PeriodKind, type PeriodSettings } from "../domain/period";
 
 // Each query is SQL plus its parameters. The SQL is built only from the fixed
@@ -24,11 +25,24 @@ export interface PeriodTotals {
   balance: number;
 }
 
+export interface TotalsFilters {
+  categoryId?: string | null;
+  type?: TransactionType | null;
+  search?: string;
+  /** Rows to leave out, for example the pending deletes that the lists hide. */
+  excludeIds?: readonly string[];
+}
+
+// Leaves out the rows with the ids in a JSON array. Takes one parameter.
+const notExcluded = "t.id NOT IN (SELECT value FROM json_each(?))";
+
 /**
  * Totals for one account, or for all accounts when accountId is null.
  * Transfers count only for one account, as transfer_in and transfer_out.
+ * The category, type and search filters work as in transactionList.
  */
-export function periodTotals(range: Period, accountId: string | null, today: string): SqlQuery {
+export function periodTotals(range: Period, accountId: string | null, today: string, filters: TotalsFilters = {}): SqlQuery {
+  const list = listFilters(filters);
   return {
     sql: `SELECT income, expense, transfer_in, transfer_out,
         income - expense + transfer_in - transfer_out AS balance
@@ -41,8 +55,21 @@ export function periodTotals(range: Period, accountId: string | null, today: str
         FROM transactions t
         WHERE t.date BETWEEN ? AND ? AND ${visible}
           AND (? IS NULL OR t.account_id = ? OR t.to_account_id = ?)
+          AND ${list.sql}
+          AND ${notExcluded}
       )`,
-    parameters: [accountId, accountId, range.start, range.end, today, accountId, accountId, accountId],
+    parameters: [
+      accountId,
+      accountId,
+      range.start,
+      range.end,
+      today,
+      accountId,
+      accountId,
+      accountId,
+      ...list.parameters,
+      JSON.stringify(filters.excludeIds ?? []),
+    ],
   };
 }
 
@@ -61,6 +88,7 @@ export function categoryTotals(
   accountId: string | null,
   type: "expense" | "income",
   today: string,
+  excludeIds: readonly string[] = [],
 ): SqlQuery {
   return {
     sql: `SELECT c.id AS category_id, c.name, c.icon, c.color, c.archived_at, SUM(t.amount_minor) AS total
@@ -68,9 +96,10 @@ export function categoryTotals(
       JOIN categories c ON c.id = t.category_id
       WHERE t.type = ? AND t.date BETWEEN ? AND ? AND ${visible}
         AND (? IS NULL OR t.account_id = ?)
+        AND ${notExcluded}
       GROUP BY c.id
       ORDER BY total DESC, c.name COLLATE NOCASE, c.id`,
-    parameters: [type, range.start, range.end, today, accountId, accountId],
+    parameters: [type, range.start, range.end, today, accountId, accountId, JSON.stringify(excludeIds)],
   };
 }
 
@@ -98,8 +127,9 @@ export interface CarryOver {
 }
 
 /**
- * One balance per non-archived account from all rows before `start`, also when
- * it is zero. accountIds null means all accounts.
+ * One balance per account from all rows before `start`, also when it is zero.
+ * Archived accounts are included, so their money stays in All Accounts.
+ * accountIds null means all accounts.
  */
 export function carryOver(start: string, accountIds: string[] | null, today: string): SqlQuery {
   const ids = accountIds === null ? null : JSON.stringify(accountIds);
@@ -108,8 +138,7 @@ export function carryOver(start: string, accountIds: string[] | null, today: str
       SELECT a.id AS account_id, a.name AS account_name, COALESCE(b.balance, 0) AS balance
       FROM accounts a
       LEFT JOIN balances b ON b.account_id = a.id
-      WHERE a.archived_at IS NULL
-        AND (? IS NULL OR a.id IN (SELECT value FROM json_each(?)))
+      WHERE (? IS NULL OR a.id IN (SELECT value FROM json_each(?)))
       ORDER BY a.sort_order, a.name COLLATE NOCASE, a.id`,
     parameters: [start, today, start, today, ids, ids],
   };
@@ -143,10 +172,12 @@ export interface TransactionListRow {
   recurring_rule_id: string | null;
 }
 
+// kind_rank is 0 for transactions and 1 for Carry Over rows. In the name and
+// amount sorts the Carry Over rows come first.
 const orderBy: Record<TransactionSort, string> = {
   date: "date DESC, kind_rank, name COLLATE NOCASE, id",
-  name: "name COLLATE NOCASE, date DESC, id",
-  amount: "amount_minor DESC, date DESC, id",
+  name: "kind_rank DESC, name COLLATE NOCASE, date DESC, id",
+  amount: "kind_rank DESC, amount_minor DESC, date DESC, id",
 };
 
 function likePattern(search: string): string {
@@ -154,9 +185,36 @@ function likePattern(search: string): string {
 }
 
 /**
+ * SQLite LIKE folds the case of ASCII letters only. For other scripts (for
+ * example Cyrillic) the search also tries the lower, upper, first-letter and
+ * title case forms of the term.
+ */
+function likePatterns(search: string): string[] {
+  const lower = search.toLocaleLowerCase();
+  const capitalize = (word: string) => word.charAt(0).toLocaleUpperCase() + word.slice(1);
+  const forms = [search, lower, search.toLocaleUpperCase(), capitalize(lower), lower.split(" ").map(capitalize).join(" ")];
+  return [...new Set(forms)].map(likePattern);
+}
+
+// The category, type and search conditions on the transactions t.
+function listFilters(filters: TotalsFilters): SqlQuery {
+  const categoryId = filters.categoryId ?? null;
+  const type = filters.type ?? null;
+  const term = (filters.search ?? "").trim();
+  return {
+    sql: `(? IS NULL OR t.category_id = ?)
+        AND (? IS NULL OR t.type = ?)
+        AND (? = '' OR EXISTS (SELECT 1 FROM json_each(?) p
+          WHERE t.name LIKE p.value ESCAPE '\\' OR t.note LIKE p.value ESCAPE '\\'))`,
+    parameters: [categoryId, categoryId, type, type, term, JSON.stringify(likePatterns(term))],
+  };
+}
+
+/**
  * The rows of one period. When carry_over is on and no category, type or search
- * filter is set, the list also has one virtual Carry Over row per non-archived
- * account with a balance that is not zero, dated range.start.
+ * filter is set, the list also has one virtual Carry Over row per account
+ * (archived accounts too, as in carryOver) with a balance that is not zero,
+ * dated range.start.
  * A limit of -1 returns all rows.
  */
 export function transactionList(
@@ -171,7 +229,7 @@ export function transactionList(
   const categoryId = filters.categoryId ?? null;
   const type = filters.type ?? null;
   const term = search.trim();
-  const pattern = likePattern(term);
+  const list = listFilters({ categoryId, type, search });
   return {
     sql: `WITH ${balancesCte}
       SELECT * FROM (
@@ -184,9 +242,7 @@ export function transactionList(
       LEFT JOIN accounts ta ON ta.id = t.to_account_id
       WHERE t.date BETWEEN ? AND ? AND ${visible}
         AND (? IS NULL OR t.account_id = ? OR t.to_account_id = ?)
-        AND (? IS NULL OR t.category_id = ?)
-        AND (? IS NULL OR t.type = ?)
-        AND (? = '' OR t.name LIKE ? ESCAPE '\\' OR t.note LIKE ? ESCAPE '\\')
+        AND ${list.sql}
       UNION ALL
       SELECT 'carryOver:' || a.id, 'carryOver', 1, CASE WHEN b.balance < 0 THEN 'expense' ELSE 'income' END,
         ABS(b.balance), (SELECT currency_code FROM user_settings LIMIT 1), ?,
@@ -194,7 +250,7 @@ export function transactionList(
         a.id, a.name, NULL, NULL, NULL
       FROM accounts a
       JOIN balances b ON b.account_id = a.id
-      WHERE a.archived_at IS NULL AND b.balance <> 0
+      WHERE b.balance <> 0
         AND EXISTS (SELECT 1 FROM user_settings WHERE carry_over = 1)
         AND (? IS NULL OR a.id = ?)
         AND ? IS NULL AND ? IS NULL AND ? = ''
@@ -205,9 +261,7 @@ export function transactionList(
       range.start, today, range.start, today,
       range.start, range.end, today,
       accountId, accountId, accountId,
-      categoryId, categoryId,
-      type, type,
-      term, pattern, pattern,
+      ...list.parameters,
       range.start,
       accountId, accountId,
       categoryId, type, term,
@@ -286,12 +340,25 @@ function useFirstRow<T>(query: SqlQuery) {
   return { ...result, data: result.data[0] ?? null };
 }
 
-export function usePeriodTotals(range: Period, accountId: string | null) {
-  return useFirstRow<PeriodTotals>(periodTotals(range, accountId, localToday()));
+export function usePeriodTotals(range: Period, accountId: string | null, filters?: TotalsFilters) {
+  return useFirstRow<PeriodTotals>(periodTotals(range, accountId, localToday(), filters));
 }
 
 export function useCategoryTotals(range: Period, accountId: string | null, type: "expense" | "income") {
   return useRows<CategoryTotal>(categoryTotals(range, accountId, type, localToday()));
+}
+
+// The Spending chalkboard and the transaction list use these two, so both leave out
+// the pending deletes (Undo) and show the same totals. They need an UndoProvider.
+
+export function useShownPeriodTotals(range: Period, accountId: string | null, filters: TotalsFilters = {}) {
+  const { hiddenIds } = useUndo();
+  return usePeriodTotals(range, accountId, { ...filters, excludeIds: [...hiddenIds] });
+}
+
+export function useShownCategoryTotals(range: Period, accountId: string | null, type: "expense" | "income") {
+  const { hiddenIds } = useUndo();
+  return useRows<CategoryTotal>(categoryTotals(range, accountId, type, localToday(), [...hiddenIds]));
 }
 
 export function useCarryOver(start: string, accountIds: string[] | null) {

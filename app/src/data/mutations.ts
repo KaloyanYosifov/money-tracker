@@ -2,6 +2,9 @@ import type { Category, UserSettings } from "../generated/schema";
 import { newId } from "../domain/ids";
 import { MAX_AMOUNT_MINOR } from "../domain/money";
 import {
+  DUPLICATE_ACCOUNT_MESSAGE,
+  DUPLICATE_CATEGORY_MESSAGE,
+  nameKey,
   validateAccount,
   validateCategory,
   validateRecurringRule,
@@ -123,7 +126,12 @@ export function saveTransaction(db: MutationDb, input: TransactionInput): Promis
   });
 }
 
-/** Saves a recurring rule, then generates its due occurrences up to today. */
+/**
+ * Saves a recurring rule, then generates its due occurrences up to today. An
+ * edit never changes generated_through: a new start_date or frequency applies
+ * to the dates after it, so no past occurrences are filled in, and an
+ * occurrence that the user deleted stays deleted.
+ */
 export async function saveRecurringRule(db: MutationDb, input: RecurringRuleInput, today: string): Promise<SaveResult> {
   const result = await db.writeTransaction(async (tx): Promise<SaveResult> => {
     const errors = validateRecurringRule(input, await categoryType(tx, input.category_id));
@@ -151,9 +159,35 @@ async function nextSortOrder(tx: SqlRunner, table: "categories" | "accounts"): P
   return row?.next ?? 0;
 }
 
+// A name must differ from the names of the other non-archived rows in `others`
+// (case-insensitive, trimmed). The check runs only for a new row or a changed
+// name or type, so an edit of other fields or a reorder still saves a row that
+// has a duplicate name after a restore.
+async function checkUniqueName(
+  tx: SqlRunner,
+  table: "categories" | "accounts",
+  input: { id?: string; name: string; type?: string },
+  message: string,
+  errors: FieldError[],
+) {
+  const key = nameKey(input.name);
+  const typeFilter = input.type === undefined ? "" : " AND type = ?";
+  const typeParameter = input.type === undefined ? [] : [input.type];
+  if (input.id) {
+    const stored = await tx.getOptional<{ name: string; type?: string }>(`SELECT * FROM ${table} WHERE id = ?`, [input.id]);
+    if (stored && nameKey(stored.name) === key && stored.type === input.type) return;
+  }
+  const others = await tx.getAll<{ name: string }>(
+    `SELECT name FROM ${table} WHERE archived_at IS NULL AND id <> ?${typeFilter}`,
+    [input.id ?? "", ...typeParameter],
+  );
+  if (others.some((row) => nameKey(row.name) === key)) errors.push({ field: "name", code: "invalid", message });
+}
+
 export function saveCategory(db: MutationDb, input: CategoryInput): Promise<SaveResult> {
   return db.writeTransaction(async (tx) => {
     const errors = validateCategory(input);
+    if (errors.length === 0) await checkUniqueName(tx, "categories", input, DUPLICATE_CATEGORY_MESSAGE, errors);
     if (errors.length > 0) return fail(errors);
 
     const values: Row = { type: input.type, name: input.name, icon: input.icon, color: input.color };
@@ -169,6 +203,9 @@ export function saveCategory(db: MutationDb, input: CategoryInput): Promise<Save
 export function saveAccount(db: MutationDb, input: AccountInput): Promise<SaveResult> {
   return db.writeTransaction(async (tx) => {
     const errors = validateAccount(input);
+    if (errors.length === 0) {
+      await checkUniqueName(tx, "accounts", { id: input.id, name: input.name }, DUPLICATE_ACCOUNT_MESSAGE, errors);
+    }
     if (errors.length > 0) return fail(errors);
 
     const values: Row = { name: input.name, color: input.color };

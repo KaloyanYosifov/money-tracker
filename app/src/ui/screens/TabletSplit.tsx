@@ -16,7 +16,8 @@ type Props = {
 /** iPad landscape: the chalkboard and the transaction list side by side. A category on the chalkboard filters the list. */
 export function TabletSplit({ period, onOpen, onAdd, onShift }: Props) {
   const { theme } = useScreenSettings();
-  const [filter, setFilter] = useState<{ categoryId: string; accountId: string | null } | null>(null);
+  // tap counts the presses, so the same category again restarts the list after the list cleared the filter.
+  const [filter, setFilter] = useState<{ categoryId: string; accountId: string | null; tap: number } | null>(null);
 
   return (
     <View style={styles.row}>
@@ -24,14 +25,16 @@ export function TabletSplit({ period, onOpen, onAdd, onShift }: Props) {
         <Chalkboard
           period={period}
           showRotateHint={false}
-          onCategoryPress={(categoryId, accountId) => setFilter({ categoryId, accountId })}
+          onCategoryPress={(categoryId, accountId) =>
+            setFilter((previous) => ({ categoryId, accountId, tap: (previous?.tap ?? 0) + 1 }))
+          }
           onAdd={onAdd}
         />
       </View>
       <View style={styles.pane}>
         <TransactionList
           // A new filter from the chalkboard starts the list with it.
-          key={filter ? `${filter.accountId ?? ""}:${filter.categoryId}` : "all"}
+          key={filter ? `${filter.accountId ?? ""}:${filter.categoryId}:${filter.tap}` : "all"}
           period={period}
           layout="phone"
           initialAccountId={filter?.accountId ?? null}

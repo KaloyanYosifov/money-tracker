@@ -322,3 +322,58 @@ describe("Web Locks", () => {
     expect(calledInLock).toBe(true);
   });
 });
+
+describe("a refresh that is in flight during signIn or signOut", () => {
+  it("does not sign the user in again after signOut", async () => {
+    mockStore.refreshToken = "refresh-user-1-0";
+    mockStore.lastUserId = "user-1";
+    api.refresh.mockResolvedValueOnce({ ok: true, value: tokens("user-1", 1) });
+    const { result } = await renderAuth();
+    await waitFor(() => expect(result.current.status).toBe("signedIn"));
+
+    let resolve!: (r: AuthResult<TokenResponse>) => void;
+    api.refresh.mockReturnValueOnce(new Promise((r) => (resolve = r)));
+    api.logout.mockResolvedValue({ ok: true, value: undefined });
+
+    let pending!: Promise<string | null>;
+    await act(async () => {
+      pending = result.current.refreshAccessToken();
+    });
+    await act(async () => result.current.signOut());
+    await act(async () => {
+      resolve({ ok: true, value: tokens("user-1", 2) });
+      await pending;
+    });
+
+    expect(result.current.status).toBe("signedOut");
+    expect(mockStore.refreshToken).toBeNull();
+    expect(mockStore.lastUserId).toBeNull();
+  });
+
+  it("does not drop the new login when the old refresh token is rejected late", async () => {
+    mockStore.refreshToken = "refresh-old";
+    mockStore.lastUserId = "user-1";
+    api.refresh.mockResolvedValueOnce({ ok: false, error: "refresh_invalid" });
+    const { result } = await renderAuth();
+    await waitFor(() => expect(result.current.status).toBe("reauthRequired"));
+
+    // The web always sends the cookie, so a refresh can start in reauthRequired.
+    mockStore.refreshToken = "refresh-old";
+    let resolve!: (r: AuthResult<TokenResponse>) => void;
+    api.refresh.mockReturnValueOnce(new Promise((r) => (resolve = r)));
+
+    let pending!: Promise<string | null>;
+    await act(async () => {
+      pending = result.current.getAccessToken();
+    });
+    await act(async () => result.current.signIn(tokens("user-1", 5)));
+    await act(async () => {
+      resolve({ ok: false, error: "refresh_invalid" });
+      await pending;
+    });
+
+    expect(result.current.status).toBe("signedIn");
+    expect(mockStore.refreshToken).toBe("refresh-user-1-5");
+    expect(await result.current.getAccessToken()).toBe("access-user-1-5");
+  });
+});

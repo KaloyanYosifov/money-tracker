@@ -6,10 +6,12 @@ import { archiveCategory, deleteCategory, restoreCategory, saveCategory } from "
 import { deleteSyncProblem, problemRecord, useSyncProblem } from "../../data/syncProblems";
 import { validateCategory } from "../../domain/validation";
 import type { Category, UserSettings } from "../../generated/schema";
+import { useShortcuts } from "../../hooks/useShortcuts";
 import { isHovered } from "../components/interaction";
 import { PaperBar } from "../components/PaperBar";
 import { SegmentedControl } from "../components/SegmentedControl";
 import { CategoryIcon, categoryIconKeys, categoryIcons, type CategoryIconKey } from "../icons/categoryIcons";
+import { useBottomInset } from "../nav/bottomInset";
 import type { ThemeColors } from "../theme";
 import {
   ColorPalette,
@@ -17,7 +19,9 @@ import {
   FormAction,
   FormField,
   FormHeader,
+  FormNote,
   formStyles,
+  keyboardAppearance,
   PALETTE,
   ReorderList,
   useScreenSettings,
@@ -157,6 +161,7 @@ function CategoryFormBody({
   problemId?: string;
   onClose: () => void;
 }) {
+  const bottomInset = useBottomInset();
   const db = usePowerSync();
   const [type, setType] = useState<CategoryType>(existing?.type ?? initialType);
   const [name, setName] = useState(existing?.name ?? "");
@@ -164,6 +169,9 @@ function CategoryFormBody({
   const [color, setColor] = useState(existing?.color ?? PALETTE[0].hex);
   const [nameTouched, setNameTouched] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  // A save error of the name from saveCategory / saveAccount, for example a duplicate name.
+  const [nameSaveError, setNameSaveError] = useState<string | null>(null);
 
   const input = { id: existing?.id, type, name, icon, color, sort_order: existing?.sort_order };
   const errors = validateCategory(input);
@@ -172,8 +180,11 @@ function CategoryFormBody({
   async function run(action: () => Promise<boolean>) {
     if (busy) return;
     setBusy(true);
+    setFailed(false);
     try {
       if (await action()) onClose();
+    } catch {
+      setFailed(true);
     } finally {
       setBusy(false);
     }
@@ -181,10 +192,22 @@ function CategoryFormBody({
 
   const save = () =>
     run(async () => {
-      const { ok } = await saveCategory(db, input);
-      if (ok && problemId) await deleteSyncProblem(db, problemId);
-      return ok;
+      const result = await saveCategory(db, input);
+      if (!result.ok) {
+        setNameSaveError(result.errors.find((e) => e.field === "name")?.message ?? null);
+        return false;
+      }
+      if (problemId) await deleteSyncProblem(db, problemId);
+      return true;
     });
+
+  // Web: Enter saves a valid form, Escape closes it.
+  useShortcuts({
+    save: () => {
+      if (errors.length === 0) void save();
+    },
+    cancel: onClose,
+  });
 
   return (
     <View style={[formStyles.screen, { backgroundColor: theme.paper }]}>
@@ -196,7 +219,18 @@ function CategoryFormBody({
         onSave={() => void save()}
         theme={theme}
       />
-      <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={formStyles.content}>
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        // iOS: the keyboard would cover the lower fields. The insets let them scroll above it.
+        automaticallyAdjustKeyboardInsets
+        contentContainerStyle={[formStyles.content, { paddingBottom: formStyles.content.paddingBottom + bottomInset }]}
+      >
+        {failed ? (
+          <Text allowFontScaling accessibilityRole="alert" style={[formStyles.error, { color: theme.listRed }]}>
+            Could not save. Try again.
+          </Text>
+        ) : null}
         {/* Existing transactions must keep a category of their own type. */}
         {used ? null : (
           <View style={formStyles.typeBar}>
@@ -205,17 +239,22 @@ function CategoryFormBody({
         )}
         <FormField
           label="Name"
-          error={nameTouched && nameError ? (nameError.code === "too_long" ? "Too long" : "Required") : undefined}
+          error={
+            nameSaveError ??
+            (nameTouched && nameError ? (nameError.code === "too_long" ? "Too long" : "Required") : undefined)
+          }
           theme={theme}
         >
           <TextInput
             allowFontScaling
             placeholder="Name"
             placeholderTextColor={theme.accent}
+            keyboardAppearance={keyboardAppearance(theme)}
             value={name}
             onChangeText={(text) => {
               setName(text);
               setNameTouched(true);
+              setNameSaveError(null);
             }}
             style={[formStyles.input, { color: theme.ink }]}
           />
@@ -278,6 +317,7 @@ function CategoryFormBody({
             onPress={() => void run(async () => (await deleteCategory(db, existing.id)).ok)}
           />
         ) : null}
+        {existing && used ? <FormNote text="Used by transactions: archive it instead of deleting." theme={theme} /> : null}
       </ScrollView>
     </View>
   );

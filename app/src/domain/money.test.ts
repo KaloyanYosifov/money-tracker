@@ -12,6 +12,24 @@ describe("parseAmount", () => {
     expect(parseAmount("12.34", "EUR", "bg-BG")).toBe(1234);
   });
 
+  it("accepts a separator without digits before or after it", () => {
+    expect(parseAmount(".5", "EUR")).toBe(50);
+    expect(parseAmount("5.", "EUR")).toBe(500);
+    expect(parseAmount(",5", "EUR", "bg-BG")).toBe(50);
+    expect(parseAmount("5,", "EUR", "bg-BG")).toBe(500);
+    expect(parseAmount(",5", "EUR", "en-IE")).toBe(50);
+    expect(parseAmount("5,", "EUR", "en-IE")).toBe(500);
+  });
+
+  it("rejects a separator without any digits", () => {
+    expect(parseAmount(".", "EUR")).toBeNull();
+    expect(parseAmount(",", "EUR", "bg-BG")).toBeNull();
+    expect(parseAmount("", "EUR")).toBeNull();
+    expect(parseAmount(".0", "EUR")).toBeNull();
+    expect(parseAmount("5..", "EUR")).toBeNull();
+    expect(parseAmount(".505", "EUR")).toBeNull();
+  });
+
   it("rejects zero, negative and non-numeric input", () => {
     expect(parseAmount("0")).toBeNull();
     expect(parseAmount("-5")).toBeNull();

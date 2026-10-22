@@ -2,6 +2,7 @@ import { StyleSheet } from "react-native";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 
 import { createTestDatabase, loadFixture, type TestDatabase } from "../../../test/sqlite";
+import { UndoProvider } from "../../data/UndoProvider";
 import { Chalkboard } from "./Chalkboard";
 
 let mockDb: TestDatabase;
@@ -75,7 +76,9 @@ function load(settings: Partial<typeof userSettings> = {}, extra: Record<string,
 
 function renderBoard(props: Partial<Parameters<typeof Chalkboard>[0]> = {}) {
   return render(
-    <Chalkboard period={october} locale="en-GB" onCategoryPress={jest.fn()} onAdd={jest.fn()} {...props} />,
+    <UndoProvider db={{ execute: jest.fn() }}>
+      <Chalkboard period={october} locale="en-GB" onCategoryPress={jest.fn()} onAdd={jest.fn()} {...props} />
+    </UndoProvider>,
   );
 }
 

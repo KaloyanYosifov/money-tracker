@@ -39,7 +39,7 @@ function isYes(answer: string): boolean {
 }
 
 function parseArgs(argv: string[]) {
-  const args = { backup: "", api: "http://localhost:8080", mapping: "mapping.json" };
+  const args = { backup: "", api: "http://localhost:18080", mapping: "mapping.json" };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--api") args.api = argv[++i] ?? fail("--api needs a URL");
@@ -228,8 +228,13 @@ async function main() {
     if (!isYes(await ask("Continue? (y/N) "))) return;
   }
 
-  const { token, userId } = await login(args.api);
-  const existing = await readExisting(args.api, token);
+  let token: string, userId: string, existing: Existing;
+  try {
+    ({ token, userId } = await login(args.api));
+    existing = await readExisting(args.api, token);
+  } catch (err) {
+    fail(`Cannot reach ${args.api}: ${errorText(err)}`);
+  }
 
   if (!existsSync(args.mapping)) {
     writeFileSync(args.mapping, `${JSON.stringify(proposeMapping(source, existing), null, 2)}\n`);

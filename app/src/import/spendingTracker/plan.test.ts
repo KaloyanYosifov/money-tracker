@@ -106,6 +106,36 @@ describe("accounts and categories", () => {
     expect(new Set(tables)).toEqual(new Set(order));
   });
 
+  it("keeps the sort order of accounts and categories that an earlier import created", () => {
+    const source = sourceFixture();
+    const first = plan(source);
+    const existing = existingFixture();
+    for (const o of first.ops) {
+      if (o.table === "accounts" && o.op === "PUT") {
+        existing.accounts.push({
+          id: o.id,
+          name: o.data.name as string,
+          sort_order: o.data.sort_order as number,
+          opening_balance_minor: 0,
+          archived: Boolean(o.data.archived_at),
+        });
+      }
+      if (o.table === "categories") {
+        existing.categories.push({
+          id: o.id,
+          name: o.data.name as string,
+          type: o.data.type as "expense" | "income",
+          sort_order: o.data.sort_order as number,
+          archived: false,
+        });
+      }
+    }
+    const second = buildPlan(source, proposeMapping(source, existingFixture()), existing, options);
+    const sortOrders = (ops: UploadOp[]) =>
+      ops.filter((o) => o.op === "PUT" && (o.table === "accounts" || o.table === "categories")).map((o) => [o.id, o.data.sort_order]);
+    expect(sortOrders(second.ops)).toEqual(sortOrders(first.ops));
+  });
+
   it("gives the same plan for the same input", () => {
     expect(plan()).toEqual(plan());
   });
@@ -374,6 +404,7 @@ describe("recurring", () => {
       frequency: "monthly",
       start_date: "2026-07-31",
       end_date: null,
+      generated_through: "2026-09-30",
     });
     expect(counts.recurring_rules).toBe(1);
   });
@@ -383,7 +414,9 @@ describe("recurring", () => {
     ["Weekly", 1, "weekly"],
     ["Weekly", 2, "biweekly"],
     ["Monthly", 1, "monthly"],
+    ["Monthly", 3, "quarterly"],
     ["Yearly", 1, "yearly"],
+    ["Monthly", 12, "yearly"],
   ])("maps %s every %p to %s", (type, period, frequency) => {
     const source = sourceFixture();
     source.recurring[0] = { ...source.recurring[0], RecurringType: type, RecurringPeriod: period };
@@ -391,7 +424,7 @@ describe("recurring", () => {
   });
 
   it.each([
-    ["Monthly", 3, "Expense"],
+    ["Monthly", 6, "Expense"],
     ["Daily", 2, "Expense"],
     ["Monthly", 1, "Transfer"],
   ] as const)("reports a rule of %s every %p of type %s, and imports its rows as normal rows", (type, period, kind) => {
@@ -452,30 +485,85 @@ describe("recurring", () => {
     });
   });
 
-  it("starts a rule with a deleted occurrence after the gap, on the same day of the month", () => {
+  it("keeps a rule with a deleted occurrence and marks the past dates as generated", () => {
     const source = sourceFixture();
     source.transactions = source.transactions.filter((t) => t.Id !== 302);
     const { ops, problems, counts } = plan(source);
     expect(problems).toContainEqual({
       kind: "missing_occurrence",
       sourceIds: [1],
-      message: expect.stringMatching(/2026-08-31.*starts on 2026-10-31/),
+      message: expect.stringMatching(/no row on 2026-08-31; the app does not create/),
     });
-    expect(op(ops, "recurring_rules", ruleId)?.data.start_date).toBe("2026-10-31");
-    expect(op(ops, "transactions", importId("transaction", 301, USER_ID))?.data.recurring_rule_id).toBeNull();
-    expect(op(ops, "transactions", importId("transaction", 303, USER_ID))?.data.recurring_rule_id).toBeNull();
+    expect(op(ops, "recurring_rules", ruleId)?.data).toMatchObject({
+      start_date: "2026-07-31",
+      generated_through: "2026-09-30",
+    });
+    expect(op(ops, "transactions", occurrenceId(ruleId, "2026-07-31"))?.data.external_id).toBe("st:301");
+    expect(op(ops, "transactions", occurrenceId(ruleId, "2026-09-30"))?.data.external_id).toBe("st:303");
     expect(op(ops, "transactions", occurrenceId(ruleId, "2026-10-31"))?.data.external_id).toBe("st:304");
-    expect(counts.occurrences).toBe(1);
+    expect(counts.occurrences).toBe(3);
   });
 
-  it("does not import a rule with a deleted occurrence and no date after it", () => {
+  it("keeps an ended rule with a deleted occurrence", () => {
     const source = sourceFixture();
     source.transactions = source.transactions.filter((t) => t.Id !== 302 && t.Id !== 304);
     source.recurring[0] = { ...source.recurring[0], EndDate: ticks("2026-10-15") };
+    const { ops } = plan(source);
+    expect(op(ops, "recurring_rules", ruleId)?.data).toMatchObject({
+      end_date: "2026-10-15",
+      generated_through: "2026-09-30",
+    });
+    expect(op(ops, "transactions", occurrenceId(ruleId, "2026-09-30"))?.data.external_id).toBe("st:303");
+  });
+
+  it("lets the app create the due dates after the latest row of the backup", () => {
+    const source = sourceFixture();
+    source.transactions = source.transactions.filter((t) => t.Id !== 303 && t.Id !== 304);
     const { ops, problems } = plan(source);
-    expect(problems).toContainEqual(expect.objectContaining({ kind: "missing_occurrence", message: expect.stringMatching(/no date after it/) }));
+    expect(op(ops, "recurring_rules", ruleId)?.data.generated_through).toBe("2026-08-31");
+    expect(problems).not.toContainEqual(expect.objectContaining({ kind: "missing_occurrence" }));
+  });
+
+  it("reports only the gaps before the latest row of the backup", () => {
+    const source = sourceFixture();
+    source.transactions = source.transactions.filter((t) => t.Id !== 301 && t.Id !== 303 && t.Id !== 304);
+    const { ops, problems } = plan(source);
+    expect(op(ops, "recurring_rules", ruleId)?.data.generated_through).toBe("2026-08-31");
+    expect(problems).toContainEqual({
+      kind: "missing_occurrence",
+      sourceIds: [1],
+      message: "rule 1: no row on 2026-07-31; the app does not create these dates again",
+    });
+  });
+
+  it("marks all past dates of a rule with no rows in the backup as deleted", () => {
+    const source = sourceFixture();
+    source.transactions = source.transactions.filter((t) => t.RecurringTransactionId !== 1);
+    const { ops, problems } = plan(source);
+    expect(op(ops, "recurring_rules", ruleId)?.data.generated_through).toBe("2026-09-30");
+    expect(problems).toContainEqual({
+      kind: "missing_occurrence",
+      sourceIds: [1],
+      message: "rule 1: no row on 2026-07-31, 2026-08-31, 2026-09-30; the app does not create these dates again",
+    });
+  });
+
+  it("leaves generated_through empty for a rule that starts after today", () => {
+    const source = sourceFixture();
+    source.recurring[0] = { ...source.recurring[0], Date: ticks("2026-10-31") };
+    expect(op(plan(source).ops, "recurring_rules", ruleId)?.data).toMatchObject({
+      start_date: "2026-10-31",
+      generated_through: null,
+    });
+  });
+
+  it("reports a rule that ends before it starts, and imports its rows as normal rows", () => {
+    const source = sourceFixture();
+    source.recurring[0] = { ...source.recurring[0], EndDate: ticks("2026-07-01") };
+    const { ops, problems } = plan(source);
+    expect(problems).toContainEqual(expect.objectContaining({ kind: "unsupported_recurrence", sourceIds: [1] }));
     expect(op(ops, "recurring_rules", ruleId)).toBeUndefined();
-    expect(op(ops, "transactions", importId("transaction", 303, USER_ID))?.data.recurring_rule_id).toBeNull();
+    expect(op(ops, "transactions", importId("transaction", 301, USER_ID))?.data.recurring_rule_id).toBeNull();
   });
 
   it("gives only rules that pass the app validation", () => {

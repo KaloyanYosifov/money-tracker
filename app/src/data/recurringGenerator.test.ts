@@ -99,6 +99,54 @@ describe("generateDue", () => {
     expect(transactions()).toHaveLength(5);
   });
 
+  it("does not insert a deleted occurrence again", async () => {
+    await generateDue(db, "2026-10-19");
+    const id = occurrenceId("rent", "2026-09-01");
+    sqlite.prepare("DELETE FROM transactions WHERE id = ?").run(id);
+
+    expect(await generateDue(db, "2026-10-19")).toBe(0);
+    expect(await generateDue(db, "2026-10-20")).toBe(0);
+    expect(sqlite.prepare("SELECT id FROM transactions WHERE id = ?").get(id)).toBeUndefined();
+  });
+
+  it("sets generated_through to the last due occurrence of each rule", async () => {
+    await generateDue(db, "2026-10-19");
+
+    expect(sqlite.prepare("SELECT id, generated_through FROM recurring_rules ORDER BY id").all()).toEqual([
+      { id: "rent", generated_through: "2026-10-01" },
+      { id: "savings", generated_through: "2026-10-12" },
+    ]);
+  });
+
+  it("does not update a rule when generated_through stays the same", async () => {
+    await generateDue(db, "2026-10-19");
+    const spy = jest.spyOn(db, "execute");
+
+    await generateDue(db, "2026-10-20");
+
+    expect(spy.mock.calls.map(([sql]) => sql).filter((sql) => /^\s*UPDATE/i.test(sql))).toEqual([]);
+  });
+
+  it("generates only the dates after generated_through", async () => {
+    sqlite.prepare("UPDATE recurring_rules SET generated_through = '2026-09-01' WHERE id = 'rent'").run();
+
+    await generateDue(db, "2026-10-19");
+
+    expect(sqlite.prepare("SELECT date FROM transactions WHERE recurring_rule_id = 'rent'").all()).toEqual([
+      { date: "2026-10-01" },
+    ]);
+  });
+
+  it("fills in the dates after an end_date that the user moved later", async () => {
+    await generateDue(db, "2026-10-30");
+    sqlite.prepare("UPDATE recurring_rules SET end_date = '2026-10-26' WHERE id = 'savings'").run();
+
+    expect(await generateDue(db, "2026-10-30")).toBe(2);
+    expect(
+      sqlite.prepare("SELECT date FROM transactions WHERE recurring_rule_id = 'savings' ORDER BY date").all(),
+    ).toEqual([{ date: "2026-10-05" }, { date: "2026-10-12" }, { date: "2026-10-19" }, { date: "2026-10-26" }]);
+  });
+
   it("never overwrites an existing row with the occurrence ID", async () => {
     const id = occurrenceId("rent", "2026-09-01");
     loadFixture(sqlite, {

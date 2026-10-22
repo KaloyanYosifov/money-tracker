@@ -83,6 +83,9 @@ name: Add, edit and delete an expense
           element:
             id: transaction-delete
           direction: DOWN
+      # scrollUntilVisible can stop with the Delete button only partly on the screen.
+      # Scroll to the end so the tap hits the button.
+      - scroll
       - tapOn:
           id: transaction-delete
       - extendedWaitUntil:

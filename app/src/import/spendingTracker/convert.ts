@@ -70,16 +70,26 @@ export function colorFor(stColour: string | null, index: number): string {
 
 const MAX_NAME = 120;
 
-/** A transaction name from a note: the first 120 characters. A longer note also stays as the note. */
+/** The first `max` UTF-16 units of a text, without half of a surrogate pair at the end. */
+function cut(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const code = text.charCodeAt(max - 1);
+  return text.slice(0, code >= 0xd800 && code <= 0xdbff ? max - 1 : max);
+}
+
+/**
+ * A transaction name from a note: the first line, at most 120 characters.
+ * A note that is longer than the name also stays as the note.
+ */
 export function splitNote(text: string | null): { name: string; note: string | null } {
   const trimmed = (text ?? "").trim();
-  if (trimmed.length <= MAX_NAME) return { name: trimmed, note: null };
-  return { name: trimmed.slice(0, MAX_NAME), note: trimmed };
+  const name = cut(trimmed.split(/\r?\n/, 1)[0].trim(), MAX_NAME);
+  return { name, note: name === trimmed ? null : trimmed };
 }
 
 /** An account or category name: trimmed, at most 60 characters. */
 export function cleanName(name: string | null): string {
-  return (name ?? "").trim().slice(0, 60);
+  return cut((name ?? "").trim(), 60).trim();
 }
 
 export function sameName(a: string | null, b: string | null): boolean {

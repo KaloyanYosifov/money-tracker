@@ -18,6 +18,16 @@ export type ValidationCode =
 export interface FieldError {
   field: string;
   code: ValidationCode;
+  /** Text for the user, for errors that the code alone does not explain (for example a duplicate name). */
+  message?: string;
+}
+
+export const DUPLICATE_CATEGORY_MESSAGE = "A category with this name exists.";
+export const DUPLICATE_ACCOUNT_MESSAGE = "An account with this name exists.";
+
+/** The form of a name that duplicate checks compare: trimmed, lower case in any script. */
+export function nameKey(name: string): string {
+  return name.trim().toLocaleLowerCase();
 }
 
 type CategoryType = Category["type"];
@@ -59,7 +69,7 @@ export interface AccountInput {
 
 const transactionTypes: readonly string[] = ["expense", "income", "transfer"];
 const categoryTypes: readonly string[] = ["expense", "income"];
-const frequencies: readonly string[] = ["daily", "weekly", "biweekly", "monthly", "yearly"];
+const frequencies: readonly string[] = ["daily", "weekly", "biweekly", "monthly", "quarterly", "yearly"];
 
 /** True for a real calendar date in the form YYYY-MM-DD. */
 export function isDate(value: string): boolean {

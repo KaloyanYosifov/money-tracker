@@ -251,6 +251,49 @@ describe("categories", () => {
     expect(row("categories", "food")?.archived_at).toBeNull();
   });
 
+  describe("duplicate names", () => {
+    const duplicate = {
+      ok: false,
+      errors: [{ field: "name", code: "invalid", message: "A category with this name exists." }],
+    };
+    const pets = { type: "expense" as const, icon: "pet", color: "#112233" };
+
+    it.each(["Groceries", "  groceries ", "GROCERIES"])("rejects a new category named %j", async (name) => {
+      expect(await saveCategory(db, { ...pets, name })).toEqual(duplicate);
+    });
+
+    it("compares non-ASCII names in any letter case", async () => {
+      await saveCategory(db, { ...pets, name: "Храна" });
+      expect(await saveCategory(db, { ...pets, name: "ХРАНА" })).toEqual(duplicate);
+    });
+
+    it("rejects a rename to the name of another category", async () => {
+      expect(await saveCategory(db, { ...pets, id: "unused", name: "groceries" })).toEqual(duplicate);
+      expect(row("categories", "unused")?.name).toBe("Unused");
+    });
+
+    it("rejects a change of type to a type with the same name", async () => {
+      await saveCategory(db, { ...pets, type: "income", id: "x", name: "Unused" });
+      expect(await saveCategory(db, { ...pets, type: "income", id: "unused", name: "Unused" })).toEqual(duplicate);
+    });
+
+    it("allows the same name for the other type, an archived category, and the edited category", async () => {
+      expect(await saveCategory(db, { ...pets, type: "income", name: "Groceries" })).toMatchObject({ ok: true });
+      await archiveCategory(db, "unused");
+      expect(await saveCategory(db, { ...pets, name: "unused" })).toMatchObject({ ok: true });
+      expect(await saveCategory(db, { ...pets, id: "food", name: "groceries " })).toMatchObject({ ok: true });
+    });
+
+    it("allows a restore that makes a duplicate, and later edits of the restored category", async () => {
+      await archiveCategory(db, "unused");
+      await saveCategory(db, { ...pets, name: "Unused" });
+      await restoreCategory(db, "unused");
+
+      expect(row("categories", "unused")?.archived_at).toBeNull();
+      expect(await saveCategory(db, { ...pets, id: "unused", name: "Unused", sort_order: 5 })).toEqual({ ok: true, id: "unused" });
+    });
+  });
+
   it("refuses to delete a category that transactions use", async () => {
     expect(await deleteCategory(db, "food")).toEqual({ ok: false, errors: [{ field: "id", code: "in_use" }] });
     expect(row("categories", "food")).toBeDefined();
@@ -321,6 +364,37 @@ describe("accounts", () => {
     expect(row("accounts", "bank")?.archived_at).toBeNull();
   });
 
+  describe("duplicate names", () => {
+    const duplicate = {
+      ok: false,
+      errors: [{ field: "name", code: "invalid", message: "An account with this name exists." }],
+    };
+
+    it.each(["Bank", " bank", "BANK "])("rejects a new account named %j", async (name) => {
+      expect(await saveAccount(db, { name, color: "#0000ff" })).toEqual(duplicate);
+    });
+
+    it("rejects a rename to the name of another account", async () => {
+      expect(await saveAccount(db, { id: "spare", name: "wallet", color: "#000000" })).toEqual(duplicate);
+      expect(row("accounts", "spare")?.name).toBe("Spare");
+    });
+
+    it("allows the name of an archived account and of the edited account", async () => {
+      await archiveAccount(db, "spare");
+      expect(await saveAccount(db, { name: "Spare", color: "#0000ff" })).toMatchObject({ ok: true });
+      expect(await saveAccount(db, { id: "bank", name: "BANK", color: "#000000" })).toEqual({ ok: true, id: "bank" });
+    });
+
+    it("allows a restore that makes a duplicate, and later edits of the restored account", async () => {
+      await archiveAccount(db, "spare");
+      await saveAccount(db, { name: "Spare", color: "#0000ff" });
+      await restoreAccount(db, "spare");
+
+      expect(row("accounts", "spare")?.archived_at).toBeNull();
+      expect(await saveAccount(db, { id: "spare", name: "Spare", color: "#000000", sort_order: 7 })).toEqual({ ok: true, id: "spare" });
+    });
+  });
+
   it("refuses to delete an account that transactions use", async () => {
     expect(await deleteAccount(db, "wallet")).toEqual({ ok: false, errors: [{ field: "id", code: "in_use" }] });
     expect(row("accounts", "wallet")).toBeDefined();
@@ -366,6 +440,60 @@ describe("saveRecurringRule", () => {
       .prepare("SELECT date FROM transactions WHERE recurring_rule_id = ? ORDER BY date")
       .all(result.id);
     expect(dates).toEqual([{ date: "2026-09-01" }, { date: "2026-10-01" }]);
+  });
+
+  function occurrenceDatesOf(ruleId: string) {
+    return (
+      sqlite.prepare("SELECT date FROM transactions WHERE recurring_rule_id = ? ORDER BY date").all(ruleId) as {
+        date: string;
+      }[]
+    ).map((r) => r.date);
+  }
+
+  it("saves a quarterly rule", async () => {
+    const result = await saveRecurringRule(db, { ...rule, frequency: "quarterly", start_date: "2026-04-01" }, "2026-10-19");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(occurrenceDatesOf(result.id)).toEqual(["2026-04-01", "2026-07-01", "2026-10-01"]);
+  });
+
+  it("keeps generated_through on an edit that keeps the schedule, so a deleted occurrence stays deleted", async () => {
+    const result = await saveRecurringRule(db, rule, "2026-10-19");
+    if (!result.ok) throw new Error("save failed");
+    sqlite.prepare("DELETE FROM transactions WHERE recurring_rule_id = ? AND date = '2026-09-01'").run(result.id);
+
+    await saveRecurringRule(db, { ...rule, id: result.id, name: "Flat rent", end_date: "2027-12-31" }, "2026-10-19");
+
+    expect(row("recurring_rules", result.id)).toMatchObject({ name: "Flat rent", generated_through: "2026-10-01" });
+    expect(occurrenceDatesOf(result.id)).toEqual(["2026-10-01"]);
+  });
+
+  it.each([
+    ["start_date", { start_date: "2026-08-15" }, ["2026-09-01", "2026-10-01", "2026-10-15"]],
+    ["frequency", { frequency: "biweekly" as const }, ["2026-09-01", "2026-10-01", "2026-10-13"]],
+  ])("keeps generated_through when %s changes, so the new schedule starts after it", async (_field, change, dates) => {
+    const result = await saveRecurringRule(db, rule, "2026-10-19");
+    if (!result.ok) throw new Error("save failed");
+
+    await saveRecurringRule(db, { ...rule, ...change, id: result.id }, "2026-10-19");
+
+    expect(row("recurring_rules", result.id)).toMatchObject({ generated_through: dates[dates.length - 1] });
+    expect(occurrenceDatesOf(result.id)).toEqual(dates);
+  });
+
+  it("does not backfill past dates when a long-running monthly rule becomes weekly", async () => {
+    const monthly = { ...rule, start_date: "2025-01-01" };
+    const result = await saveRecurringRule(db, monthly, "2026-10-19");
+    if (!result.ok) throw new Error("save failed");
+    expect(occurrenceDatesOf(result.id)).toHaveLength(22);
+
+    await saveRecurringRule(db, { ...monthly, id: result.id, frequency: "weekly" }, "2026-10-19");
+
+    // Only the weekly dates after 2026-10-01 (generated_through) and up to today.
+    // 2025-01-01 is a Wednesday, so the weeks fall on 10-07 and 10-14.
+    expect(occurrenceDatesOf(result.id)).toHaveLength(24);
+    expect(occurrenceDatesOf(result.id).slice(-3)).toEqual(["2026-10-01", "2026-10-07", "2026-10-14"]);
   });
 
   it("rejects an end date before the start date", async () => {

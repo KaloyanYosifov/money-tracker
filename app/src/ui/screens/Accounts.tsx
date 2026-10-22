@@ -7,8 +7,10 @@ import { deleteSyncProblem, problemRecord, useSyncProblem } from "../../data/syn
 import { amountInputText, parseSignedAmount } from "../../domain/money";
 import { validateAccount } from "../../domain/validation";
 import type { Account } from "../../generated/schema";
+import { useShortcuts } from "../../hooks/useShortcuts";
 import { isHovered } from "../components/interaction";
 import { PaperBar } from "../components/PaperBar";
+import { useBottomInset } from "../nav/bottomInset";
 import { Texture } from "../Texture";
 import { paperTint, type ThemeColors } from "../theme";
 import {
@@ -17,7 +19,9 @@ import {
   FormAction,
   FormField,
   FormHeader,
+  FormNote,
   formStyles,
+  keyboardAppearance,
   PALETTE,
   PersonIcon,
   ReorderList,
@@ -152,6 +156,7 @@ function AccountFormBody({
   problemId?: string;
   onClose: () => void;
 }) {
+  const bottomInset = useBottomInset();
   const db = usePowerSync();
   const [name, setName] = useState(existing?.name ?? "");
   const [color, setColor] = useState(existing?.color ?? PALETTE[0].hex);
@@ -160,6 +165,9 @@ function AccountFormBody({
   );
   const [nameTouched, setNameTouched] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  // A save error of the name from saveCategory / saveAccount, for example a duplicate name.
+  const [nameSaveError, setNameSaveError] = useState<string | null>(null);
 
   const openingBalance = parseSignedAmount(balanceText, currency);
   const input = {
@@ -176,8 +184,11 @@ function AccountFormBody({
   async function run(action: () => Promise<boolean>) {
     if (busy) return;
     setBusy(true);
+    setFailed(false);
     try {
       if (await action()) onClose();
+    } catch {
+      setFailed(true);
     } finally {
       setBusy(false);
     }
@@ -185,10 +196,22 @@ function AccountFormBody({
 
   const save = () =>
     run(async () => {
-      const { ok } = await saveAccount(db, input);
-      if (ok && problemId) await deleteSyncProblem(db, problemId);
-      return ok;
+      const result = await saveAccount(db, input);
+      if (!result.ok) {
+        setNameSaveError(result.errors.find((e) => e.field === "name")?.message ?? null);
+        return false;
+      }
+      if (problemId) await deleteSyncProblem(db, problemId);
+      return true;
     });
+
+  // Web: Enter saves a valid form, Escape closes it.
+  useShortcuts({
+    save: () => {
+      if (canSave) void save();
+    },
+    cancel: onClose,
+  });
 
   return (
     <View style={[formStyles.screen, { backgroundColor: theme.paper }]}>
@@ -200,20 +223,36 @@ function AccountFormBody({
         onSave={() => void save()}
         theme={theme}
       />
-      <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={formStyles.content}>
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        // iOS: the keyboard would cover the lower fields. The insets let them scroll above it.
+        automaticallyAdjustKeyboardInsets
+        contentContainerStyle={[formStyles.content, { paddingBottom: formStyles.content.paddingBottom + bottomInset }]}
+      >
+        {failed ? (
+          <Text allowFontScaling accessibilityRole="alert" style={[formStyles.error, { color: theme.listRed }]}>
+            Could not save. Try again.
+          </Text>
+        ) : null}
         <FormField
           label="Name"
-          error={nameTouched && nameError ? (nameError.code === "too_long" ? "Too long" : "Required") : undefined}
+          error={
+            nameSaveError ??
+            (nameTouched && nameError ? (nameError.code === "too_long" ? "Too long" : "Required") : undefined)
+          }
           theme={theme}
         >
           <TextInput
             allowFontScaling
             placeholder="Name"
             placeholderTextColor={theme.accent}
+            keyboardAppearance={keyboardAppearance(theme)}
             value={name}
             onChangeText={(text) => {
               setName(text);
               setNameTouched(true);
+              setNameSaveError(null);
             }}
             style={[formStyles.input, { color: theme.ink }]}
           />
@@ -226,7 +265,10 @@ function AccountFormBody({
           <TextInput
             allowFontScaling
             accessibilityLabel="Opening balance"
+            // The decimal pad of iOS has no minus key. An opening balance can be negative.
             keyboardType="numbers-and-punctuation"
+            keyboardAppearance={keyboardAppearance(theme)}
+            returnKeyType="done"
             placeholder={amountInputText(0, currency)}
             placeholderTextColor={theme.accent}
             value={balanceText}
@@ -268,6 +310,7 @@ function AccountFormBody({
             onPress={() => void run(async () => (await deleteAccount(db, existing.id)).ok)}
           />
         ) : null}
+        {existing && used ? <FormNote text="Used by transactions: archive it instead of deleting." theme={theme} /> : null}
       </ScrollView>
     </View>
   );

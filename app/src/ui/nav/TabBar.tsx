@@ -1,5 +1,5 @@
 import type { BottomTabBarProps } from "expo-router/js-tabs";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { PeriodPill } from "../components/PeriodPill";
 import { TabIcon, type TabIconName } from "../icons/tabIcons";
@@ -15,7 +15,7 @@ export interface Page {
   usesPeriod: boolean;
 }
 
-/** The pages in shortcut order (keys 1 to 5). The phone tabs show the first four. */
+/** The pages in shortcut order (keys 1 to 5). The iPhone tabs show the first four. */
 export const PAGES: readonly Page[] = [
   { name: "spending", title: "Spending", icon: "tag", usesPeriod: true },
   { name: "transactions", title: "Transactions", icon: "notepad", usesPeriod: true },
@@ -24,7 +24,8 @@ export const PAGES: readonly Page[] = [
   { name: "reports", title: "Reports", icon: "pie", usesPeriod: true },
 ];
 
-const PHONE_TABS = PAGES.slice(0, 4);
+// The iPhone opens Reports by rotation. The browser has no landscape mode, so its tabs show all pages.
+const PHONE_TABS = Platform.OS === "web" ? PAGES : PAGES.slice(0, 4);
 
 export function pageFor(routeName: string): Page | undefined {
   return PAGES.find((page) => page.name === routeName);
@@ -59,7 +60,7 @@ export function PhoneHeader({ routeName, onMenu, onAdd, topInset = 0, theme = co
         </Pressable>
       ) : null}
       <Pressable testID="menu" accessibilityRole="button" accessibilityLabel="Menu" onPress={onMenu} hitSlop={10} style={styles.menu}>
-        <Text allowFontScaling style={[styles.menuText, { color: theme.accent }]}>
+        <Text allowFontScaling style={[styles.menuText, { color: theme.icon }]}>
           ⋮
         </Text>
       </Pressable>
@@ -88,7 +89,7 @@ export function TabBar({ state, emitter, navigateToTab, insets, position, onMenu
     <View
       style={[
         styles.bar,
-        { backgroundColor: theme.paper, borderColor: theme.line },
+        { backgroundColor: theme.paper, borderColor: theme.line, paddingLeft: insets.left, paddingRight: insets.right },
         top ? styles.barTop : [styles.barBottom, { paddingBottom: insets.bottom }],
       ]}
     >
@@ -133,8 +134,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    minHeight: 50,
-    paddingHorizontal: 14,
+    minHeight: 56,
+    paddingHorizontal: 20,
+    paddingBottom: 6,
   },
   headerSide: {
     flex: 1,

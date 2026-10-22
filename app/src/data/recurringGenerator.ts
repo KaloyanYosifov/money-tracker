@@ -12,10 +12,12 @@ type RuleRow = Required<Omit<RecurringRule, "user_id">>;
 const RECHECK_MS = 60_000;
 
 /**
- * Inserts one transaction for each occurrence of each rule up to `today` that
- * has no row yet, and returns the count. An existing row with the occurrence
- * ID is never changed, also when the user edited it. PowerSync views do not
- * support INSERT OR IGNORE, so the transaction checks the IDs first.
+ * Inserts one transaction for each occurrence of each rule after the rule's
+ * `generated_through` and up to `today` that has no row yet, and returns the
+ * count. Then it sets `generated_through` to the last due occurrence, so an
+ * occurrence that the user deletes is not created again. An existing row with
+ * the occurrence ID is never changed, also when the user edited it. PowerSync
+ * views do not support INSERT OR IGNORE, so the transaction checks the IDs first.
  */
 export function generateDue(db: MutationDb, today: string): Promise<number> {
   return db.writeTransaction(async (tx) => {
@@ -25,12 +27,22 @@ export function generateDue(db: MutationDb, today: string): Promise<number> {
     if (!settings) return 0;
 
     const rules = await tx.getAll<RuleRow>(
-      `SELECT id, type, amount_minor, name, category_id, account_id, to_account_id, note, frequency, start_date, end_date
+      `SELECT id, type, amount_minor, name, category_id, account_id, to_account_id, note, frequency, start_date, end_date,
+         generated_through
        FROM recurring_rules ORDER BY id`,
     );
     let inserted = 0;
     for (const rule of rules) {
-      const due = occurrenceDates(rule, today).dates.map((date) => ({ id: occurrenceId(rule.id, date), date }));
+      const dates = occurrenceDates(rule, today).dates;
+      const through = rule.generated_through;
+      const last = dates.at(-1);
+      // The last due date only moves forward. Other changes give no PATCH to upload.
+      if (last !== undefined && (through === null || last > through)) {
+        await tx.execute("UPDATE recurring_rules SET generated_through = ? WHERE id = ?", [last, rule.id]);
+      }
+      const due = dates
+        .filter((date) => through === null || date > through)
+        .map((date) => ({ id: occurrenceId(rule.id, date), date }));
       if (due.length === 0) continue;
       const existing = await tx.getAll<{ id: string }>(
         "SELECT id FROM transactions WHERE id IN (SELECT value FROM json_each(?))",

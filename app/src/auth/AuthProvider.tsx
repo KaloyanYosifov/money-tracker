@@ -66,6 +66,8 @@ export function AuthProvider({
   });
   const access = useRef<{ token: string; expiresAt: number } | null>(null);
   const inflight = useRef<Promise<RefreshOutcome> | null>(null);
+  // signIn and signOut bump it, so a refresh that was in flight cannot overwrite their result.
+  const epoch = useRef(0);
   // Props in refs keep the callbacks stable, so inline props do not restart the effect.
   const props = useRef({ api, onUserChange, onSessionRevoked, now });
   useLayoutEffect(() => {
@@ -88,12 +90,16 @@ export function AuthProvider({
       return inflight.current;
     }
     const run = async (): Promise<RefreshOutcome> => {
+      const started = epoch.current;
       const stored = await tokenStore.getRefreshToken();
       // Native keeps the token in the Keychain. Without it, no refresh can work.
       const result =
         stored === null && Platform.OS !== "web"
           ? ({ ok: false, error: "refresh_invalid" } as const)
           : await acrossTabs(() => props.current.api.refresh(stored));
+      if (epoch.current !== started) {
+        return { kind: "invalid" };
+      }
 
       if (result.ok) {
         await keepTokens(result.value);
@@ -156,10 +162,12 @@ export function AuthProvider({
 
   const signIn = useCallback(
     async (tokens: TokenResponse) => {
+      epoch.current += 1;
       const previous = await tokenStore.getLastUserId();
       if (previous !== tokens.user_id) {
         await props.current.onUserChange?.(tokens.user_id, previous);
       }
+      epoch.current += 1;
       await keepTokens(tokens);
       setState({ status: "signedIn", userId: tokens.user_id, sessionId: tokens.session_id });
     },
@@ -167,12 +175,14 @@ export function AuthProvider({
   );
 
   const signOut = useCallback(async () => {
+    epoch.current += 1;
     const result = await props.current.api.logout(await tokenStore.getRefreshToken());
     // On the web the refresh token is an HttpOnly cookie that only the server can clear.
     // If the call fails, the next person at this browser can still resume the session.
     if (!result.ok && Platform.OS === "web") {
       throw new Error(`logout failed: ${result.error}`);
     }
+    epoch.current += 1;
     access.current = null;
     await tokenStore.setRefreshToken(null);
     await tokenStore.setLastUserId(null);

@@ -404,3 +404,86 @@ func TestApplyAccountOpeningBalance(t *testing.T) {
 	wantStatus(t, apply(t, pool, a.userID, put("accounts", third, data(t,
 		`{"user_id":%q,"name":"Too big","color":"#112233","sort_order":7,"opening_balance_minor":1000000000001}`, a.userID))), sync.Rejected, "invalid_record")
 }
+
+func TestApplyRecurringRule(t *testing.T) {
+	ctx := context.Background()
+	pool := testutil.StartPostgres(t)
+	a := seedUser(t, pool, "a@example.com")
+
+	rule := func(frequency, start, end, through string) schema.UploadOpData {
+		return data(t, `{"user_id":%q,"type":"expense","amount_minor":999,"name":"Insurance","category_id":%q,
+			"account_id":%q,"frequency":%q,"start_date":%q,"end_date":%s,"generated_through":%s}`,
+			a.userID, a.expenseCatID, a.accountID, frequency, start, end, through)
+	}
+	stored := func(id string) (frequency, end, through string) {
+		t.Helper()
+		err := pool.QueryRow(ctx,
+			`SELECT frequency, COALESCE(end_date::text, ''), COALESCE(generated_through::text, '') FROM recurring_rules WHERE id = $1`, id).
+			Scan(&frequency, &end, &through)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return frequency, end, through
+	}
+
+	id := newID(t, pool)
+	wantStatus(t, apply(t, pool, a.userID, put("recurring_rules", id, rule("quarterly", "2026-01-15", "null", `"2026-10-15"`))), sync.Applied, "")
+	if f, _, through := stored(id); f != "quarterly" || through != "2026-10-15" {
+		t.Errorf("stored frequency %q, generated_through %q; want quarterly, 2026-10-15", f, through)
+	}
+
+	wantStatus(t, apply(t, pool, a.userID, patch("recurring_rules", id, data(t, `{"generated_through":"2027-01-15"}`))), sync.Applied, "")
+	if _, _, through := stored(id); through != "2027-01-15" {
+		t.Errorf("generated_through after PATCH = %q, want 2027-01-15", through)
+	}
+	wantStatus(t, apply(t, pool, a.userID, patch("recurring_rules", id, data(t, `{"generated_through":null}`))), sync.Applied, "")
+	if _, _, through := stored(id); through != "" {
+		t.Errorf("generated_through after PATCH to null = %q, want NULL", through)
+	}
+
+	// A rule may end on the day it starts, but not before.
+	same := newID(t, pool)
+	wantStatus(t, apply(t, pool, a.userID, put("recurring_rules", same, rule("monthly", "2026-01-15", `"2026-01-15"`, "null"))), sync.Applied, "")
+
+	before := newID(t, pool)
+	wantStatus(t, apply(t, pool, a.userID, put("recurring_rules", before, rule("monthly", "2026-01-15", `"2026-01-14"`, "null"))), sync.Rejected, "invalid_record")
+	wantStatus(t, apply(t, pool, a.userID, patch("recurring_rules", id, data(t, `{"end_date":"2026-01-14"}`))), sync.Rejected, "invalid_record")
+	wantStatus(t, apply(t, pool, a.userID, patch("recurring_rules", id, data(t, `{"start_date":"2026-02-01","end_date":"2026-01-31"}`))), sync.Rejected, "invalid_record")
+	if _, end, _ := stored(id); end != "" {
+		t.Errorf("end_date after rejected PATCH = %q, want NULL", end)
+	}
+
+	wantStatus(t, apply(t, pool, a.userID, put("recurring_rules", newID(t, pool), rule("hourly", "2026-01-15", "null", "null"))), sync.Rejected, "invalid_record")
+	wantStatus(t, apply(t, pool, a.userID, put("recurring_rules", newID(t, pool), rule("monthly", "2026-01-15", "null", `"15.01.2026"`))), sync.Rejected, "invalid_record")
+}
+
+func TestApplyRecurringOccurrencePut(t *testing.T) {
+	pool := testutil.StartPostgres(t)
+	a := seedUser(t, pool, "a@example.com")
+
+	occurrence := func(amount int, external string) schema.UploadOpData {
+		return data(t, `{"user_id":%q,"type":"expense","amount_minor":%d,"currency_code":"EUR","date":"2026-10-01",
+			"name":"Rent","category_id":%q,"account_id":%q,"note":null,"source":"recurring","external_id":%s}`,
+			a.userID, amount, a.expenseCatID, a.accountID, external)
+	}
+	amount := func(id string) int {
+		t.Helper()
+		return rowCount(t, pool, `SELECT amount_minor FROM transactions WHERE id = $1`, id)
+	}
+
+	// The app generator: a second PUT of the same occurrence keeps the stored row.
+	generated := newID(t, pool)
+	wantStatus(t, apply(t, pool, a.userID, put("transactions", generated, occurrence(1000, "null"))), sync.Applied, "")
+	wantStatus(t, apply(t, pool, a.userID, put("transactions", generated, occurrence(2000, "null"))), sync.Applied, "")
+	if got := amount(generated); got != 1000 {
+		t.Errorf("generated occurrence amount after second PUT = %d, want 1000", got)
+	}
+
+	// The importer sets external_id: a second import updates the row.
+	imported := newID(t, pool)
+	wantStatus(t, apply(t, pool, a.userID, put("transactions", imported, occurrence(1000, `"st:301"`))), sync.Applied, "")
+	wantStatus(t, apply(t, pool, a.userID, put("transactions", imported, occurrence(2000, `"st:301"`))), sync.Applied, "")
+	if got := amount(imported); got != 2000 {
+		t.Errorf("imported occurrence amount after second PUT = %d, want 2000", got)
+	}
+}

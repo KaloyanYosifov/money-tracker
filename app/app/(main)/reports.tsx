@@ -27,7 +27,7 @@ export function ReportsPage({ variant = "page" }: { variant?: "page" | "landscap
       }
       onShift={shift}
       onCategoryPress={(categoryId) =>
-        router.navigate({ pathname: "/transactions", params: { categoryId } } as unknown as Href)
+        router.navigate({ pathname: "/transactions", params: { categoryId, tap: String(Date.now()) } } as unknown as Href)
       }
     />
   );

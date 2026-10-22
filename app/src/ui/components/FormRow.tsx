@@ -35,7 +35,7 @@ export function FormRow({ label, value, placeholder, children, onPress, theme = 
         )}
       </View>
       {onPress ? (
-        <Text allowFontScaling style={[styles.chevron, { color: theme.line }]}>
+        <Text allowFontScaling style={[styles.chevron, { color: theme.control }]}>
           ›
         </Text>
       ) : null}

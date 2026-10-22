@@ -12,7 +12,8 @@ input:focus, textarea:focus {
 [role="button"]:focus-visible, [role="tab"]:focus-visible, [role="radio"]:focus-visible,
 [role="switch"]:focus-visible, button:focus-visible {
   outline: 2px solid ${colors.light.accent} !important;
-  outline-offset: 2px;
+  /* Inside the element: list rows fill their parent, which clips a ring drawn outside. */
+  outline-offset: -2px;
 }
 `;
 

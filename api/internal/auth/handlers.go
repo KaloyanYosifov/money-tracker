@@ -387,15 +387,15 @@ func (h *Handlers) loginTOTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "setup_incomplete")
 		return
 	}
+	if errors.Is(err, ErrLocked) {
+		writeError(w, http.StatusTooManyRequests, "locked")
+		return
+	}
 	if err != nil {
 		writeInternal(w)
 		return
 	}
 	if !ok {
-		if err := h.lockout.RecordFailure(ctx, userID); err != nil {
-			writeInternal(w)
-			return
-		}
 		writeError(w, http.StatusUnauthorized, "invalid_code")
 		return
 	}
@@ -410,7 +410,9 @@ var errSetupIncomplete = errors.New("totp is not set up")
 
 // checkSecondFactor checks a TOTP code or, if code is empty, a recovery
 // code. A match is stored (last TOTP step or used_at) in the same
-// transaction, so the same code never works two times.
+// transaction, so the same code never works two times. The lock check and a
+// failure are also in this transaction, so that concurrent guesses cannot
+// pass the lock. It returns ErrLocked for a locked user.
 func (h *Handlers) checkSecondFactor(ctx context.Context, userID, code, recoveryCode string) (bool, error) {
 	tx, err := h.pool.Begin(ctx)
 	if err != nil {
@@ -418,6 +420,9 @@ func (h *Handlers) checkSecondFactor(ctx context.Context, userID, code, recovery
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	if err := h.lockout.checkLocked(ctx, tx, userID); err != nil {
+		return false, err
+	}
 	var (
 		sealed   []byte
 		enabled  bool
@@ -425,12 +430,18 @@ func (h *Handlers) checkSecondFactor(ctx context.Context, userID, code, recovery
 	)
 	err = tx.QueryRow(ctx,
 		`SELECT totp_secret_enc, totp_enabled, COALESCE(totp_last_step, 0)
-		 FROM users WHERE id = $1 FOR UPDATE`, userID).Scan(&sealed, &enabled, &lastStep)
+		 FROM users WHERE id = $1`, userID).Scan(&sealed, &enabled, &lastStep)
 	if err != nil {
 		return false, err
 	}
 	if !enabled || sealed == nil {
 		return false, errSetupIncomplete
+	}
+	fail := func() (bool, error) {
+		if err := h.lockout.recordFailure(ctx, tx, userID); err != nil {
+			return false, err
+		}
+		return false, tx.Commit(ctx)
 	}
 
 	if code != "" {
@@ -440,7 +451,7 @@ func (h *Handlers) checkSecondFactor(ctx context.Context, userID, code, recovery
 		}
 		step, ok := Verify(string(secret), code, h.now(), lastStep)
 		if !ok {
-			return false, nil
+			return fail()
 		}
 		if _, err := tx.Exec(ctx, `UPDATE users SET totp_last_step = $2 WHERE id = $1`, userID, step); err != nil {
 			return false, err
@@ -454,7 +465,7 @@ func (h *Handlers) checkSecondFactor(ctx context.Context, userID, code, recovery
 			return false, err
 		}
 		if tag.RowsAffected() == 0 {
-			return false, nil
+			return fail()
 		}
 	}
 	return true, tx.Commit(ctx)

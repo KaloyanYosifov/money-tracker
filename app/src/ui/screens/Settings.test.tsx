@@ -1,9 +1,26 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 
 import { createTestDatabase, loadFixture, type TestDatabase } from "../../../test/sqlite";
+import * as mutations from "../../data/mutations";
+import type { Shortcuts } from "../../hooks/useShortcuts";
 import { SessionsScreen, Settings, SyncProblemsScreen, type SessionsApi } from "./Settings";
 
 let mockDb: TestDatabase;
+
+// The last handlers that a screen passed to useShortcuts.
+let mockShortcuts: Shortcuts = {};
+jest.mock("../../hooks/useShortcuts", () => ({
+  useShortcuts: (handlers: Shortcuts) => {
+    mockShortcuts = handlers;
+  },
+}));
+
+// False while a screen above (a form, Sync problems) covers this one.
+let mockFocused = true;
+jest.mock("expo-router", () => ({
+  ...jest.requireActual("expo-router"),
+  useIsFocused: () => mockFocused,
+}));
 
 // The hooks run their SQL against the in-memory fixture database, and the
 // mutations write to it.
@@ -44,6 +61,8 @@ const userSettings = {
 };
 
 beforeEach(() => {
+  mockShortcuts = {};
+  mockFocused = true;
   mockEnrolledLevel.mockResolvedValue(1);
   mockDb = createTestDatabase();
   // PowerSync's upload queue. The sync state counts its rows.
@@ -155,6 +174,43 @@ describe("Settings", () => {
     );
   });
 
+  it("shows and writes the week, month and year start", async () => {
+    await renderSettings("ios");
+
+    await fireEvent.press(screen.getByRole("button", { name: "Week Starts On, Monday" }));
+    expect(screen.getAllByRole("radio").map((r) => r.props.accessibilityLabel)).toEqual([
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+      "Sunday",
+    ]);
+    await fireEvent.press(screen.getByRole("radio", { name: "Sunday" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Month Starts On, 1st" }));
+    expect(screen.getAllByRole("radio")).toHaveLength(28);
+    await fireEvent.press(screen.getByRole("radio", { name: "23rd" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Year Starts In, January" }));
+    expect(screen.getAllByRole("radio")).toHaveLength(12);
+    await fireEvent.press(screen.getByRole("radio", { name: "April" }));
+
+    await waitFor(() => expect(settingsRow()).toMatchObject({ week_start_day: 0, month_start_day: 23, year_start_month: 4 }));
+  });
+
+  it("shows an error when a setting cannot be saved", async () => {
+    const spy = jest.spyOn(mutations, "updateSettings").mockRejectedValueOnce(new Error("user_settings is not synced yet"));
+    try {
+      await renderSettings("ios");
+
+      await fireEvent(screen.getByRole("switch", { name: "Carry Over" }), "valueChange", false);
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("Could not save the setting. Try again.");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("turns Budget Mode on", async () => {
     await renderSettings("ios");
 
@@ -167,6 +223,7 @@ describe("Settings", () => {
     await renderSettings("ios");
 
     const amount = screen.getByLabelText("Budget Amount");
+    expect(amount.props.inputAccessoryViewButtonLabel).toBe("Done");
     await fireEvent.changeText(amount, "250");
     await fireEvent(amount, "blur");
 
@@ -199,6 +256,26 @@ describe("Settings", () => {
 
     expect(await screen.findByText("Set up a passcode on this device first")).toBeTruthy();
     expect(screen.getByRole("switch", { name: "App Lock" }).props.disabled).toBe(true);
+  });
+
+  it("closes with Escape on the web, but not while a screen above covers it", async () => {
+    const onClose = jest.fn();
+    const view = await renderSettings("web", { onClose });
+    mockShortcuts.cancel?.();
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    mockFocused = false;
+    await view.rerender(
+      <Settings
+        platform="web"
+        onClose={onClose}
+        onOpenSyncProblems={noop}
+        onOpenSessions={noop}
+        onLogout={noop}
+        onResetLocalData={noop}
+      />,
+    );
+    expect(mockShortcuts.cancel).toBeUndefined();
   });
 
   it("calls the handlers for Devices, Reset local data and Log out", async () => {
@@ -286,7 +363,78 @@ describe("SyncProblemsScreen", () => {
     ]);
 
     await fireEvent.press(edits[0]);
-    expect(onEdit).toHaveBeenCalledWith({ problemId: "p1", table: "transactions", recordId: "t-new" });
+    await waitFor(() => expect(onEdit).toHaveBeenCalledWith({ problemId: "p1", table: "transactions", recordId: "t-new" }));
+  });
+
+  it("names the record of each problem from the uploaded data and the local row", async () => {
+    loadFixture(mockDb, {
+      recurring_rules: [
+        { id: "r1", user_id: "u1", type: "expense", amount_minor: 999, name: "Streaming", account_id: "a1", frequency: "monthly", start_date: "2026-01-01" },
+      ],
+      sync_problems: [
+        {
+          id: "p5",
+          table_name: "recurring_rules",
+          record_id: "r1",
+          op: "PATCH",
+          data_json: '{"generated_through":"2026-10-31"}',
+          code: "invalid_record",
+          message: "rule is invalid",
+          created_at: "2026-10-19T10:04:00Z",
+        },
+      ],
+    });
+    await render(<SyncProblemsScreen onEdit={noop} onClose={noop} />);
+
+    // PUT: the name from the upload. PATCH: the local row with the rejected amount on top.
+    expect(screen.getByText("Lunch")).toBeTruthy();
+    expect(screen.getByText("Here")).toBeTruthy();
+    expect(screen.getByText(/^Transaction \(changed\) · €0\.00 · .*2026$/)).toBeTruthy();
+    expect(screen.getByText("Streaming")).toBeTruthy();
+    expect(screen.getByText("Repeating transaction (changed)")).toBeTruthy();
+    // A deleted category has no row and no data: the card names the table.
+    expect(screen.getByText("Category (deleted)")).toBeTruthy();
+  });
+
+  it("shows one card per record, the newest problem, and Discard removes all of them", async () => {
+    loadFixture(mockDb, {
+      sync_problems: [
+        {
+          id: "p6",
+          table_name: "transactions",
+          record_id: "t-local",
+          op: "PATCH",
+          data_json: '{"amount_minor":0}',
+          code: "invalid_record",
+          message: "newer rejection",
+          created_at: "2026-10-20T08:00:00Z",
+        },
+      ],
+    });
+    await render(<SyncProblemsScreen onEdit={noop} onClose={noop} />);
+
+    expect(screen.getAllByText("Here")).toHaveLength(1);
+    expect(screen.getByText("newer rejection")).toBeTruthy();
+    expect(screen.queryByText("at '/amount_minor': must be >= 1")).toBeNull();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Discard, newer rejection" }));
+    expect(mockDb.prepare("SELECT id FROM sync_problems ORDER BY id").all()).toEqual([{ id: "p1" }, { id: "p2" }, { id: "p4" }]);
+  });
+
+  it("only mentions Edit and retry when a problem offers it", async () => {
+    mockDb.exec("DELETE FROM sync_problems WHERE id IN ('p1', 'p3')");
+    await render(<SyncProblemsScreen onEdit={noop} onClose={noop} />);
+
+    expect(screen.queryByRole("button", { name: /^Edit and retry/ })).toBeNull();
+    expect(screen.queryByText(/Edit and retry/)).toBeNull();
+    expect(screen.getByText("The server did not accept these changes. Discard a change to remove it from the list.")).toBeTruthy();
+  });
+
+  it("closes with Escape on the web", async () => {
+    const onClose = jest.fn();
+    await render(<SyncProblemsScreen onEdit={noop} onClose={onClose} />);
+    mockShortcuts.cancel?.();
+    expect(onClose).toHaveBeenCalled();
   });
 
   it("deletes a problem on Discard", async () => {

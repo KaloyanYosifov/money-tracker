@@ -296,6 +296,10 @@ type RecurringRule struct {
 	// Frequency corresponds to the JSON schema field "frequency".
 	Frequency RecurringRuleFrequency `json:"frequency"`
 
+	// The app created the occurrences up to and including this date. It does not
+	// create them again, also when the user deleted them.
+	GeneratedThrough RecurringRuleGeneratedThrough `json:"generated_through,omitempty,omitzero"`
+
 	// ID corresponds to the JSON schema field "id".
 	ID string `json:"id"`
 
@@ -327,6 +331,7 @@ type RecurringRuleFrequency string
 const RecurringRuleFrequencyBiweekly RecurringRuleFrequency = "biweekly"
 const RecurringRuleFrequencyDaily RecurringRuleFrequency = "daily"
 const RecurringRuleFrequencyMonthly RecurringRuleFrequency = "monthly"
+const RecurringRuleFrequencyQuarterly RecurringRuleFrequency = "quarterly"
 const RecurringRuleFrequencyWeekly RecurringRuleFrequency = "weekly"
 const RecurringRuleFrequencyYearly RecurringRuleFrequency = "yearly"
 
@@ -335,6 +340,7 @@ var enumValues_RecurringRuleFrequency = []interface{}{
 	"weekly",
 	"biweekly",
 	"monthly",
+	"quarterly",
 	"yearly",
 }
 
@@ -357,6 +363,10 @@ func (j *RecurringRuleFrequency) UnmarshalJSON(value []byte) error {
 	*j = RecurringRuleFrequency(v)
 	return nil
 }
+
+// The app created the occurrences up to and including this date. It does not
+// create them again, also when the user deleted them.
+type RecurringRuleGeneratedThrough *string
 
 type RecurringRuleNote *string
 
@@ -1034,6 +1044,6 @@ func (j *UserSettings) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
-const SchemaVersion = 2
+const SchemaVersion = 3
 
-const MinSupportedSchemaVersion = 1
+const MinSupportedSchemaVersion = 3

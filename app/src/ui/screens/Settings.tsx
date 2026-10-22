@@ -1,4 +1,5 @@
 import { usePowerSync, useQuery } from "@powersync/react";
+import { useIsFocused } from "expo-router";
 import { useContext, useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, type PressableStateCallbackType } from "react-native";
 import { SafeAreaInsetsContext } from "react-native-safe-area-context";
@@ -6,17 +7,19 @@ import { SafeAreaInsetsContext } from "react-native-safe-area-context";
 import { saveOverallBudget, updateSettings, type SettingsPatch } from "../../data/mutations";
 import type { DeviceSession, SessionsApi } from "../../data/session";
 import { deleteSyncProblem, EDITABLE_TABLES, type SyncProblem } from "../../data/syncProblems";
-import { amountInputText, currencySymbol, parseAmount } from "../../domain/money";
+import { amountInputText, currencySymbol, formatAmount, parseAmount } from "../../domain/money";
 import type { UserSettings } from "../../generated/schema";
 import { APP_LOCK_PREF, LOCK_AFTER_PREF, TABS_POSITION_PREF, useDevicePrefs } from "../../hooks/useDevicePrefs";
+import { useShortcuts } from "../../hooks/useShortcuts";
 import { useAppLockAvailable } from "../../security/AppLock";
 import { useSyncState } from "../../sync/syncState";
 import { useUpdateRequired } from "../../sync/updateRequired";
 import { GroupedSection } from "../components/GroupedSection";
 import { isHovered } from "../components/interaction";
 import { ThemedSwitch } from "../components/ThemedSwitch";
+import { useBottomInset } from "../nav/bottomInset";
 import type { ThemeColors } from "../theme";
-import { defaultPlatform, useScreenSettings, type ScreenPlatform } from "./manage";
+import { defaultPlatform, keyboardAppearance, useScreenSettings, type ScreenPlatform } from "./manage";
 
 export type { SessionsApi } from "../../data/session";
 
@@ -29,6 +32,34 @@ const TIME_PERIODS: Option<UserSettings["time_period"]>[] = [
   { value: "monthly", label: "Monthly" },
   { value: "yearly", label: "Yearly" },
 ];
+
+// period.ts numbers the days from 0 (Sunday). The list starts on Monday.
+const WEEK_DAYS: Option<string>[] = [1, 2, 3, 4, 5, 6, 0].map((day) => ({
+  value: String(day),
+  label: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][day],
+}));
+
+function ordinal(n: number): string {
+  if (n % 100 >= 11 && n % 100 <= 13) return `${n}th`;
+  return `${n}${["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
+}
+
+const MONTH_DAYS: Option<string>[] = Array.from({ length: 28 }, (_, i) => ({ value: String(i + 1), label: ordinal(i + 1) }));
+
+const YEAR_MONTHS: Option<string>[] = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+].map((label, i) => ({ value: String(i + 1), label }));
 
 const THEMES: Option<UserSettings["theme"]>[] = [
   { value: "light", label: "Off" },
@@ -66,6 +97,15 @@ type SettingsProps = {
   onResetLocalData: () => void;
 };
 
+/**
+ * Web: Escape closes the screen. A screen in the stack below a form or Sync problems stays mounted,
+ * so only the focused screen takes the key.
+ */
+function useEscapeToClose(onClose: () => void): void {
+  const focused = useIsFocused();
+  useShortcuts(focused ? { cancel: onClose } : {});
+}
+
 /** The Settings screen. Synced settings go to user_settings, device settings to device_prefs. */
 export function Settings({
   platform,
@@ -75,21 +115,35 @@ export function Settings({
   onLogout,
   onResetLocalData,
 }: SettingsProps) {
+  const bottomInset = useBottomInset();
   const db = usePowerSync();
   const { settings, theme } = useScreenSettings();
   const { prefs, setPref } = useDevicePrefs();
   const sync = useSyncState(useUpdateRequired());
-  const problems = useQuery<{ n: number }>("SELECT count(*) AS n FROM sync_problems");
+  // One per record, like the cards of the Sync problems screen.
+  const problems = useQuery<{ n: number }>("SELECT count(DISTINCT table_name || ':' || record_id) AS n FROM sync_problems");
   const problemCount = problems.data[0]?.n ?? 0;
   const native = (platform ?? defaultPlatform()) === "ios";
   const lockAvailable = useAppLockAvailable();
+  // The settings save on each change. The Budget Amount field saves on Enter itself.
+  useEscapeToClose(onClose);
 
-  const set = (patch: SettingsPatch) => void updateSettings(db, patch);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const set = (patch: SettingsPatch) => {
+    setSaveError(null);
+    updateSettings(db, patch).catch(() => setSaveError("Could not save the setting. Try again."));
+  };
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.paper }]}>
       <ScreenHeader title="Settings" onBack={onClose} theme={theme} />
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: styles.content.paddingBottom + bottomInset }]}>
+        {saveError ? (
+          <Text allowFontScaling accessibilityRole="alert" style={[styles.intro, { color: theme.listRed }]}>
+            {saveError}
+          </Text>
+        ) : null}
         {settings ? (
           <GroupedSection title="Spending (All Accounts)" theme={theme}>
             <ChoiceRow
@@ -97,6 +151,27 @@ export function Settings({
               value={settings.time_period}
               options={TIME_PERIODS}
               onChange={(time_period) => set({ time_period })}
+              theme={theme}
+            />
+            <ChoiceRow
+              label="Week Starts On"
+              value={String(settings.week_start_day)}
+              options={WEEK_DAYS}
+              onChange={(day) => set({ week_start_day: Number(day) })}
+              theme={theme}
+            />
+            <ChoiceRow
+              label="Month Starts On"
+              value={String(settings.month_start_day)}
+              options={MONTH_DAYS}
+              onChange={(day) => set({ month_start_day: Number(day) })}
+              theme={theme}
+            />
+            <ChoiceRow
+              label="Year Starts In"
+              value={String(settings.year_start_month)}
+              options={YEAR_MONTHS}
+              onChange={(month) => set({ year_start_month: Number(month) })}
               theme={theme}
             />
             <SwitchRow
@@ -155,7 +230,8 @@ export function Settings({
               <Text allowFontScaling style={[styles.label, styles.labelText, { color: theme.settingsBlue }]}>
                 Currency Symbol
               </Text>
-              <Text allowFontScaling style={[styles.value, { color: theme.ink }]}>
+              {/* Read-only: plain muted text, not the look of a row that opens a choice. */}
+              <Text allowFontScaling style={[styles.value, styles.readOnly, { color: theme.ink }]}>
                 {currencySymbol(settings.currency_code)}
               </Text>
             </View>
@@ -266,6 +342,9 @@ function BudgetAmountInput({
         allowFontScaling
         accessibilityLabel="Budget Amount"
         inputMode="decimal"
+        keyboardAppearance={keyboardAppearance(theme)}
+        // iOS: the number pad has no key to close it. This adds a bar with Done above it.
+        inputAccessoryViewButtonLabel="Done"
         placeholder={currencySymbol(currency)}
         placeholderTextColor={theme.accent}
         value={text}
@@ -423,14 +502,22 @@ function LinkRow({
       <Text allowFontScaling style={[styles.label, styles.labelText, { color: color ?? theme.settingsBlue }]}>
         {label}
       </Text>
-      <Text allowFontScaling style={[styles.value, { color: theme.line }]}>
+      <Text allowFontScaling style={[styles.value, { color: theme.control }]}>
         ›
       </Text>
     </Pressable>
   );
 }
 
-type ProblemRow = SyncProblem & { has_row: number };
+type ProblemRow = SyncProblem & {
+  has_row: number;
+  /** The ids of all problems of this record, the shown one included. */
+  group_ids: string;
+  row_name: string | null;
+  row_amount: number | null;
+  row_date: string | null;
+  row_currency: string | null;
+};
 
 const TABLE_LABELS: Record<string, string> = {
   transactions: "Transaction",
@@ -447,6 +534,37 @@ const OP_LABELS: Record<SyncProblem["op"], string> = {
   DELETE: "deleted",
 };
 
+/** The record of a problem: the uploaded fields on top of the local row. */
+function problemTitle(problem: ProblemRow): { name: string | null; details: string[] } {
+  let data: Record<string, unknown> = {};
+  try {
+    data = problem.data_json ? (JSON.parse(problem.data_json) as Record<string, unknown>) : {};
+  } catch {
+    // Unreadable upload data: the card shows the local row only.
+  }
+  const text = (key: string, fallback: string | number | null) => {
+    const value = data[key] ?? fallback;
+    return value === null || value === undefined || value === "" ? null : value;
+  };
+  const name = text("name", problem.row_name);
+  const details: string[] = [];
+  if (problem.table_name === "transactions") {
+    const amount = text("amount_minor", problem.row_amount);
+    const currency = text("currency_code", problem.row_currency) ?? "EUR";
+    if (typeof amount === "number") details.push(formatAmount(amount, String(currency)));
+    const date = text("date", problem.row_date);
+    if (typeof date === "string") details.push(formatProblemDate(date));
+  }
+  return { name: typeof name === "string" ? name : null, details };
+}
+
+function formatProblemDate(date: string): string {
+  const [year, month, day] = date.split("-").map(Number);
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  if (Number.isNaN(utc.getTime())) return date;
+  return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(utc);
+}
+
 /** "Edit and retry" needs a form for the table and the full record: the upload data of a PUT, or the local row. */
 function canEdit(problem: ProblemRow): boolean {
   return EDITABLE_TABLES.includes(problem.table_name) && problem.op !== "DELETE" && (problem.op === "PUT" || problem.has_row === 1);
@@ -460,58 +578,103 @@ export interface ProblemEdit {
 
 /** The uploads that the server rejected, with "Edit and retry" and "Discard". */
 export function SyncProblemsScreen({ onEdit, onClose }: { onEdit: (edit: ProblemEdit) => void; onClose: () => void }) {
+  const bottomInset = useBottomInset();
   const db = usePowerSync();
   const { theme } = useScreenSettings();
+  useEscapeToClose(onClose);
+  // One card per record: a record that the server rejects again on each app start
+  // has a problem for each try. The card shows the newest one.
   const { data } = useQuery<ProblemRow>(
     `SELECT p.*, CASE p.table_name
         WHEN 'transactions' THEN EXISTS (SELECT 1 FROM transactions WHERE id = p.record_id)
         WHEN 'categories' THEN EXISTS (SELECT 1 FROM categories WHERE id = p.record_id)
         WHEN 'accounts' THEN EXISTS (SELECT 1 FROM accounts WHERE id = p.record_id)
-        ELSE 0 END AS has_row
+        ELSE 0 END AS has_row,
+      (SELECT group_concat(q.id) FROM sync_problems q
+        WHERE q.table_name = p.table_name AND q.record_id = p.record_id) AS group_ids,
+      CASE p.table_name
+        WHEN 'transactions' THEN (SELECT name FROM transactions WHERE id = p.record_id)
+        WHEN 'categories' THEN (SELECT name FROM categories WHERE id = p.record_id)
+        WHEN 'accounts' THEN (SELECT name FROM accounts WHERE id = p.record_id)
+        WHEN 'recurring_rules' THEN (SELECT name FROM recurring_rules WHERE id = p.record_id)
+        END AS row_name,
+      t.amount_minor AS row_amount, t.date AS row_date, t.currency_code AS row_currency
       FROM sync_problems p
+      LEFT JOIN transactions t ON p.table_name = 'transactions' AND t.id = p.record_id
+      WHERE p.id = (SELECT q.id FROM sync_problems q
+        WHERE q.table_name = p.table_name AND q.record_id = p.record_id
+        ORDER BY q.created_at DESC, q.id DESC LIMIT 1)
       ORDER BY p.created_at, p.id`,
   );
+  const anyEditable = data.some(canEdit);
+
+  // The newest problem replaces the older ones of the record. Discard removes all of them, and
+  // Edit and retry removes the older ones, so the form's save clears the record.
+  async function deleteOlder(problem: ProblemRow) {
+    for (const id of problem.group_ids.split(",")) if (id !== problem.id) await deleteSyncProblem(db, id);
+  }
+
+  async function discard(problem: ProblemRow) {
+    await deleteOlder(problem);
+    await deleteSyncProblem(db, problem.id);
+  }
+
+  async function edit(problem: ProblemRow) {
+    await deleteOlder(problem);
+    onEdit({ problemId: problem.id, table: problem.table_name, recordId: problem.record_id });
+  }
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.paper }]}>
       <ScreenHeader title="Sync problems" onBack={onClose} theme={theme} />
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: styles.content.paddingBottom + bottomInset }]}>
         {data.length === 0 ? (
           <Text allowFontScaling style={[styles.empty, { color: theme.ink }]}>
             No sync problems.
           </Text>
         ) : (
           <Text allowFontScaling style={[styles.intro, { color: theme.ink }]}>
-            The server did not accept these changes. Edit and retry a change, or discard it.
+            {anyEditable
+              ? "The server did not accept these changes. Edit and retry a change, or discard it."
+              : "The server did not accept these changes. Discard a change to remove it from the list."}
           </Text>
         )}
-        {data.map((problem) => (
-          <View key={problem.id} style={[styles.card, { backgroundColor: theme.row, borderBottomColor: theme.line }]}>
-            <Text allowFontScaling style={[styles.labelText, { color: theme.ink }]}>
-              {`${TABLE_LABELS[problem.table_name] ?? problem.table_name} (${OP_LABELS[problem.op] ?? problem.op})`}
-            </Text>
-            <Text allowFontScaling style={[styles.subText, { color: theme.listRed }]}>
-              {problem.message}
-            </Text>
-            <View style={styles.actions}>
-              {canEdit(problem) ? (
-                <ActionButton
-                  label="Edit and retry"
-                  accessibilityLabel={`Edit and retry, ${problem.message}`}
-                  onPress={() => onEdit({ problemId: problem.id, table: problem.table_name, recordId: problem.record_id })}
-                  color={theme.accent}
-                />
+        {data.map((problem) => {
+          const kind = `${TABLE_LABELS[problem.table_name] ?? problem.table_name} (${OP_LABELS[problem.op] ?? problem.op})`;
+          const { name, details } = problemTitle(problem);
+          return (
+            <View key={problem.id} style={[styles.card, { backgroundColor: theme.row, borderBottomColor: theme.line }]}>
+              <Text allowFontScaling style={[styles.labelText, { color: theme.ink }]}>
+                {name ?? kind}
+              </Text>
+              {name ? (
+                <Text allowFontScaling style={[styles.subText, { color: theme.accent }]}>
+                  {[kind, ...details].join(" · ")}
+                </Text>
               ) : null}
-              <ActionButton
-                testID="discard-problem"
-                label="Discard"
-                accessibilityLabel={`Discard, ${problem.message}`}
-                onPress={() => void deleteSyncProblem(db, problem.id)}
-                color={theme.listRed}
-              />
+              <Text allowFontScaling style={[styles.subText, { color: theme.listRed }]}>
+                {problem.message}
+              </Text>
+              <View style={styles.actions}>
+                {canEdit(problem) ? (
+                  <ActionButton
+                    label="Edit and retry"
+                    accessibilityLabel={`Edit and retry, ${problem.message}`}
+                    onPress={() => void edit(problem)}
+                    color={theme.accent}
+                  />
+                ) : null}
+                <ActionButton
+                  testID="discard-problem"
+                  label="Discard"
+                  accessibilityLabel={`Discard, ${problem.message}`}
+                  onPress={() => void discard(problem)}
+                  color={theme.listRed}
+                />
+              </View>
             </View>
-          </View>
-        ))}
+          );
+        })}
       </ScrollView>
     </View>
   );
@@ -560,7 +723,9 @@ export function SessionsScreen({
   currentSessionId: string | null;
   onClose: () => void;
 }) {
+  const bottomInset = useBottomInset();
   const { theme } = useScreenSettings();
+  useEscapeToClose(onClose);
   const [sessions, setSessions] = useState<DeviceSession[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -589,7 +754,7 @@ export function SessionsScreen({
   return (
     <View style={[styles.screen, { backgroundColor: theme.paper }]}>
       <ScreenHeader title="Devices" onBack={onClose} theme={theme} />
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: styles.content.paddingBottom + bottomInset }]}>
         {error ? (
           <Text allowFontScaling accessibilityRole="alert" style={[styles.intro, { color: theme.listRed }]}>
             {error}
@@ -680,6 +845,9 @@ const styles = StyleSheet.create({
   value: {
     fontSize: 16,
     marginLeft: 12,
+  },
+  readOnly: {
+    opacity: 0.5,
   },
   note: {
     fontSize: 13,

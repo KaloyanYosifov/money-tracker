@@ -1,3 +1,4 @@
+import { SCHEMA_VERSION } from "../../app/src/generated/schema.ts";
 import { WEB_URL } from "../support/stack.ts";
 import {
   addTransaction,
@@ -38,7 +39,7 @@ test("user B never sees the rows of user A and cannot change them", async ({ bro
   const res = await b.page.request.post(`${WEB_URL}/api/sync/upload`, {
     headers: { Authorization: `Bearer ${tokenB}` },
     data: {
-      schema_version: 1,
+      schema_version: SCHEMA_VERSION,
       ops: [{ op: "PATCH", table: "transactions", id: rowA.id, data: { name: "Changed by B" } }],
     },
   });

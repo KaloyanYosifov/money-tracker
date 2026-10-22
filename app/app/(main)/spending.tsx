@@ -33,7 +33,8 @@ export default function SpendingScreen() {
       onCategoryPress={(categoryId, accountId) =>
         router.navigate({
           pathname: "/transactions",
-          params: accountId ? { categoryId, accountId } : { categoryId },
+          // tap is new on each press, so the same category again restarts a list that cleared its filter.
+          params: accountId ? { categoryId, accountId, tap: String(Date.now()) } : { categoryId, tap: String(Date.now()) },
         } as unknown as Href)
       }
       onAdd={(type) => router.push(`/transaction/new?type=${type}` as Href)}

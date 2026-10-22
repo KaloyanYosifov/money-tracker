@@ -1,8 +1,8 @@
 import { useQuery } from "@powersync/react";
-import { useRouter, type Href } from "expo-router";
+import { useIsFocused, useRouter, type Href } from "expo-router";
 import { Tabs } from "expo-router/js-tabs";
 import { useMemo } from "react";
-import { StyleSheet, useColorScheme, View } from "react-native";
+import { Platform, StyleSheet, useColorScheme, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useSessionActions } from "../../src/data/session";
@@ -30,6 +30,8 @@ export default function MainLayout() {
   const scheme = useColorScheme();
   const { prefs } = useDevicePrefs();
   const { logout } = useSessionActions();
+  // False while a form or Settings covers the pages, so their keys do not open pages below them.
+  const focused = useIsFocused();
   const { data } = useQuery<UserSettings>("SELECT * FROM user_settings LIMIT 1");
   const settings = data[0];
 
@@ -48,13 +50,17 @@ export default function MainLayout() {
   const openSettings = () => router.push("/settings" as Href);
   const quickAdd = (type: QuickAddType) => router.push(newTransactionHref(type));
 
-  useShortcuts({
-    page: (page) => {
-      const target = PAGES[page - 1];
-      if (target) router.navigate(`/${target.name}` as Href);
-    },
-    newTransaction: quickAdd,
-  });
+  useShortcuts(
+    focused
+      ? {
+          page: (page) => {
+            const target = PAGES[page - 1];
+            if (target) router.navigate(`/${target.name}` as Href);
+          },
+          newTransaction: quickAdd,
+        }
+      : {},
+  );
 
   const sidebar = mode === "sidebar";
   const tabsPosition = prefs.tabsPosition === "top" ? "top" : "bottom";
@@ -62,6 +68,8 @@ export default function MainLayout() {
   return (
     <PeriodProvider settings={periodSettings} defaultKind={settings?.time_period ?? "monthly"}>
       <Tabs
+        // In the browser each page change adds a history entry, so Back and Forward go through the visited pages.
+        backBehavior={Platform.OS === "web" ? "fullHistory" : undefined}
         screenOptions={{
           headerShown: false,
           tabBarPosition: sidebar ? "left" : tabsPosition,
@@ -69,7 +77,7 @@ export default function MainLayout() {
         tabBar={(props) =>
           // Reports in phone landscape is full screen.
           reportsReplacesPage(mode, props.state.routes[props.state.index]?.name ?? "") ? null : sidebar ? (
-            <Sidebar {...props} onQuickAdd={quickAdd} onSettings={openSettings} onLogout={() => void logout()} theme={theme} />
+            <Sidebar {...props} onQuickAdd={quickAdd} onSettings={openSettings} onLogout={() => void logout().catch(showLogoutError)} theme={theme} />
           ) : (
             <TabBar {...props} position={tabsPosition} onMenu={openSettings} onAdd={() => quickAdd("expense")} theme={theme} />
           )
@@ -83,9 +91,11 @@ export default function MainLayout() {
               </SidebarPage>
             );
           }
+          // Phone landscape: the page keeps clear of the notch and the rounded corners.
+          const sides = { paddingLeft: insets.left, paddingRight: insets.right, backgroundColor: theme.paper };
           if (tabsPosition === "bottom") {
             return (
-              <View style={styles.fill}>
+              <View style={[styles.fill, sides]}>
                 <PhoneHeader
                   routeName={route.name}
                   onMenu={openSettings}
@@ -97,7 +107,7 @@ export default function MainLayout() {
               </View>
             );
           }
-          return children;
+          return <View style={[styles.fill, sides]}>{children}</View>;
         }}
       >
         {PAGES.map((page) => (
@@ -106,6 +116,11 @@ export default function MainLayout() {
       </Tabs>
     </PeriodProvider>
   );
+}
+
+/** The sidebar shows only in the browser. */
+function showLogoutError() {
+  window.alert("The server did not end the session. Check the connection and try again.");
 }
 
 const styles = StyleSheet.create({

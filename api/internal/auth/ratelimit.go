@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/time/rate"
 )
@@ -115,23 +117,93 @@ func (l *Lockout) Check(ctx context.Context, userID string) error {
 // correct. A wrong password counts as a failure and returns ErrBadPassword.
 // A correct password does not reset the count, because the login is not
 // complete before the TOTP step. Call Reset after the full login.
+//
+// The attempt counts as a failure before the slow password check, in a
+// short transaction that locks the user row. So concurrent attempts cannot
+// pass the lock, and the row is not locked during the check. A correct
+// password then takes the failure back.
 func (l *Lockout) CheckPassword(ctx context.Context, userID, password, hash string) error {
-	if err := l.Check(ctx, userID); err != nil {
+	undo, err := l.reserveFailure(ctx, userID)
+	if err != nil {
 		return err
 	}
-	if VerifyPassword(password, hash) {
+	if !VerifyPassword(password, hash) {
+		return ErrBadPassword
+	}
+	return undo(ctx)
+}
+
+// reserveFailure returns ErrLocked for a locked user. Else it records one
+// failure and returns a function that takes the failure back.
+func (l *Lockout) reserveFailure(ctx context.Context, userID string) (func(context.Context) error, error) {
+	tx, err := l.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var before, after *time.Time
+	err = tx.QueryRow(ctx, `SELECT locked_until FROM users WHERE id = $1 FOR UPDATE`, userID).Scan(&before)
+	if err != nil {
+		return nil, fmt.Errorf("read lockout: %w", err)
+	}
+	if before != nil && before.After(l.Now()) {
+		return nil, ErrLocked
+	}
+	if err := l.recordFailure(ctx, tx, userID); err != nil {
+		return nil, err
+	}
+	if err := tx.QueryRow(ctx, `SELECT locked_until FROM users WHERE id = $1`, userID).Scan(&after); err != nil {
+		return nil, fmt.Errorf("read lockout: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	lockedNow := after != nil && (before == nil || !after.Equal(*before))
+	return func(ctx context.Context) error {
+		var err error
+		if lockedNow {
+			// This attempt set the lock. Other attempts saw the lock and
+			// changed nothing, so the state before it comes back.
+			_, err = l.pool.Exec(ctx,
+				`UPDATE users SET failed_logins = $2, locked_until = $3 WHERE id = $1 AND locked_until = $4`,
+				userID, MaxFailedLogins-1, before, after)
+		} else {
+			_, err = l.pool.Exec(ctx,
+				`UPDATE users SET failed_logins = GREATEST(failed_logins - 1, 0) WHERE id = $1`, userID)
+		}
+		if err != nil {
+			return fmt.Errorf("undo login failure: %w", err)
+		}
 		return nil
+	}, nil
+}
+
+// checkLocked locks the user row in tx and returns ErrLocked if the user is
+// locked now.
+func (l *Lockout) checkLocked(ctx context.Context, tx pgx.Tx, userID string) error {
+	var lockedUntil *time.Time
+	err := tx.QueryRow(ctx, `SELECT locked_until FROM users WHERE id = $1 FOR UPDATE`, userID).Scan(&lockedUntil)
+	if err != nil {
+		return fmt.Errorf("read lockout: %w", err)
 	}
-	if err := l.RecordFailure(ctx, userID); err != nil {
-		return err
+	if lockedUntil != nil && lockedUntil.After(l.Now()) {
+		return ErrLocked
 	}
-	return ErrBadPassword
+	return nil
 }
 
 // RecordFailure adds one failure. The failure that reaches MaxFailedLogins
 // locks the user for LockoutDuration and sets the count back to zero.
 func (l *Lockout) RecordFailure(ctx context.Context, userID string) error {
-	_, err := l.pool.Exec(ctx, `
+	return l.recordFailure(ctx, l.pool, userID)
+}
+
+func (l *Lockout) recordFailure(ctx context.Context, q interface {
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}, userID string) error {
+	_, err := q.Exec(ctx, `
 		UPDATE users SET
 			failed_logins = CASE WHEN failed_logins + 1 >= $2 THEN 0 ELSE failed_logins + 1 END,
 			locked_until  = CASE WHEN failed_logins + 1 >= $2 THEN $3 ELSE locked_until END

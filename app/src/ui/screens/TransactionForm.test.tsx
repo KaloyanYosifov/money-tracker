@@ -3,17 +3,28 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react-n
 import { createTestDatabase, loadFixture, type TestDatabase } from "../../../test/sqlite";
 import { UndoProvider } from "../../data/UndoProvider";
 import { occurrenceId } from "../../domain/ids";
+import type { Shortcuts } from "../../hooks/useShortcuts";
 import { TransactionForm } from "./TransactionForm";
 
 let mockDb: TestDatabase;
 
+// The last handlers that the form passed to useShortcuts.
+let mockShortcuts: Shortcuts = {};
+jest.mock("../../hooks/useShortcuts", () => ({
+  useShortcuts: (handlers: Shortcuts) => {
+    mockShortcuts = handlers;
+  },
+}));
+// Simulates @powersync/react after a parameter change: the old rows stay, with isFetching, until the new query runs.
+let mockStaleRules = false;
+
 // The hooks run their SQL against the in-memory fixture database, and the
 // mutations write to it.
 jest.mock("@powersync/react", () => ({
-  useQuery: (sql: string, parameters: unknown[] = []) => ({
-    data: mockDb.prepare(sql).all(parameters),
-    isLoading: false,
-  }),
+  useQuery: (sql: string, parameters: unknown[] = []) =>
+    mockStaleRules && sql.includes("FROM recurring_rules")
+      ? { data: [], isLoading: false, isFetching: true }
+      : { data: mockDb.prepare(sql).all(parameters), isLoading: false },
   usePowerSync: () => jest.requireActual("../../../test/sqlite").asyncDatabase(mockDb),
 }));
 
@@ -115,6 +126,7 @@ async function saveAndWait() {
 
 beforeEach(() => {
   jest.useFakeTimers();
+  mockStaleRules = false;
   execute.mockClear();
   load();
 });
@@ -129,7 +141,7 @@ describe("TransactionForm", () => {
 
     expect(screen.getByText("New Expense")).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Expense" }).props.accessibilityState).toEqual({ selected: true });
-    expect(screen.getByDisplayValue(TODAY)).toBeTruthy();
+    expect(screen.getByTestId("transaction-date").props.accessibilityLabel).toBe("Date, Today");
     expect(screen.getByPlaceholderText("Name").props.value).toBe("");
 
     const grid = within(screen.getByLabelText("Category"));
@@ -139,7 +151,8 @@ describe("TransactionForm", () => {
     expect(account.getByRole("radio", { name: "Wallet" }).props.accessibilityState).toEqual(
       expect.objectContaining({ checked: true }),
     );
-    expect(isDisabled(saveButton())).toBe(true);
+    // Save stays pressable. A press on it shows the errors.
+    expect(isDisabled(saveButton())).toBe(false);
   });
 
   it("opens with the type from the route", async () => {
@@ -204,7 +217,7 @@ describe("TransactionForm", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("shows validation errors under the fields and keeps Save disabled", async () => {
+  it("shows validation errors under the fields and does not save", async () => {
     await renderForm();
 
     await fireEvent.press(screen.getByRole("tab", { name: "Transfer" }));
@@ -212,12 +225,10 @@ describe("TransactionForm", () => {
     await fireEvent.press(within(screen.getByLabelText("To")).getByRole("radio", { name: "Wallet" }));
     expect(screen.getByTestId("error-to_account_id").props.children).toBe("Pick a different account");
 
-    await fireEvent.changeText(screen.getByDisplayValue(TODAY), "2026-02-30");
-    expect(screen.getByTestId("error-date").props.children).toBe("Use a date like 2026-10-19");
-    expect(isDisabled(saveButton())).toBe(true);
+    await saveAndWait();
+    expect(mockDb.prepare("SELECT COUNT(*) AS n FROM transactions WHERE type = 'transfer'").get()).toEqual({ n: 0 });
 
     await fireEvent.press(within(screen.getByLabelText("To")).getByRole("radio", { name: "Bank" }));
-    await fireEvent.changeText(screen.getByDisplayValue("2026-02-30"), "2026-10-18");
     expect(screen.queryByTestId("error-to_account_id")).toBeNull();
     expect(isDisabled(saveButton())).toBe(false);
   });
@@ -229,13 +240,29 @@ describe("TransactionForm", () => {
     expect(screen.queryByTestId("error-category_id")).toBeNull();
   });
 
+  it("shows every error on a Save press and does not save", async () => {
+    const onClose = await renderForm();
+    const count = mockDb.prepare("SELECT COUNT(*) AS n FROM transactions").get();
+
+    await typeAmount("12");
+    expect(screen.queryByTestId("error-category_id")).toBeNull();
+
+    await saveAndWait();
+    expect(screen.getByTestId("error-category_id")).toBeTruthy();
+    expect(mockDb.prepare("SELECT COUNT(*) AS n FROM transactions").get()).toEqual(count);
+    expect(onClose).not.toHaveBeenCalled();
+
+    await fireEvent.press(within(screen.getByLabelText("Category")).getByRole("radio", { name: "Groceries" }));
+    expect(screen.queryByTestId("error-category_id")).toBeNull();
+  });
+
   it("opens an existing transaction and saves the changes", async () => {
     const onClose = await renderForm({ id: "lunch" });
 
     expect(screen.getByText("Edit Transaction")).toBeTruthy();
     expect(screen.getByLabelText("Amount").props.value).toBe("14.99");
     expect(screen.getByPlaceholderText("Name").props.value).toBe("Lunch");
-    expect(screen.getByDisplayValue("2026-10-05")).toBeTruthy();
+    expect(screen.getByTestId("transaction-date").props.accessibilityLabel).toBe("Date, Mon, 5 Oct 2026");
     expect(within(screen.getByLabelText("Account")).getByRole("radio", { name: "Bank" }).props.accessibilityState).toEqual(
       expect.objectContaining({ checked: true }),
     );
@@ -251,17 +278,35 @@ describe("TransactionForm", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("offers Quarterly between Monthly and Yearly", async () => {
+    await renderForm();
+
+    await fireEvent(screen.getByRole("switch", { name: "Repeating" }), "valueChange", true);
+
+    const labels = within(screen.getByLabelText("Every"))
+      .getAllByRole("radio")
+      .map((radio) => radio.props.accessibilityLabel);
+    expect(labels).toEqual(["Daily", "Weekly", "Every 2 weeks", "Monthly", "Quarterly", "Yearly"]);
+  });
+
   it("creates a rule for a repeating transaction and runs the generator", async () => {
     await renderForm();
 
     await typeAmount("50");
     await fireEvent.changeText(screen.getByPlaceholderText("Name"), "Gym");
     await fireEvent.press(within(screen.getByLabelText("Category")).getByRole("radio", { name: "Rent" }));
-    await fireEvent.changeText(screen.getByDisplayValue(TODAY), "2026-09-19");
+    await fireEvent.press(screen.getByTestId("transaction-date"));
+    await fireEvent.press(screen.getByRole("button", { name: "Previous month" }));
+    await fireEvent.press(screen.getByTestId("day-2026-09-19"));
+    expect(screen.getByTestId("transaction-date").props.accessibilityLabel).toBe("Date, Sat, 19 Sept 2026");
     expect(screen.queryByLabelText("Every")).toBeNull();
     await fireEvent(screen.getByRole("switch", { name: "Repeating" }), "valueChange", true);
     await fireEvent.press(within(screen.getByLabelText("Every")).getByRole("radio", { name: "Monthly" }));
-    await fireEvent.changeText(screen.getByPlaceholderText("Never"), "2027-09-19");
+    expect(screen.getByTestId("transaction-end-date").props.accessibilityLabel).toBe("End Date, Never");
+    await fireEvent.press(screen.getByTestId("transaction-end-date"));
+    await fireEvent.press(screen.getByRole("button", { name: "Next month" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Next month" }));
+    await fireEvent.press(screen.getByTestId("day-2026-12-19"));
     await saveAndWait();
 
     const rule = mockDb.prepare("SELECT * FROM recurring_rules").get() as { id: string };
@@ -274,7 +319,7 @@ describe("TransactionForm", () => {
         account_id: "wallet",
         frequency: "monthly",
         start_date: "2026-09-19",
-        end_date: "2027-09-19",
+        end_date: "2026-12-19",
       }),
     );
     expect(
@@ -327,6 +372,78 @@ describe("TransactionForm", () => {
     });
   });
 
+  it("waits for the rule of a repeating transaction before it shows the form", async () => {
+    const gymOct = occurrenceId("gym-rule", "2026-10-01");
+    load({
+      recurring_rules: [
+        {
+          id: "gym-rule",
+          user_id: "u1",
+          type: "expense",
+          amount_minor: 5000,
+          name: "Gym",
+          category_id: "rent",
+          account_id: "bank",
+          frequency: "weekly",
+          start_date: "2026-10-01",
+        },
+      ],
+      transactions: [
+        { ...lunch, id: gymOct, amount_minor: 5000, name: "Gym", date: "2026-10-01", category_id: "rent", recurring_rule_id: "gym-rule", source: "recurring" },
+      ],
+    });
+    mockStaleRules = true;
+    const onClose = jest.fn();
+    const ui = () => (
+      <UndoProvider db={{ execute }}>
+        <TransactionForm id={gymOct} platform="ios" locale="en-GB" today={TODAY} onClose={onClose} />
+      </UndoProvider>
+    );
+    await render(ui());
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+
+    mockStaleRules = false;
+    await screen.rerender(ui());
+    expect(screen.getByRole("switch", { name: "Repeating" }).props.value).toBe(true);
+
+    await fireEvent.changeText(screen.getByPlaceholderText("Add a note"), "paid");
+    await saveAndWait();
+    expect(mockDb.prepare("SELECT frequency, end_date FROM recurring_rules WHERE id = 'gym-rule'").get()).toEqual({
+      frequency: "weekly",
+      end_date: null,
+    });
+  });
+
+  it("saves once when Save is pressed twice quickly", async () => {
+    await renderForm();
+    await typeAmount("12");
+    await fireEvent.changeText(screen.getByPlaceholderText("Name"), "Bread");
+    await fireEvent.press(within(screen.getByLabelText("Category")).getByRole("radio", { name: "Groceries" }));
+
+    await act(async () => {
+      const button = saveButton();
+      fireEvent.press(button);
+      fireEvent.press(button);
+    });
+
+    expect(mockDb.prepare("SELECT COUNT(*) AS n FROM transactions WHERE name = 'Bread'").get()).toEqual({ n: 1 });
+  });
+
+  it("says the amount is not valid for text it cannot read", async () => {
+    await renderForm();
+
+    await typeAmount("12.345");
+    expect(screen.getByTestId("error-amount_minor").props.children).toBe("Enter a valid amount");
+    await typeAmount("0");
+    expect(screen.getByTestId("error-amount_minor").props.children).toBe("Enter an amount above 0");
+  });
+
+  it("closes when the transaction does not exist, for example after a delete on another device", async () => {
+    const onClose = await renderForm({ id: "gone" });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("deletes with requestDelete and goes back, only in edit", async () => {
     const onClose = await renderForm({ id: "lunch" });
 
@@ -360,5 +477,42 @@ describe("TransactionForm", () => {
     expect(screen.queryByText("Cancel")).toBeNull();
     await fireEvent.press(screen.getByRole("button", { name: "Close" }));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("saves an edited name and closes on one press of Save", async () => {
+    const onClose = await renderForm({ id: "lunch" });
+    await fireEvent.changeText(screen.getByPlaceholderText("Name"), "Lunch!");
+    await saveAndWait();
+
+    expect(mockDb.prepare("SELECT name FROM transactions WHERE id = 'lunch'").get()).toEqual({ name: "Lunch!" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("picks the date in the calendar and pauses Enter and Escape while it is open", async () => {
+    await renderForm({ id: "lunch" });
+    expect(mockShortcuts.save).toBeDefined();
+
+    await fireEvent.press(screen.getByTestId("transaction-date"));
+    expect(mockShortcuts).toEqual({});
+    await fireEvent.press(screen.getByTestId("day-2026-10-07"));
+
+    expect(mockShortcuts.save).toBeDefined();
+    expect(screen.getByTestId("transaction-date").props.accessibilityLabel).toBe("Date, Wed, 7 Oct 2026");
+    await saveAndWait();
+    expect(mockDb.prepare("SELECT date FROM transactions WHERE id = 'lunch'").get()).toEqual({ date: "2026-10-07" });
+  });
+
+  it("uses the dark keyboard in the dark theme", async () => {
+    load({ user_settings: [{ ...userSettings, theme: "dark" }] });
+    await renderForm();
+    expect(screen.getByPlaceholderText("Name").props.keyboardAppearance).toBe("dark");
+    expect(screen.getByLabelText("Amount").props.keyboardAppearance).toBe("dark");
+  });
+
+  it("has a Done bar above the number pad of the amount", async () => {
+    await renderForm();
+    // The native Done bar of TextInput. An InputAccessoryView stops the field from taking focus after the form opens again.
+    expect(screen.getByLabelText("Amount").props.inputAccessoryViewButtonLabel).toBe("Done");
+    expect(screen.getByLabelText("Amount").props.inputAccessoryViewID).toBeUndefined();
   });
 });

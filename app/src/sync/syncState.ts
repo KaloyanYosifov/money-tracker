@@ -48,7 +48,7 @@ export function useSyncState(updateRequired = false): SyncState {
   const status = useStatus();
   const { status: auth } = useAuth();
   const pending = useQuery<{ n: number }>("SELECT count(*) AS n FROM ps_crud");
-  const problems = useQuery<{ n: number }>("SELECT count(*) AS n FROM sync_problems");
+  const problems = useQuery<{ n: number }>("SELECT count(DISTINCT table_name || ':' || record_id) AS n FROM sync_problems");
   return deriveSyncState({
     status,
     pendingCount: pending.data[0]?.n ?? 0,

@@ -83,6 +83,22 @@ func (s *RefreshStore) Rotate(ctx context.Context, token string) (RefreshToken, 
 	}
 	defer tx.Rollback(ctx)
 
+	// Lock the user row before the token row, in the same order as the
+	// revoke functions, so that a revoke waits for this rotation and then
+	// also ends the new token.
+	var owner string
+	err = tx.QueryRow(ctx, `SELECT user_id::text FROM refresh_tokens WHERE token_hash = $1`,
+		hashRefreshToken(token)).Scan(&owner)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return RefreshToken{}, ErrTokenInvalid
+	}
+	if err != nil {
+		return RefreshToken{}, fmt.Errorf("select refresh token: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `SELECT 1 FROM users WHERE id = $1 FOR KEY SHARE`, owner); err != nil {
+		return RefreshToken{}, fmt.Errorf("lock user: %w", err)
+	}
+
 	now := s.Now()
 	var (
 		id, userID, familyID, deviceName string
@@ -149,7 +165,8 @@ func (s *RefreshStore) Rotate(ctx context.Context, token string) (RefreshToken, 
 // Revoke ends the session of the token (logout). An unknown or already
 // revoked token is not an error.
 func (s *RefreshStore) Revoke(ctx context.Context, token string) error {
-	_, err := s.pool.Exec(ctx,
+	_, err := s.revoke(ctx,
+		`SELECT user_id::text FROM refresh_tokens WHERE token_hash = $1`, []any{hashRefreshToken(token)},
 		`UPDATE refresh_tokens SET revoked_at = $2
 		 WHERE family_id = (SELECT family_id FROM refresh_tokens WHERE token_hash = $1)
 		   AND revoked_at IS NULL`,
@@ -163,14 +180,15 @@ func (s *RefreshStore) Revoke(ctx context.Context, token string) error {
 // RevokeSession ends one session of the user. It returns ErrSessionNotFound
 // if the user has no active session with this ID.
 func (s *RefreshStore) RevokeSession(ctx context.Context, userID, sessionID string) error {
-	tag, err := s.pool.Exec(ctx,
+	revoked, err := s.revoke(ctx,
+		`SELECT id::text FROM users WHERE id::text = $1`, []any{userID},
 		`UPDATE refresh_tokens SET revoked_at = $3
 		 WHERE user_id::text = $1 AND family_id::text = $2 AND revoked_at IS NULL`,
 		userID, sessionID, s.Now())
 	if err != nil {
 		return fmt.Errorf("revoke session: %w", err)
 	}
-	if tag.RowsAffected() == 0 {
+	if revoked == 0 {
 		return ErrSessionNotFound
 	}
 	return nil
@@ -178,13 +196,44 @@ func (s *RefreshStore) RevokeSession(ctx context.Context, userID, sessionID stri
 
 // RevokeAllForUser ends all sessions of the user.
 func (s *RefreshStore) RevokeAllForUser(ctx context.Context, userID string) error {
-	_, err := s.pool.Exec(ctx,
+	_, err := s.revoke(ctx,
+		`SELECT id::text FROM users WHERE id::text = $1`, []any{userID},
 		`UPDATE refresh_tokens SET revoked_at = $2
-		 WHERE user_id = $1 AND revoked_at IS NULL`, userID, s.Now())
+		 WHERE user_id::text = $1 AND revoked_at IS NULL`, userID, s.Now())
 	if err != nil {
 		return fmt.Errorf("revoke all sessions: %w", err)
 	}
 	return nil
+}
+
+// revoke finds the user with userSQL, locks the user row and then runs
+// update. It returns the number of revoked tokens. Rotate holds a key share
+// lock on the user row while it replaces a token. The lock makes update wait
+// for a running rotation, and update then sees the new token too. A user
+// that userSQL does not find is not an error.
+func (s *RefreshStore) revoke(ctx context.Context, userSQL string, userArgs []any, update string, args ...any) (int64, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var userID string
+	err = tx.QueryRow(ctx, userSQL, userArgs...).Scan(&userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("find user: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `SELECT 1 FROM users WHERE id = $1 FOR UPDATE`, userID); err != nil {
+		return 0, fmt.Errorf("lock user: %w", err)
+	}
+	tag, err := tx.Exec(ctx, update, args...)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), tx.Commit(ctx)
 }
 
 // ListSessions returns the active sessions of the user. The session with

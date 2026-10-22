@@ -1,12 +1,17 @@
 import { Pressable, StyleSheet, Text } from "react-native";
 
+import { colors, type ThemeColors } from "../theme";
+
 type Props = {
   visible: boolean;
   onUndo: () => void;
+  theme?: ThemeColors;
+  /** Distance from the bottom of the screen, for example above a toolbar. */
+  bottom?: number;
 };
 
 /** The toast after a delete. Connect onUndo to useUndo().undo. */
-export function UndoToast({ visible, onUndo }: Props) {
+export function UndoToast({ visible, onUndo, theme = colors.light, bottom = 24 }: Props) {
   if (!visible) return null;
   return (
     <Pressable
@@ -15,9 +20,10 @@ export function UndoToast({ visible, onUndo }: Props) {
       accessibilityLabel="Deleted. Undo"
       accessibilityLiveRegion="polite"
       onPress={onUndo}
-      style={styles.toast}
+      // Ink on paper, inverted, like the tooltips. In the dark theme the toast is light on the dark list.
+      style={[styles.toast, { bottom, backgroundColor: theme.ink }]}
     >
-      <Text allowFontScaling style={styles.text}>
+      <Text allowFontScaling style={[styles.text, { color: theme.paper }]}>
         Deleted · Undo
       </Text>
     </Pressable>
@@ -28,8 +34,6 @@ const styles = StyleSheet.create({
   toast: {
     position: "absolute",
     alignSelf: "center",
-    bottom: 24,
-    backgroundColor: "#f1ecf3",
     paddingVertical: 10,
     paddingHorizontal: 18,
     borderRadius: 22,
@@ -41,6 +45,5 @@ const styles = StyleSheet.create({
   },
   text: {
     fontSize: 13,
-    color: "#222",
   },
 });

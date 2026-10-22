@@ -1,4 +1,5 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { AppState } from "react-native";
 
 import { periodFor, shiftPeriod, today, type Period, type PeriodKind, type PeriodSettings } from "../../domain/period";
 
@@ -26,10 +27,26 @@ type Props = {
  */
 export function PeriodProvider({ settings, defaultKind, children }: Props) {
   const [chosen, setChosen] = useState<{ kind: PeriodKind; period: Period } | null>(null);
+  // The app can stay open for days, so the current period follows the date each time the app comes back.
+  const [day, setDay] = useState(today);
+  // A picked period has the dates of the old start settings, so a change of them goes back to the current period.
+  const settingsKey = `${defaultKind}:${settings.week_start_day}:${settings.month_start_day}:${settings.year_start_month}`;
+  const [chosenFor, setChosenFor] = useState(settingsKey);
+  if (chosenFor !== settingsKey) {
+    setChosenFor(settingsKey);
+    setChosen(null);
+  }
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") setDay(today());
+    });
+    return () => subscription.remove();
+  }, []);
 
   const value = useMemo<PeriodState>(() => {
     const kind = chosen?.kind ?? defaultKind;
-    const period = chosen?.period ?? periodFor(today(), defaultKind, settings);
+    const period = chosen?.period ?? periodFor(day, defaultKind, settings);
     return {
       kind,
       period,
@@ -37,7 +54,7 @@ export function PeriodProvider({ settings, defaultKind, children }: Props) {
       setPeriod: (nextKind, nextPeriod) => setChosen({ kind: nextKind, period: nextPeriod }),
       shift: (step) => setChosen({ kind, period: shiftPeriod(period, kind, settings, step) }),
     };
-  }, [chosen, defaultKind, settings]);
+  }, [chosen, day, defaultKind, settings]);
 
   return <PeriodContext.Provider value={value}>{children}</PeriodContext.Provider>;
 }

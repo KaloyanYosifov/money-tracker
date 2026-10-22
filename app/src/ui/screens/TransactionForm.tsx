@@ -1,11 +1,11 @@
 import { usePowerSync, useQuery } from "@powersync/react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useColorScheme, View } from "react-native";
 
 import { saveRecurringRule, saveTransaction, type SaveResult } from "../../data/mutations";
 import { deleteSyncProblem, problemRecord, useSyncProblem } from "../../data/syncProblems";
 import { useUndo } from "../../data/UndoProvider";
-import { amountInputText, currencySymbol, parseAmount } from "../../domain/money";
+import { amountInputText, currencySymbol, parseAmount, parseSignedAmount } from "../../domain/money";
 import { today as localToday } from "../../domain/period";
 import {
   validateRecurringRule,
@@ -16,13 +16,15 @@ import {
 import type { Category, RecurringRule, Transaction, UserSettings } from "../../generated/schema";
 import { setDevicePref } from "../../hooks/useDevicePrefs";
 import { useShortcuts } from "../../hooks/useShortcuts";
+import { DateField } from "../components/DateField";
 import { GroupedSection } from "../components/GroupedSection";
 import { isHovered } from "../components/interaction";
 import { SegmentedControl } from "../components/SegmentedControl";
 import { ThemedSwitch } from "../components/ThemedSwitch";
 import { CategoryIcon, categoryIcons, type CategoryIconKey } from "../icons/categoryIcons";
+import { useBottomInset } from "../nav/bottomInset";
 import { colors, resolveTheme, type ThemeColors } from "../theme";
-import { FormAction, FormField, FormHeader, formStyles } from "./manage";
+import { FormAction, FormField, FormHeader, formStyles, keyboardAppearance } from "./manage";
 
 export const LAST_ACCOUNT_PREF = "lastAccountId";
 
@@ -55,6 +57,7 @@ const FREQUENCIES: { value: Frequency; label: string }[] = [
   { value: "weekly", label: "Weekly" },
   { value: "biweekly", label: "Every 2 weeks" },
   { value: "monthly", label: "Monthly" },
+  { value: "quarterly", label: "Quarterly" },
   { value: "yearly", label: "Yearly" },
 ];
 
@@ -96,8 +99,24 @@ export function TransactionForm({ id, initialType = "expense", platform, locale,
   );
   const scheme = useColorScheme();
 
-  const loading = [transaction, rule, settings, lastAccount, categories, accounts].some((q) => q.isLoading) || problemLoading;
+  // After the transaction loads, the rule query keeps its old rows (isFetching) until it runs with the new ID.
+  const ruleId = existing?.recurring_rule_id ?? null;
+  const ruleRow = ruleId ? rule.data.find((r) => r.id === ruleId) : undefined;
+  const ruleLoading = ruleId !== null && !ruleRow && Boolean(rule.isFetching);
+  const loading =
+    [transaction, rule, settings, lastAccount, categories, accounts].some((q) => q.isLoading) || problemLoading || ruleLoading;
   const userSettings = settings.data[0];
+
+  // The transaction is gone (deleted on another device, or a stale link). Close instead of an empty screen.
+  const gone = !loading && id !== null && !existing;
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  });
+  useEffect(() => {
+    if (gone) close.current();
+  }, [gone]);
+
   if (loading || (id && !existing)) return null;
 
   const theme = colors[resolveTheme(userSettings?.theme ?? "system", scheme ?? "light")];
@@ -105,13 +124,14 @@ export function TransactionForm({ id, initialType = "expense", platform, locale,
     <FormBody
       key={existing?.id ?? "new"}
       existing={existing}
-      rule={rule.data[0]}
+      rule={ruleRow}
       initialType={initialType}
       categories={categories.data}
       accounts={accounts.data}
       lastAccountId={lastAccount.data[0]?.value ?? null}
       currency={userSettings?.currency_code ?? "EUR"}
       iconStyle={userSettings?.icon_style ?? "filled"}
+      weekStartDay={userSettings?.week_start_day ?? 1}
       platform={platform ?? (Platform.OS === "web" ? "web" : "ios")}
       locale={locale}
       today={today ?? localToday()}
@@ -131,6 +151,7 @@ type BodyProps = {
   lastAccountId: string | null;
   currency: string;
   iconStyle: UserSettings["icon_style"];
+  weekStartDay: number;
   platform: "ios" | "web";
   locale?: string;
   today: string;
@@ -148,6 +169,7 @@ function FormBody({
   lastAccountId,
   currency,
   iconStyle,
+  weekStartDay,
   platform,
   locale,
   today,
@@ -155,6 +177,7 @@ function FormBody({
   problemId,
   onClose,
 }: BodyProps) {
+  const bottomInset = useBottomInset();
   const db = usePowerSync();
   const { requestDelete } = useUndo();
 
@@ -174,6 +197,10 @@ function FormBody({
   const [touched, setTouched] = useState<ReadonlySet<string>>(new Set());
   const [serverErrors, setServerErrors] = useState<FieldError[]>([]);
   const [saving, setSaving] = useState(false);
+  // While a calendar is open, Enter and Escape belong to the calendar, not to the form.
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  // Two taps (or Enter key repeats) before the next render both see saving false. The ref stops the second save.
+  const savingRef = useRef(false);
 
   const amount = amountText.trim() === "" ? null : parseAmount(amountText, currency, locale);
   const transfer = type === "transfer";
@@ -212,7 +239,13 @@ function FormBody({
   }
 
   async function save() {
-    if (!valid || saving) return;
+    if (savingRef.current) return;
+    if (!valid) {
+      // Save stays pressable, so a press shows every error, also for fields the user has not changed.
+      setTouched((previous) => new Set([...previous, ...errors.map((e) => e.field)]));
+      return;
+    }
+    savingRef.current = true;
     setSaving(true);
     try {
       let result: SaveResult;
@@ -242,11 +275,12 @@ function FormBody({
       await setDevicePref(db, LAST_ACCOUNT_PREF, accountId);
       onClose();
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }
 
-  useShortcuts({ save: () => void save(), cancel: onClose });
+  useShortcuts(calendarOpen ? {} : { save: () => void save(), cancel: onClose });
 
   function changeType(next: TransactionType) {
     if (next === type) return;
@@ -263,6 +297,7 @@ function FormBody({
 
   const visibleCategories = categories.filter((c) => c.type === type);
   const textStyle = [styles.input, { color: theme.ink }];
+  const keyboard = keyboardAppearance(theme);
   const title = existing ? "Edit Transaction" : `New ${TYPES.find((t) => t.value === type)?.label}`;
 
   return (
@@ -270,13 +305,19 @@ function FormBody({
       <FormHeader
         title={title}
         platform={platform}
-        canSave={valid && !saving}
+        canSave={!saving}
         onCancel={onClose}
         onSave={() => void save()}
         saveTestID="transaction-save"
         theme={theme}
       />
-      <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={formStyles.content}>
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        // iOS: the keyboard would cover End Date and Note at the bottom. The insets let them scroll above it.
+        automaticallyAdjustKeyboardInsets
+        contentContainerStyle={[formStyles.content, { paddingBottom: formStyles.content.paddingBottom + bottomInset }]}
+      >
         <View style={formStyles.typeBar}>
           <SegmentedControl options={TYPES} value={type} onChange={changeType} theme={theme} />
         </View>
@@ -299,6 +340,9 @@ function FormBody({
               autoFocus={!existing}
               inputMode="decimal"
               keyboardType="decimal-pad"
+              keyboardAppearance={keyboard}
+              // iOS: the number pad has no key to close it. This adds a bar with Done above it.
+              inputAccessoryViewButtonLabel="Done"
               placeholder={amountInputText(0, currency, locale)}
               placeholderTextColor={theme.accent}
               value={amountText}
@@ -312,7 +356,9 @@ function FormBody({
           </View>
           {errorFor("amount_minor") ? (
             <Text allowFontScaling testID="error-amount_minor" style={[styles.error, { color: theme.listRed }]}>
-              {message(errorFor("amount_minor") as FieldError, today)}
+              {amountText.trim() !== "" && parseSignedAmount(amountText, currency, locale) === null
+                ? "Enter a valid amount"
+                : message(errorFor("amount_minor") as FieldError, today)}
             </Text>
           ) : null}
         </View>
@@ -321,9 +367,11 @@ function FormBody({
           <Field label="Name" error={errorFor("name")} today={today} theme={theme}>
             <TextInput
               testID="transaction-name"
+              accessibilityLabel="Name"
               allowFontScaling
               placeholder="Name"
               placeholderTextColor={theme.accent}
+              keyboardAppearance={keyboard}
               value={name}
               onChangeText={(text) => {
                 setName(text);
@@ -334,18 +382,19 @@ function FormBody({
           </Field>
 
           <Field label="Date" error={errorFor("date")} today={today} theme={theme}>
-            <TextInput
-              allowFontScaling
-              accessibilityLabel="Date"
-              keyboardType="numbers-and-punctuation"
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={theme.accent}
+            <DateField
+              testID="transaction-date"
               value={date}
-              onChangeText={(text) => {
-                setDate(text);
+              onChange={(next) => {
+                setDate(next);
                 touch("date");
               }}
-              style={textStyle}
+              accessibilityLabel="Date"
+              weekStartDay={weekStartDay}
+              onOpenChange={setCalendarOpen}
+              locale={locale}
+              today={today}
+              theme={theme}
             />
           </Field>
 
@@ -380,7 +429,7 @@ function FormBody({
                           background={selected ? theme.paper : theme.row}
                         />
                       ) : null}
-                      <Text allowFontScaling numberOfLines={1} style={[styles.cellText, { color: theme.ink }]}>
+                      <Text allowFontScaling numberOfLines={2} style={[styles.cellText, { color: theme.ink }]}>
                         {category.name}
                       </Text>
                     </Pressable>
@@ -444,18 +493,22 @@ function FormBody({
                   </View>
                 </Field>
                 <Field label="End Date" error={errorFor("end_date")} today={today} theme={theme}>
-                  <TextInput
-                    allowFontScaling
-                    accessibilityLabel="End Date"
-                    keyboardType="numbers-and-punctuation"
-                    placeholder="Never"
-                    placeholderTextColor={theme.accent}
+                  <DateField
+                    testID="transaction-end-date"
                     value={endDate}
-                    onChangeText={(text) => {
-                      setEndDate(text);
+                    onChange={(next) => {
+                      setEndDate(next);
                       touch("end_date");
                     }}
-                    style={textStyle}
+                    accessibilityLabel="End Date"
+                    allowEmpty
+                    placeholder="Never"
+                    minDate={ruleStart}
+                    weekStartDay={weekStartDay}
+                    onOpenChange={setCalendarOpen}
+                    locale={locale}
+                    today={today}
+                    theme={theme}
                   />
                 </Field>
               </>
@@ -467,10 +520,12 @@ function FormBody({
           <Field label="Note" error={errorFor("note")} today={today} theme={theme}>
             <TextInput
               testID="transaction-note"
+              accessibilityLabel="Note"
               allowFontScaling
               multiline
               placeholder="Add a note"
               placeholderTextColor={theme.accent}
+              keyboardAppearance={keyboard}
               value={note}
               onChangeText={(text) => {
                 setNote(text);
@@ -626,7 +681,9 @@ const styles = StyleSheet.create({
     opacity: 0,
     paddingRight: 4,
   },
+  // Left-aligned from the symbol: a placeholder or number narrower than the hidden copy leaves the gap on the right.
   amountInput: {
+    textAlign: "left",
     position: "absolute",
     top: 0,
     right: 0,
@@ -647,9 +704,12 @@ const styles = StyleSheet.create({
     borderColor: "transparent",
     borderRadius: 6,
   },
+  // Up to two lines, so longer names ("Entertainment", "Personal Care") fit in the cell.
   cellText: {
-    fontSize: 12,
+    fontSize: 11,
+    lineHeight: 13,
     marginTop: 2,
+    textAlign: "center",
   },
   chips: {
     flexDirection: "row",

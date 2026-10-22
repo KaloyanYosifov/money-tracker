@@ -1,12 +1,13 @@
 import type { BottomTabBarProps } from "expo-router/js-tabs";
-import type { ReactNode } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useState, type ReactNode } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { periodFor, type PeriodKind } from "../../domain/period";
 import type { QuickAddType } from "../../hooks/useShortcuts";
 import { useSyncState, type SyncStateKind } from "../../sync/syncState";
 import { useUpdateRequired } from "../../sync/updateRequired";
 import { isHovered } from "../components/interaction";
+import { periodAnchor, PeriodPicker } from "../components/PeriodPicker";
 import { PeriodPill } from "../components/PeriodPill";
 import { SegmentedControl } from "../components/SegmentedControl";
 import { TabIcon } from "../icons/tabIcons";
@@ -47,109 +48,120 @@ export function Sidebar({ state, emitter, navigateToTab, onQuickAdd, onSettings,
 
   return (
     <Texture kind="paper" tint={paperTint(theme)} style={[styles.side, { borderRightColor: theme.line }]}>
-      <View style={[styles.brand, { borderBottomColor: theme.line }]}>
-        <View style={[styles.logo, { backgroundColor: theme.chalkBackground }]}>
-          <Text style={[styles.logoText, { color: theme.chalkGreen }]}>€</Text>
-        </View>
-        <View>
-          <Text allowFontScaling style={[styles.brandName, { color: theme.ink }]}>
-            Money Tracker
-          </Text>
-          <Text allowFontScaling style={[styles.brandSub, { color: theme.accent }]}>
-            Personal finances
-          </Text>
-        </View>
-      </View>
-
-      <View accessibilityRole="tablist" style={styles.nav}>
-        {PAGES.map((page, index) => {
-          const route = state.routes.find((r) => r.name === page.name);
-          if (!route) return null;
-          const focused = route.key === focusedKey;
-          const onPress = () => {
-            const event = emitter.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
-            if (!focused && !event.defaultPrevented) navigateToTab(route.key);
-          };
-          return (
-            <Pressable
-              key={page.name}
-              accessibilityRole="tab"
-              accessibilityLabel={page.title}
-              accessibilityState={{ selected: focused }} aria-selected={focused}
-              onPress={onPress}
-              style={(state) => [
-                styles.item,
-                focused ? { backgroundColor: theme.line } : isHovered(state) || state.pressed ? { backgroundColor: theme.hover } : null,
-              ]}
-            >
-              <TabIcon name={page.icon} filled={focused} size={30} color={theme.ink} background={theme.line} />
-              <Text allowFontScaling style={[styles.itemText, { color: theme.ink }, focused && styles.itemTextOn]}>
-                {page.title}
-              </Text>
-              <Text style={[styles.key, { backgroundColor: focused ? theme.paper : theme.hover, color: theme.accent }]}>{index + 1}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      <View style={[styles.separator, { backgroundColor: theme.line }]} />
-
-      <View style={styles.quick}>
-        {QUICK_ADD.map(({ type, label, key }) => {
-          const primary = type === "expense";
-          return (
-            <Pressable
-              key={type}
-              accessibilityRole="button"
-              accessibilityLabel={label.replace(/^[+⇄] /, "New ")}
-              onPress={() => onQuickAdd(type)}
-              style={(state) => [
-                styles.quickButton,
-                { borderColor: theme.accent },
-                primary
-                  ? { backgroundColor: theme.accent, opacity: state.pressed ? 0.8 : isHovered(state) ? 0.92 : 1 }
-                  : (isHovered(state) || state.pressed) && { backgroundColor: theme.hover },
-              ]}
-            >
-              <Text allowFontScaling style={[styles.quickText, { color: primary ? theme.paper : theme.accent }]}>
-                {label}
-              </Text>
-              <Text style={[styles.quickText, styles.quickKey, { color: primary ? theme.paper : theme.accent }]}>{key}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      <View style={[styles.foot, { borderTopColor: theme.line }]}>
-        <Pressable
-          accessibilityRole="button"
-          onPress={onSettings}
-          style={(state) => [styles.footRow, styles.footButton, (isHovered(state) || state.pressed) && { backgroundColor: theme.hover }]}
-        >
-          <TabIcon name="gear" size={24} color={theme.ink} background={theme.paper} />
-          <Text allowFontScaling style={[styles.itemText, { color: theme.ink }]}>
-            Settings
-          </Text>
-        </Pressable>
-        <View accessibilityRole="text" accessibilityLabel={sync.label} style={styles.footRow}>
-          <View style={[styles.dot, { backgroundColor: SYNC_DOT[sync.kind] }]} />
-          <Text allowFontScaling style={[styles.footText, { color: theme.ink }]}>
-            {sync.label}
-          </Text>
-        </View>
-        <Pressable accessibilityRole="button" onPress={onLogout} style={styles.footRow}>
-          {(state) => (
-            <Text allowFontScaling style={[styles.footText, { color: theme.accent }, isHovered(state) && styles.underline]}>
-              Log out
+      {/* A short window scrolls the sidebar, so Log out and the sync state stay in reach. */}
+      <ScrollView contentContainerStyle={styles.sideContent}>
+        <View style={[styles.brand, { borderBottomColor: theme.line }]}>
+          <View style={[styles.logo, { backgroundColor: theme.chalkBackground }]}>
+            <Text style={[styles.logoText, { color: theme.chalkGreen }]}>€</Text>
+          </View>
+          <View>
+            <Text allowFontScaling style={[styles.brandName, { color: theme.ink }]}>
+              Money Tracker
             </Text>
-          )}
-        </Pressable>
-      </View>
+            <Text allowFontScaling style={[styles.brandSub, { color: theme.accent }]}>
+              Personal finances
+            </Text>
+          </View>
+        </View>
+
+        <View accessibilityRole="tablist" style={styles.nav}>
+          {PAGES.map((page, index) => {
+            const route = state.routes.find((r) => r.name === page.name);
+            if (!route) return null;
+            const focused = route.key === focusedKey;
+            const onPress = () => {
+              const event = emitter.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
+              if (!focused && !event.defaultPrevented) navigateToTab(route.key);
+            };
+            return (
+              <Pressable
+                key={page.name}
+                accessibilityRole="tab"
+                accessibilityLabel={page.title}
+                accessibilityState={{ selected: focused }} aria-selected={focused}
+                onPress={onPress}
+                style={(state) => [
+                  styles.item,
+                  focused ? { backgroundColor: theme.line } : isHovered(state) || state.pressed ? { backgroundColor: theme.hover } : null,
+                ]}
+              >
+                <TabIcon name={page.icon} filled={focused} size={30} color={theme.ink} background={theme.line} />
+                <Text allowFontScaling style={[styles.itemText, { color: theme.ink }, focused && styles.itemTextOn]}>
+                  {page.title}
+                </Text>
+                <Text style={[styles.key, { backgroundColor: focused ? theme.paper : theme.hover, color: theme.accent }]}>{index + 1}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <View style={[styles.separator, { backgroundColor: theme.line }]} />
+
+        <View style={styles.quick}>
+          {QUICK_ADD.map(({ type, label, key }) => {
+            const primary = type === "expense";
+            return (
+              <Pressable
+                key={type}
+                accessibilityRole="button"
+                accessibilityLabel={label.replace(/^[+⇄] /, "New ")}
+                onPress={() => onQuickAdd(type)}
+                style={(state) => [
+                  styles.quickButton,
+                  { borderColor: theme.accent },
+                  primary
+                    ? { backgroundColor: theme.accent, opacity: state.pressed ? 0.8 : isHovered(state) ? 0.92 : 1 }
+                    : (isHovered(state) || state.pressed) && { backgroundColor: theme.hover },
+                ]}
+              >
+                <Text allowFontScaling style={[styles.quickText, { color: primary ? theme.paper : theme.accent }]}>
+                  {label}
+                </Text>
+                <Text style={[styles.quickText, styles.quickKey, { color: primary ? theme.paper : theme.accent }]}>{key}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <View style={[styles.foot, { borderTopColor: theme.line }]}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={onSettings}
+            style={(state) => [styles.footRow, styles.footButton, (isHovered(state) || state.pressed) && { backgroundColor: theme.hover }]}
+          >
+            <TabIcon name="gear" size={24} color={theme.ink} background={theme.paper} />
+            <Text allowFontScaling style={[styles.itemText, { color: theme.ink }]}>
+              Settings
+            </Text>
+          </Pressable>
+          <View accessibilityRole="text" accessibilityLabel={sync.label} style={styles.footRow}>
+            <View style={[styles.dot, { backgroundColor: SYNC_DOT[sync.kind] }]} />
+            <Text allowFontScaling style={[styles.footText, { color: theme.ink }]}>
+              {sync.label}
+            </Text>
+          </View>
+          <Pressable accessibilityRole="button" onPress={onLogout} style={styles.footRow}>
+            {(state) => (
+              <Text allowFontScaling style={[styles.footText, { color: theme.accent }, isHovered(state) && styles.underline]}>
+                Log out
+              </Text>
+            )}
+          </Pressable>
+        </View>
+      </ScrollView>
     </Texture>
   );
 }
 
-const KIND_OPTIONS: { value: PeriodKind; label: string }[] = [
+type KindOption = { value: PeriodKind; label: string };
+
+// Daily and Every 2 weeks come only from the Time Period setting, so their segment shows only while they are in use.
+const SETTING_ONLY_OPTIONS: Partial<Record<PeriodKind, KindOption>> = {
+  daily: { value: "daily", label: "D" },
+  biweekly: { value: "biweekly", label: "2W" },
+};
+
+const KIND_OPTIONS: KindOption[] = [
   { value: "weekly", label: "W" },
   { value: "monthly", label: "M" },
   { value: "yearly", label: "Y" },
@@ -167,10 +179,13 @@ type PageProps = {
 export function SidebarPage({ routeName, title, children, theme = colors.light }: PageProps) {
   const { kind, period, settings, setPeriod, shift } = usePeriod();
   const usesPeriod = pageFor(routeName)?.usesPeriod ?? false;
+  const [customOpen, setCustomOpen] = useState(false);
+  const settingOnly = SETTING_ONLY_OPTIONS[kind];
+  const kindOptions = settingOnly ? [settingOnly, ...KIND_OPTIONS] : KIND_OPTIONS;
 
   const onKind = (next: PeriodKind) => {
-    if (next === "custom") setPeriod("custom", period);
-    else setPeriod(next, periodFor(period.start, next, settings));
+    if (next === "custom") setCustomOpen(true);
+    else setPeriod(next, periodFor(periodAnchor(period), next, settings));
   };
 
   return (
@@ -205,11 +220,25 @@ export function SidebarPage({ routeName, title, children, theme = colors.light }
             >
               <Text style={[styles.arrow, { color: theme.ink }]}>›</Text>
             </Pressable>
-            {/* The pill aligns itself to the start, so a wrapper centres it in the row. */}
-            <View>
+            {/* The wrapper centres the pill in the row. Its fixed width keeps the arrows in place when the label changes. */}
+            <View style={styles.pillSlot}>
               <PeriodPill period={period} kind={kind} settings={settings} onChange={setPeriod} theme={theme} />
             </View>
-            <SegmentedControl options={KIND_OPTIONS} value={kind} onChange={onKind} theme={theme} />
+            <SegmentedControl options={kindOptions} value={kind} onChange={onKind} theme={theme} />
+            <PeriodPicker
+              key={customOpen ? "open" : "closed"}
+              visible={customOpen}
+              initialCustom
+              kind={kind}
+              period={period}
+              settings={settings}
+              theme={theme}
+              onClose={() => setCustomOpen(false)}
+              onSelect={(nextKind, nextPeriod) => {
+                setCustomOpen(false);
+                setPeriod(nextKind, nextPeriod);
+              }}
+            />
           </>
         )}
       </View>
@@ -227,6 +256,9 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 2, height: 0 },
     zIndex: 2,
+  },
+  sideContent: {
+    flexGrow: 1,
   },
   brand: {
     flexDirection: "row",
@@ -356,6 +388,9 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "500",
     marginRight: "auto",
+  },
+  pillSlot: {
+    width: 230,
   },
   arrowButton: {
     width: 32,

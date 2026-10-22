@@ -105,6 +105,10 @@ function setSettings(db: TestDatabase, values: Record<string, number>) {
 
 let db: TestDatabase;
 
+function idOf(name: string): string {
+  return (db.prepare("SELECT id FROM transactions WHERE name = ? AND date >= '2026-10-01'").get([name]) as { id: string }).id;
+}
+
 beforeEach(() => {
   db = createTestDatabase();
   loadFixture(db, { user_settings: [userSettings], accounts, categories, transactions });
@@ -139,6 +143,49 @@ describe("periodTotals", () => {
       balance: 70000,
     });
   });
+
+  it("applies the category, type and search filters of the list", () => {
+    expect(first(db, periodTotals(october, null, today, { categoryId: "food" }))).toMatchObject({ income: 0, expense: 24000 });
+    expect(first(db, periodTotals(october, null, today, { type: "income" }))).toMatchObject({ income: 100000, expense: 0 });
+    expect(first(db, periodTotals(october, null, today, { type: "transfer" }))).toMatchObject({ income: 0, expense: 0 });
+    expect(first(db, periodTotals(october, null, today, { search: " shop " }))).toMatchObject({ income: 0, expense: 21000 });
+    expect(first(db, periodTotals(october, "bank", today, { categoryId: "food" }))).toMatchObject({ income: 0, expense: 0 });
+  });
+
+  it("leaves out the excluded ids (pending deletes)", () => {
+    const lidl = idOf("Lidl");
+    expect(first(db, periodTotals(october, "wallet", today, { excludeIds: [lidl, idOf("Top up")] }))).toEqual({
+      income: 0,
+      expense: 9000,
+      transfer_in: 0,
+      transfer_out: 0,
+      balance: -9000,
+    });
+    expect(first(db, periodTotals(october, null, today, { excludeIds: [] }))).toMatchObject({ expense: 29000 });
+  });
+
+  it("matches the income and expense rows of transactionList", () => {
+    const cases: [string | null, { categoryId?: string; type?: "expense" | "income"; search?: string }][] = [
+      [null, {}],
+      ["wallet", {}],
+      [null, { categoryId: "food" }],
+      ["wallet", { categoryId: "old" }],
+      [null, { type: "expense" }],
+      [null, { search: "pay" }],
+      ["wallet", { categoryId: "food", type: "expense", search: "lidl" }],
+    ];
+    for (const [accountId, filters] of cases) {
+      const rows = all<ListRow>(
+        db,
+        transactionList(october, { accountId, categoryId: filters.categoryId, type: filters.type }, "date", filters.search ?? "", today),
+      ).filter((r) => r.kind === "transaction");
+      const sum = (type: string) => rows.filter((r) => r.type === type).reduce((total, r) => total + r.amount_minor, 0);
+      expect(first(db, periodTotals(october, accountId, today, filters))).toMatchObject({
+        income: sum("income"),
+        expense: sum("expense"),
+      });
+    }
+  });
 });
 
 describe("categoryTotals", () => {
@@ -153,6 +200,12 @@ describe("categoryTotals", () => {
     ]);
   });
 
+  it("leaves out the excluded ids (pending deletes)", () => {
+    expect(all(db, categoryTotals(october, null, "expense", today, [idOf("Lidl"), idOf("Paint")]))).toMatchObject([
+      { category_id: "food", total: 4000 },
+    ]);
+  });
+
   it("filters by type and account", () => {
     expect(all(db, categoryTotals(october, null, "income", today))).toMatchObject([
       { category_id: "salary", total: 100000 },
@@ -162,11 +215,28 @@ describe("categoryTotals", () => {
 });
 
 describe("carryOver", () => {
-  it("returns one balance per non-archived account, also zero", () => {
+  it("returns one balance per account, also zero and also archived", () => {
     expect(all(db, carryOver(october.start, null, today))).toEqual([
       { account_id: "wallet", account_name: "Wallet", balance: 43000 },
       { account_id: "bank", account_name: "Bank", balance: 150000 },
       { account_id: "empty", account_name: "Empty", balance: 0 },
+      { account_id: "closed", account_name: "Closed", balance: -900 },
+    ]);
+  });
+
+  it("keeps the All Accounts balance when an account is archived", () => {
+    const balance = () => {
+      const carry = all<{ balance: number }>(db, carryOver("2026-10-07", null, today)).reduce((sum, r) => sum + r.balance, 0);
+      return carry + first<{ balance: number }>(db, periodTotals({ start: "2026-10-07", end: "2026-10-31" }, null, today))!.balance;
+    };
+    const before = balance();
+    db.prepare(`UPDATE accounts SET archived_at = '2026-10-20T00:00:00Z' WHERE id = 'wallet'`).run();
+    expect(balance()).toBe(before);
+  });
+
+  it("returns the balance of one archived account", () => {
+    expect(all(db, carryOver(october.start, ["closed"], today))).toEqual([
+      { account_id: "closed", account_name: "Closed", balance: -900 },
     ]);
   });
 
@@ -223,10 +293,33 @@ describe("transactionList", () => {
       ["transaction", "2026-10-01", "Pay"],
       ["carryOver", "2026-10-01", "Carry Over"],
       ["carryOver", "2026-10-01", "Carry Over"],
+      ["carryOver", "2026-10-01", "Carry Over"],
     ]);
     expect(rows.filter((r) => r.kind === "carryOver")).toMatchObject([
       { account_id: "bank", type: "income", amount_minor: 150000 },
+      { account_id: "closed", type: "expense", amount_minor: 900 },
       { account_id: "wallet", type: "income", amount_minor: 43000 },
+    ]);
+  });
+
+  it("has Carry Over rows that add up to carryOver, archived accounts too", () => {
+    for (const accountId of [null, "wallet", "closed"]) {
+      const rows = all<ListRow>(db, transactionList(october, { accountId }, "date", "", today));
+      const listed = rows
+        .filter((r) => r.kind === "carryOver")
+        .reduce((sum, r) => sum + (r.type === "expense" ? -r.amount_minor : r.amount_minor), 0);
+      const carry = all<{ balance: number }>(db, carryOver(october.start, accountId === null ? null : [accountId], today));
+      expect(listed).toBe(carry.reduce((sum, r) => sum + r.balance, 0));
+    }
+  });
+
+  it("lists the rows of an archived account", () => {
+    db.prepare(`UPDATE accounts SET archived_at = '2026-10-20T00:00:00Z' WHERE id = 'bank'`).run();
+    const rows = all<ListRow>(db, transactionList(october, { accountId: "bank" }, "date", "", today));
+    expect(rows.map((r) => [r.kind, r.name, r.amount_minor])).toEqual([
+      ["transaction", "Top up", 30000],
+      ["transaction", "Pay", 100000],
+      ["carryOver", "Carry Over", 150000],
     ]);
   });
 
@@ -277,6 +370,17 @@ describe("transactionList", () => {
     expect(byNote.map((r) => r.name)).toEqual(["Future shop", "Lidl"]);
   });
 
+  it("searches non-ASCII names in any letter case", () => {
+    db.prepare(
+      `INSERT INTO transactions (id, user_id, type, amount_minor, currency_code, date, name, account_id, source)
+       VALUES ('cafe', 'u1', 'expense', 100, 'EUR', '2026-10-05', 'Кафе Звезда', 'wallet', 'manual')`,
+    ).run();
+    for (const search of ["кафе", "КАФЕ", "звезда", "кафе звезда"]) {
+      const rows = all<ListRow>(db, transactionList(october, {}, "date", search, today));
+      expect(rows.map((r) => r.name)).toEqual(["Кафе Звезда"]);
+    }
+  });
+
   it("treats % and _ in the search as plain text", () => {
     expect(all(db, transactionList(october, {}, "date", "%", today))).toEqual([]);
     expect(all(db, transactionList(october, {}, "date", "_", today))).toEqual([]);
@@ -285,9 +389,26 @@ describe("transactionList", () => {
   it("sorts by name and by amount", () => {
     const filters = { accountId: "wallet" };
     const byName = all<ListRow>(db, transactionList(october, filters, "name", "", today));
-    expect(byName.map((r) => r.name)).toEqual(["Bakery", "Carry Over", "Future shop", "Lidl", "Paint", "Top up"]);
+    expect(byName.map((r) => r.name)).toEqual(["Carry Over", "Bakery", "Future shop", "Lidl", "Paint", "Top up"]);
     const byAmount = all<ListRow>(db, transactionList(october, filters, "amount", "", today));
     expect(byAmount.map((r) => r.amount_minor)).toEqual([43000, 30000, 20000, 5000, 3000, 1000]);
+  });
+
+  it("puts Carry Over rows first when sorted by amount or name", () => {
+    const byAmount = all<ListRow>(db, transactionList(october, {}, "amount", "", today));
+    expect(byAmount.map((r) => [r.kind, r.amount_minor])).toEqual([
+      ["carryOver", 150000],
+      ["carryOver", 43000],
+      ["carryOver", 900],
+      ["transaction", 100000],
+      ["transaction", 30000],
+      ["transaction", 20000],
+      ["transaction", 5000],
+      ["transaction", 3000],
+      ["transaction", 1000],
+    ]);
+    const byName = all<ListRow>(db, transactionList(october, {}, "name", "", today));
+    expect(byName.slice(0, 4).map((r) => r.kind)).toEqual(["carryOver", "carryOver", "carryOver", "transaction"]);
   });
 
   it("returns one page", () => {

@@ -19,6 +19,9 @@ export interface ConnectorDeps {
   now?: () => Date;
 }
 
+// The maxItems of ops in schema/upload.schema.json.
+const MAX_OPS = 200;
+
 interface Rejection {
   index: number;
   code: string;
@@ -49,28 +52,58 @@ export function createConnector(deps: ConnectorDeps): PowerSyncBackendConnector 
       }
       const ops = transaction.crud.map(toUploadOp);
 
-      const token = await deps.getAccessToken();
-      if (!token) {
+      const firstToken = await deps.getAccessToken();
+      if (!firstToken) {
         throw new Error("upload: no access token");
       }
-      let res = await post(token, ops);
-      if (res.status === 401) {
-        const fresh = await deps.refreshAccessToken();
-        if (!fresh) {
-          deps.onReauthRequired();
-          throw new Error("upload: refresh failed after 401");
+      let token = firstToken;
+      const rejected: Rejection[] = [];
+
+      // Sends one part. A permanent 400 or 413 rolls back the whole request on
+      // the server, so a part of more than one op is split in halves and sent
+      // again, in order. Only an op that fails alone becomes a sync problem.
+      async function send(part: UploadOp[], offset: number): Promise<void> {
+        let res = await post(token, part);
+        if (res.status === 401) {
+          const fresh = await deps.refreshAccessToken();
+          if (!fresh) {
+            deps.onReauthRequired();
+            throw new Error("upload: refresh failed after 401");
+          }
+          token = fresh;
+          res = await post(token, part);
         }
-        res = await post(fresh, ops);
-      }
-      if (res.status === 426) {
-        deps.onUpdateRequired();
-        throw new Error("upload: app update required");
-      }
-      if (!res.ok) {
-        throw new Error(`upload: HTTP ${res.status}`);
+        if (res.status === 426) {
+          deps.onUpdateRequired();
+          throw new Error("upload: app update required");
+        }
+        const failure = await permanentFailure(res);
+        if (failure) {
+          if (part.length > 1) {
+            const half = Math.ceil(part.length / 2);
+            await send(part.slice(0, half), offset);
+            await send(part.slice(half), offset + half);
+            return;
+          }
+          // The same request will never pass. Keep the op as a sync problem,
+          // so that it does not block the upload queue.
+          rejected.push({ index: offset, code: failure.code, message: `The server did not accept the upload (HTTP ${res.status}).` });
+          return;
+        }
+        if (!res.ok) {
+          throw new Error(`upload: HTTP ${res.status}`);
+        }
+        const body = (await res.json()) as { rejected?: Rejection[] };
+        for (const r of body.rejected ?? []) rejected.push({ ...r, index: r.index + offset });
       }
 
-      const { rejected = [] } = (await res.json()) as { rejected?: Rejection[] };
+      // The API takes at most MAX_OPS ops per request, and one local
+      // transaction can hold more (the recurring generator, for example).
+      // Upserts by UUID are safe to send again if a later part fails.
+      for (let offset = 0; offset < ops.length; offset += MAX_OPS) {
+        await send(ops.slice(offset, offset + MAX_OPS), offset);
+      }
+
       if (rejected.length > 0) {
         const createdAt = now().toISOString();
         await database.writeTransaction(async (tx) => {
@@ -95,6 +128,27 @@ export function createConnector(deps: ConnectorDeps): PowerSyncBackendConnector 
       await transaction.complete();
     },
   };
+}
+
+// The upload handler refuses a body that it will refuse again with 400 and
+// its JSON error ({"error": "<code>"}), or with 413 (body too large, plain
+// text from the body limit). A 400 without that body can come from a proxy,
+// so it is retried, as are all other statuses. Null when not permanent.
+async function permanentFailure(res: Response): Promise<{ code: string } | null> {
+  if (res.status === 413) return { code: (await errorCode(res)) ?? "http_413" };
+  if (res.status !== 400) return null;
+  const code = await errorCode(res);
+  return code ? { code } : null;
+}
+
+/** The "error" field of a JSON error body. */
+async function errorCode(res: Response): Promise<string | undefined> {
+  try {
+    const body = (await res.json()) as { error?: unknown } | null;
+    return typeof body?.error === "string" && body.error !== "" ? body.error : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 // SQLite stores these as 0/1, but the server schema wants JSON booleans.

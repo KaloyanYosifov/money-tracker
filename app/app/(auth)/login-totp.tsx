@@ -2,11 +2,12 @@ import { Redirect, useRouter, type Href } from "expo-router";
 import { useEffect, useState } from "react";
 
 import { AuthScreen } from "../../src/ui/auth/AuthUI";
-import { getPendingMfaToken, setPendingMfaToken, TotpForm } from "../../src/ui/auth/LoginForms";
+import { getPendingMfaToken, RECOVERY_TEXT, setPendingMfaToken, TOTP_TEXT, TotpForm } from "../../src/ui/auth/LoginForms";
 
 export default function LoginTotpScreen() {
   const router = useRouter();
   const [mfaToken] = useState(getPendingMfaToken);
+  const [recovery, setRecovery] = useState(false);
 
   useEffect(() => () => setPendingMfaToken(null), []);
 
@@ -16,8 +17,12 @@ export default function LoginTotpScreen() {
   }
 
   return (
-    <AuthScreen title="Two-factor code" text="Type the 6-digit code from your authenticator app.">
-      <TotpForm mfaToken={mfaToken} onExpired={() => router.replace("/login" as Href)} />
+    <AuthScreen title="Two-factor code" text={recovery ? RECOVERY_TEXT : TOTP_TEXT}>
+      <TotpForm
+        mfaToken={mfaToken}
+        onExpired={() => router.replace("/login" as Href)}
+        onRecoveryChange={setRecovery}
+      />
     </AuthScreen>
   );
 }

@@ -8,7 +8,7 @@ export interface Shortcuts {
   newTransaction?: (type: QuickAddType) => void;
   /** Key /. */
   focusSearch?: () => void;
-  /** Enter, also while an input has focus. */
+  /** Enter, also while an input has focus. In a multi-line field only Cmd/Ctrl+Enter. */
   save?: () => void;
   /** Escape, also while an input has focus. */
   cancel?: () => void;

@@ -62,6 +62,7 @@ const recurring_rules = new Table({
   frequency: column.text,
   start_date: column.text,
   end_date: column.text,
+  generated_through: column.text,
 });
 
 const budgets = new Table({

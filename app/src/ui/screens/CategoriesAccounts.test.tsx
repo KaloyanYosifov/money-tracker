@@ -1,10 +1,21 @@
-import { fireEvent, render, screen, within } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, within } from "@testing-library/react-native";
 
 import { createTestDatabase, loadFixture, type TestDatabase } from "../../../test/sqlite";
+import * as mutations from "../../data/mutations";
+import { DUPLICATE_ACCOUNT_MESSAGE, DUPLICATE_CATEGORY_MESSAGE } from "../../domain/validation";
+import type { Shortcuts } from "../../hooks/useShortcuts";
 import { AccountForm, AccountsScreen } from "./Accounts";
 import { CategoriesScreen, CategoryForm } from "./Categories";
 
 let mockDb: TestDatabase;
+
+// The last handlers that the form passed to useShortcuts.
+let mockShortcuts: Shortcuts = {};
+jest.mock("../../hooks/useShortcuts", () => ({
+  useShortcuts: (handlers: Shortcuts) => {
+    mockShortcuts = handlers;
+  },
+}));
 
 // The hooks run their SQL against the in-memory fixture database, and the
 // mutations write to it.
@@ -73,6 +84,7 @@ const transactions = [
 ];
 
 beforeEach(() => {
+  mockShortcuts = {};
   mockDb = createTestDatabase();
   loadFixture(mockDb, { user_settings: [userSettings], categories, accounts, transactions });
 });
@@ -83,6 +95,13 @@ function row(table: string, id: string) {
 
 function sortOrders(table: string, ids: string[]) {
   return ids.map((id) => row(table, id)?.sort_order);
+}
+
+// The automaticallyAdjustKeyboardInsets prop of the ScrollView around a field.
+function keyboardInsets(field: { props: Record<string, unknown>; parent: unknown }): unknown {
+  let node: typeof field | null = field;
+  while (node && node.props.automaticallyAdjustKeyboardInsets === undefined) node = node.parent as typeof field | null;
+  return node?.props.automaticallyAdjustKeyboardInsets;
 }
 
 function listTitles() {
@@ -157,6 +176,7 @@ describe("CategoriesScreen", () => {
     expect(screen.queryByRole("button", { name: "Restore Old" })).toBeNull();
 
     await fireEvent.press(toggle);
+    expect(screen.getByText("Archived")).toBeTruthy();
     await fireEvent.press(screen.getByRole("button", { name: "Restore Old" }));
 
     expect(row("categories", "old")?.archived_at).toBeNull();
@@ -186,6 +206,36 @@ describe("CategoryForm", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("saves with Enter and closes with Escape (web shortcuts)", async () => {
+    const onClose = jest.fn();
+    await render(<CategoryForm id={null} initialType="expense" platform="web" onClose={onClose} />);
+
+    // Enter with an invalid form does nothing.
+    await act(async () => mockShortcuts.save?.());
+    expect(onClose).not.toHaveBeenCalled();
+
+    await fireEvent.changeText(screen.getByPlaceholderText("Name"), "Books");
+    await act(async () => mockShortcuts.save?.());
+    expect(mockDb.prepare("SELECT name FROM categories WHERE name = 'Books'").get()).toBeTruthy();
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    mockShortcuts.cancel?.();
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows the duplicate name error on the Name field and stays open", async () => {
+    const onClose = jest.fn();
+    await render(<CategoryForm id={null} initialType="expense" platform="ios" onClose={onClose} />);
+
+    await fireEvent.changeText(screen.getByPlaceholderText("Name"), "rent");
+    await fireEvent.press(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText(DUPLICATE_CATEGORY_MESSAGE)).toBeTruthy();
+    expect(onClose).not.toHaveBeenCalled();
+    await fireEvent.changeText(screen.getByPlaceholderText("Name"), "Rent 2");
+    expect(screen.queryByText(DUPLICATE_CATEGORY_MESSAGE)).toBeNull();
+  });
+
   it("offers Archive but not Delete for a category that a transaction uses", async () => {
     const onClose = jest.fn();
     await render(<CategoryForm id="groceries" platform="ios" onClose={onClose} />);
@@ -193,6 +243,7 @@ describe("CategoryForm", () => {
     expect(screen.getByText("Edit Category")).toBeTruthy();
     expect(screen.getByPlaceholderText("Name").props.value).toBe("Groceries");
     expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
+    expect(screen.getByText("Used by transactions: archive it instead of deleting.")).toBeTruthy();
 
     await fireEvent.press(screen.getByRole("button", { name: "Archive" }));
     expect(row("categories", "groceries")?.archived_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
@@ -206,6 +257,28 @@ describe("CategoryForm", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Delete" }));
     expect(row("categories", "travel")).toBeUndefined();
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("lets the keyboard push the form up on iOS", async () => {
+    await render(<CategoryForm id={null} initialType="expense" platform="ios" onClose={jest.fn()} />);
+
+    expect(keyboardInsets(screen.getByPlaceholderText("Name"))).toBe(true);
+  });
+
+  it("shows an error and stays open when an action fails", async () => {
+    const spy = jest.spyOn(mutations, "archiveCategory").mockRejectedValueOnce(new Error("disk full"));
+    try {
+      const onClose = jest.fn();
+      await render(<CategoryForm id="groceries" platform="ios" onClose={onClose} />);
+
+      await fireEvent.press(screen.getByRole("button", { name: "Archive" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("Could not save. Try again.");
+      expect(onClose).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: "Save" }).props.accessibilityState).toEqual({ disabled: false });
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("offers Restore for an archived category", async () => {
@@ -279,11 +352,62 @@ describe("AccountForm", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("saves with Enter and closes with Escape (web shortcuts)", async () => {
+    const onClose = jest.fn();
+    await render(<AccountForm id={null} platform="web" onClose={onClose} />);
+
+    await act(async () => mockShortcuts.save?.());
+    expect(onClose).not.toHaveBeenCalled();
+
+    await fireEvent.changeText(screen.getByPlaceholderText("Name"), "Savings");
+    await act(async () => mockShortcuts.save?.());
+    expect(mockDb.prepare("SELECT name FROM accounts WHERE name = 'Savings'").get()).toBeTruthy();
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    mockShortcuts.cancel?.();
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows the duplicate name error on the Name field and stays open", async () => {
+    const onClose = jest.fn();
+    await render(<AccountForm id={null} platform="ios" onClose={onClose} />);
+
+    await fireEvent.changeText(screen.getByPlaceholderText("Name"), "Wallet");
+    await fireEvent.press(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText(DUPLICATE_ACCOUNT_MESSAGE)).toBeTruthy();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("lets the keyboard push the form up on iOS", async () => {
+    await render(<AccountForm id={null} platform="ios" onClose={jest.fn()} />);
+
+    expect(keyboardInsets(screen.getByPlaceholderText("Name"))).toBe(true);
+  });
+
+  it("shows an error and stays open when an action fails", async () => {
+    const spy = jest.spyOn(mutations, "archiveAccount").mockRejectedValueOnce(new Error("disk full"));
+    try {
+      const onClose = jest.fn();
+      await render(<AccountForm id="wallet" platform="ios" onClose={onClose} />);
+
+      await fireEvent.press(screen.getByRole("button", { name: "Archive" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("Could not save. Try again.");
+      expect(onClose).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: "Save" }).props.accessibilityState).toEqual({ disabled: false });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("saves a negative opening balance", async () => {
     const onClose = jest.fn();
     await render(<AccountForm id={null} platform="ios" onClose={onClose} />);
 
     await fireEvent.changeText(screen.getByPlaceholderText("Name"), "Card");
+    // The keyboard with a minus key has a return key, shown as Done, that closes it.
+    expect(screen.getByLabelText("Opening balance").props.returnKeyType).toBe("done");
     await fireEvent.changeText(screen.getByLabelText("Opening balance"), "-25.00");
     await fireEvent.press(screen.getByRole("button", { name: "Save" }));
 

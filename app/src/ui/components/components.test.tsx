@@ -10,6 +10,12 @@ import { SegmentedControl } from "./SegmentedControl";
 import { TransactionRow } from "./TransactionRow";
 import { UndoToast } from "./UndoToast";
 
+/** The spoken name of a day cell in the test locale, "5 October 2026" or "October 5, 2026". */
+function dayName(month: string, day: number): RegExp {
+  return new RegExp(`^(${day} ${month} 2026|${month} ${day}, 2026)$`);
+}
+
+
 const settings = { week_start_day: 1, month_start_day: 1, year_start_month: 1 };
 const october = { start: "2026-10-01", end: "2026-10-31" };
 
@@ -45,13 +51,16 @@ describe("PeriodPill", () => {
     );
     await fireEvent.press(screen.getByRole("button", { name: /period/i }));
     await fireEvent.press(screen.getByText("Custom"));
-    await fireEvent.changeText(screen.getByLabelText("From"), "2026-10-05");
-    await fireEvent.changeText(screen.getByLabelText("To"), "2026-10-02");
-    await fireEvent.press(screen.getByText("Apply"));
-    expect(onChange).not.toHaveBeenCalled();
-    expect(screen.getByText(/From must be on or before To/)).toBeTruthy();
+    await fireEvent.press(screen.getByRole("button", { name: /^From, / }));
+    await fireEvent.press(screen.getByRole("button", { name: dayName("October", 5) }));
+    expect(screen.getByRole("button", { name: /^From, Mon, / })).toBeTruthy();
 
-    await fireEvent.changeText(screen.getByLabelText("To"), "2026-10-12");
+    // To cannot go before From.
+    await fireEvent.press(screen.getByRole("button", { name: /^To, / }));
+    expect(screen.getByRole("button", { name: dayName("October", 2) })).toBeDisabled();
+    await fireEvent.press(screen.getByRole("button", { name: dayName("October", 12) }));
+    expect(onChange).not.toHaveBeenCalled();
+
     await fireEvent.press(screen.getByText("Apply"));
     expect(onChange).toHaveBeenCalledWith("custom", { start: "2026-10-05", end: "2026-10-12" });
   });
@@ -138,6 +147,60 @@ describe("TransactionRow", () => {
     expect(flatStyle(screen.getByText("-€5.00")).color).toBe(colors.light.listRed);
     expect(screen.getByLabelText(/carry over minus 5 euro/)).toBeTruthy();
   });
+
+  it("shows a Carry Over row of type expense as negative", async () => {
+    // transactionList returns the absolute balance, with type "expense" for a negative balance.
+    await render(
+      <TransactionRow row={txRow({ kind: "carryOver", type: "expense", amount_minor: 500, name: "Carry Over" })} locale="en-GB" />,
+    );
+    expect(flatStyle(screen.getByText("-€5.00")).color).toBe(colors.light.listRed);
+    expect(screen.getByLabelText(/carry over minus 5 euro/)).toBeTruthy();
+  });
+
+  it.each([
+    ["the category name", txRow({ name: "" }), "Bills"],
+    ["Transfer for a transfer", txRow({ name: " ", type: "transfer", category_name: null, to_account_name: "Wallet" }), "Transfer"],
+    ["the type without a category", txRow({ name: "", type: "income", category_name: null }), "Income"],
+  ])("shows %s as the title when the name is empty", async (_, row, title) => {
+    await render(<TransactionRow row={row} locale="en-GB" />);
+    expect(screen.getByText(title)).toBeTruthy();
+    expect(screen.getByTestId("transaction-row").props.accessibilityLabel).toMatch(new RegExp(`^${title}, `));
+  });
+
+  it("shows the note as one line only with showNote", async () => {
+    const row = txRow({ note: "Paid with the card" });
+    await render(<TransactionRow row={row} locale="en-GB" />);
+    expect(screen.queryByText("Paid with the card")).toBeNull();
+
+    await screen.rerender(<TransactionRow row={row} locale="en-GB" showNote />);
+    const note = screen.getByTestId("transaction-note-line");
+    expect(note.props.children).toBe("Paid with the card");
+    expect(note.props.numberOfLines).toBe(1);
+    expect(flatStyle(note).color).toBe(colors.light.accent);
+    expect(screen.getByTestId("transaction-row").props.accessibilityLabel).toMatch(/, Paid with the card$/);
+  });
+
+  it("shows no note line for an empty note", async () => {
+    await render(<TransactionRow row={txRow({ note: "  " })} locale="en-GB" showNote />);
+    expect(screen.queryByTestId("transaction-note-line")).toBeNull();
+  });
+
+  it("limits the name to two lines and the subtitle to one, and centres the amount", async () => {
+    await render(<TransactionRow row={txRow({ name: "A very long transaction name ".repeat(4) })} locale="en-GB" />);
+    expect(screen.getByText(/A very long/).props.numberOfLines).toBe(2);
+    expect(screen.getByText("Revolut euro, Thursday, 01 Oct 2026").props.numberOfLines).toBe(1);
+    expect(flatStyle(screen.getByText("€14.99")).alignSelf).toBeUndefined();
+  });
+
+  it("shows the transfer icon for a transfer", async () => {
+    await render(
+      <TransactionRow
+        row={txRow({ type: "transfer", category_id: null, category_name: null, category_icon: null, to_account_name: "Wallet" })}
+        locale="en-GB"
+      />,
+    );
+    expect(screen.getByTestId("transfer-icon")).toBeTruthy();
+  });
 });
 
 describe("Banner", () => {
@@ -159,6 +222,18 @@ describe("UndoToast", () => {
     await render(<UndoToast visible onUndo={undo} />);
     await fireEvent.press(screen.getByText("Deleted · Undo"));
     expect(undo).toHaveBeenCalled();
+  });
+
+  it.each(["light", "dark"] as const)("uses the %s theme colours", async (name) => {
+    const theme = colors[name];
+    await render(<UndoToast visible onUndo={jest.fn()} theme={theme} />);
+    expect(flatStyle(screen.getByTestId("undo-toast")).backgroundColor).toBe(theme.ink);
+    expect(flatStyle(screen.getByText("Deleted · Undo")).color).toBe(theme.paper);
+  });
+
+  it("sits at the given distance from the bottom", async () => {
+    await render(<UndoToast visible onUndo={jest.fn()} bottom={80} />);
+    expect(flatStyle(screen.getByTestId("undo-toast")).bottom).toBe(80);
   });
 
   it("renders nothing when not visible", async () => {

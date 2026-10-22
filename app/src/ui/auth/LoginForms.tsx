@@ -4,6 +4,8 @@ import { authApi } from "../../auth/api";
 import { useAuth } from "../../auth/AuthProvider";
 import { AuthButton, AuthField, AuthLink, AuthScreen, authErrorMessage, CodeField, ErrorText } from "./AuthUI";
 
+export const SIGN_IN_FAILED = "Could not finish the login. Try again.";
+
 // The MFA token goes from the login route to the TOTP route in memory, so it
 // never shows in the web URL or the browser history.
 let pendingMfaToken: string | null = null;
@@ -31,7 +33,7 @@ export function LoginForm({ onMfaToken }: { onMfaToken: (mfaToken: string) => vo
     if (result.ok) {
       const value = result.value;
       if ("access_token" in value) {
-        await signIn(value);
+        await signIn(value).catch(() => setError(SIGN_IN_FAILED));
       } else {
         onMfaToken(value.mfa_token);
       }
@@ -74,9 +76,21 @@ export function LoginForm({ onMfaToken }: { onMfaToken: (mfaToken: string) => vo
   );
 }
 
-export function TotpForm({ mfaToken, onExpired }: { mfaToken: string; onExpired: () => void }) {
+export const TOTP_TEXT = "Type the 6-digit code from your authenticator app.";
+export const RECOVERY_TEXT = "Type one of your recovery codes.";
+
+export function TotpForm({
+  mfaToken,
+  onExpired,
+  onRecoveryChange,
+}: {
+  mfaToken: string;
+  onExpired: () => void;
+  /** Called when the form changes between the 6-digit code and a recovery code. */
+  onRecoveryChange?: (recovery: boolean) => void;
+}) {
   const { signIn } = useAuth();
-  const [useRecovery, setUseRecovery] = useState(false);
+  const [useRecovery, setRecovery] = useState(false);
   const [recoveryCode, setRecoveryCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,7 +100,12 @@ export function TotpForm({ mfaToken, onExpired }: { mfaToken: string; onExpired:
     setError(null);
     const result = await authApi.loginTotp({ mfaToken, ...input });
     if (result.ok) {
-      await signIn(result.value);
+      try {
+        await signIn(result.value);
+      } catch {
+        setBusy(false);
+        setError(SIGN_IN_FAILED);
+      }
       return;
     }
     setBusy(false);
@@ -97,16 +116,26 @@ export function TotpForm({ mfaToken, onExpired }: { mfaToken: string; onExpired:
     }
   }
 
+  function setUseRecovery(recovery: boolean) {
+    setRecovery(recovery);
+    onRecoveryChange?.(recovery);
+  }
+
   if (useRecovery) {
+    const submitRecovery = () => {
+      if (recoveryCode.trim() && !busy) void submit({ recoveryCode: recoveryCode.trim() });
+    };
     return (
       <>
-        <AuthField label="Recovery code" value={recoveryCode} onChangeText={setRecoveryCode} autoFocus />
-        <ErrorText message={error} />
-        <AuthButton
-          label="Log in"
-          disabled={!recoveryCode.trim() || busy}
-          onPress={() => void submit({ recoveryCode: recoveryCode.trim() })}
+        <AuthField
+          label="Recovery code"
+          value={recoveryCode}
+          onChangeText={setRecoveryCode}
+          onSubmitEditing={submitRecovery}
+          autoFocus
         />
+        <ErrorText message={error} />
+        <AuthButton label="Log in" disabled={!recoveryCode.trim() || busy} onPress={submitRecovery} />
         <AuthLink label="Use the authenticator app" onPress={() => setUseRecovery(false)} />
       </>
     );

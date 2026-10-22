@@ -1,17 +1,35 @@
-import { act, fireEvent, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, within } from "@testing-library/react-native";
 
 import { createTestDatabase, loadFixture, type TestDatabase } from "../../../test/sqlite";
-import { UndoProvider } from "../../data/UndoProvider";
+import { AppState, Pressable, StyleSheet } from "react-native";
+
+import { UndoProvider, useUndo } from "../../data/UndoProvider";
+import type { Shortcuts } from "../../hooks/useShortcuts";
+import { Chalkboard, spokenAmount } from "./Chalkboard";
 import { TransactionList } from "./TransactionList";
 
 let mockDb: TestDatabase;
 
+// The last handlers that the list passed to useShortcuts.
+let mockShortcuts: Shortcuts = {};
+jest.mock("../../hooks/useShortcuts", () => ({
+  useShortcuts: (handlers: Shortcuts) => {
+    mockShortcuts = handlers;
+  },
+}));
+
+// False while a form covers the list.
+let mockFocused = true;
+jest.mock("expo-router", () => ({
+  useIsFocused: () => mockFocused,
+}));
+
 // The hooks run their SQL against the in-memory fixture database.
+// mockLoading simulates a query that has not finished: no rows yet.
+let mockLoading = false;
 jest.mock("@powersync/react", () => ({
-  useQuery: (sql: string, parameters: unknown[] = []) => ({
-    data: mockDb.prepare(sql).all(parameters),
-    isLoading: false,
-  }),
+  useQuery: (sql: string, parameters: unknown[] = []) =>
+    mockLoading ? { data: [], isLoading: true } : { data: mockDb.prepare(sql).all(parameters), isLoading: false },
 }));
 
 const october = { start: "2026-10-01", end: "2026-10-31" };
@@ -74,12 +92,21 @@ async function renderList(props: Partial<Parameters<typeof TransactionList>[0]> 
   );
 }
 
+/** The slide of a swiped row, in points. */
+function translateX(row: ReturnType<typeof screen.getByTestId>): number {
+  const style = StyleSheet.flatten(within(row).getByTestId("row-slide").props.style) as { transform?: { translateX: number }[] };
+  return style?.transform?.[0]?.translateX ?? 0;
+}
+
 function rowNames(): string[] {
   return screen.getAllByTestId("transaction-row").map((row) => String(row.props.accessibilityLabel).split(",")[0]);
 }
 
 beforeEach(() => {
   jest.useFakeTimers();
+  mockLoading = false;
+  mockFocused = true;
+  mockShortcuts = {};
   execute.mockClear();
   load();
 });
@@ -145,6 +172,145 @@ describe("TransactionList", () => {
     await fireEvent.press(screen.getByRole("menuitem", { name: "Expense" }));
 
     expect(rowNames()).toEqual(["Lunch", "Flat rent"]);
+    expect(screen.getByTestId("income-total").props.children).toBe("€0.00");
+    expect(screen.getByTestId("expense-total").props.children).toBe("€1,164.99");
+  });
+
+  it("shows the type filter in the title on the phone", async () => {
+    await renderList();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Filter" }));
+    await fireEvent.press(screen.getByRole("menuitem", { name: "Expense" }));
+    expect(screen.getByTestId("paper-bar-title").props.children).toBe("All Accounts · Expense");
+  });
+
+  it("shows no empty message and no 0 totals while the queries load", async () => {
+    mockLoading = true;
+    await renderList();
+
+    expect(screen.queryByText("No transactions in this period")).toBeNull();
+    expect(screen.getByTestId("income-total").props.children).toBe(" ");
+    expect(screen.getByTestId("expense-total").props.children).toBe(" ");
+  });
+
+  it("shows the empty message after the queries load", async () => {
+    load({ transactions: [] });
+    await renderList();
+    expect(screen.getByText("No transactions in this period")).toBeTruthy();
+  });
+
+  it("shows the note of a transaction when Show Transaction Note is on", async () => {
+    await renderList();
+    expect(screen.getByText("with Ana")).toBeTruthy();
+  });
+
+  it("shows no note when Show Transaction Note is off", async () => {
+    load({ user_settings: [{ ...userSettings, show_note: false }] });
+    await renderList();
+    expect(screen.queryByText("with Ana")).toBeNull();
+  });
+
+  it("leaves a pending delete out of the totals until Undo", async () => {
+    await renderList({ layout: "web" });
+
+    await fireEvent(screen.getByTestId("row-lunch"), "keyDown", { nativeEvent: { key: "Delete" } });
+    expect(screen.getByTestId("expense-total").props.children).toBe("€1,150.00");
+    expect(screen.getByTestId("income-total").props.children).toBe("€4,000.00");
+    await fireEvent.press(screen.getByRole("button", { name: "Deleted. Undo" }));
+    expect(screen.getByTestId("expense-total").props.children).toBe("€1,164.99");
+
+    await fireEvent(screen.getByTestId("row-salary"), "keyDown", { nativeEvent: { key: "Delete" } });
+    expect(screen.getByTestId("income-total").props.children).toBe("€1,000.00");
+    expect(screen.getByTestId("expense-total").props.children).toBe("€1,164.99");
+  });
+
+  it("shows the Undo toast above the bottom toolbar on the phone", async () => {
+    await renderList();
+    await fireEvent(screen.getByTestId("toolbar"), "layout", { nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 50 } } });
+    const row = screen.getByTestId("row-lunch");
+    await fireEvent(row, "touchStart", { nativeEvent: { pageX: 300, pageY: 100 } });
+    await fireEvent(row, "responderRelease", { nativeEvent: { pageX: 160, pageY: 100 } });
+
+    expect(StyleSheet.flatten(screen.getByTestId("undo-toast").props.style).bottom).toBe(74);
+  });
+
+  it("slides the row with the finger over a red Delete area, and back on a short swipe", async () => {
+    await renderList();
+    const row = screen.getByTestId("row-lunch");
+    expect(within(row).getByText("Delete")).toBeTruthy();
+
+    await fireEvent(row, "touchStart", { nativeEvent: { pageX: 300, pageY: 100 } });
+    await fireEvent(row, "responderMove", { nativeEvent: { pageX: 260, pageY: 101 } });
+    expect(translateX(row)).toBe(-40);
+    expect(row.props.onResponderTerminationRequest()).toBe(false);
+
+    await fireEvent(row, "responderRelease", { nativeEvent: { pageX: 270, pageY: 101 } });
+    await act(async () => jest.runAllTimers());
+    expect(screen.getByText("Lunch")).toBeTruthy();
+    expect(translateX(screen.getByTestId("row-lunch"))).toBe(0);
+  });
+
+  it("shows the active filter on the Filter button on the web", async () => {
+    await renderList({ layout: "web" });
+    const filter = () => screen.getByRole("button", { name: "Filter" });
+    expect(screen.getByText("Filter ▾")).toBeTruthy();
+    expect(filter().props.accessibilityValue?.text).toBeUndefined();
+
+    await fireEvent.press(filter());
+    await fireEvent.press(screen.getByRole("menuitem", { name: "Expense" }));
+
+    expect(screen.queryByText("Filter ▾")).toBeNull();
+    expect(screen.getByText("Expense ▾")).toBeTruthy();
+    expect(filter().props.accessibilityValue?.text).toBe("Expense");
+  });
+
+  it("shows the same totals as the Spending chalkboard for a negative Carry Over", async () => {
+    // Before October: Bank 950.00 and Wallet 50.00 - 1,015.99, so the Carry Over is -15.99 in all.
+    load({
+      transactions: [
+        ...transactions,
+        tx("sep-rent", { type: "expense", amount_minor: 101599, date: "2026-09-10", name: "Deposit", account_id: "wallet", category_id: "rent" }),
+      ],
+    });
+    await renderList();
+    // The Carry Over stays on the income side, also when it is negative: 3,000.00 - 15.99.
+    expect(screen.getByTestId("income-total").props.children).toBe("€2,984.01");
+    expect(screen.getByTestId("expense-total").props.children).toBe("€1,164.99");
+
+    await render(
+      <UndoProvider db={{ execute }}>
+        <Chalkboard period={october} locale="en-GB" onCategoryPress={jest.fn()} onAdd={jest.fn()} />
+      </UndoProvider>,
+    );
+    const summary = String(screen.getByTestId("chalkboard-summary").props.accessibilityLabel);
+    expect(summary).toContain(`Income ${spokenAmount(298401, "EUR")}`);
+    expect(summary).toContain(`expense ${spokenAmount(116499, "EUR")}`);
+  });
+
+  it("shows the same totals as the Spending chalkboard while a delete is pending", async () => {
+    // iPad landscape shows both at once.
+    await render(
+      <UndoProvider db={{ execute }}>
+        <Chalkboard period={october} locale="en-GB" onCategoryPress={jest.fn()} onAdd={jest.fn()} />
+        <TransactionList period={october} locale="en-GB" layout="web" onOpen={jest.fn()} onShift={jest.fn()} />
+      </UndoProvider>,
+    );
+    const summary = () => String(screen.getByTestId("chalkboard-summary").props.accessibilityLabel);
+
+    await fireEvent(screen.getByTestId("row-lunch"), "keyDown", { nativeEvent: { key: "Delete" } });
+    await fireEvent(screen.getByTestId("row-salary"), "keyDown", { nativeEvent: { key: "Delete" } });
+
+    // Income 4,000.00 - 3,000.00 and expense 1,164.99 - 14.99.
+    expect(screen.getByTestId("income-total").props.children).toBe("€1,000.00");
+    expect(screen.getByTestId("expense-total").props.children).toBe("€1,150.00");
+    expect(summary()).toContain(`Income ${spokenAmount(100000, "EUR")}`);
+    expect(summary()).toContain(`expense ${spokenAmount(115000, "EUR")}`);
+    expect(summary()).toContain(`balance ${spokenAmount(-15000, "EUR", true)}`);
+    expect(screen.queryByText("Salary")).toBeNull();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Deleted. Undo" }));
+    expect(screen.getByTestId("income-total").props.children).toBe("€4,000.00");
+    expect(summary()).toContain(`Income ${spokenAmount(400000, "EUR")}`);
   });
 
   it("starts with the category and account from Spending", async () => {
@@ -152,10 +318,14 @@ describe("TransactionList", () => {
 
     expect(screen.getByTestId("paper-bar-title").props.children).toBe("Bank · Groceries");
     expect(rowNames()).toEqual(["Lunch"]);
+    expect(screen.getByTestId("income-total").props.children).toBe("€0.00");
+    expect(screen.getByTestId("expense-total").props.children).toBe("€14.99");
 
     await fireEvent.press(screen.getByRole("button", { name: "Filter" }));
     await fireEvent.press(screen.getByRole("menuitem", { name: "All categories" }));
     expect(screen.getByTestId("paper-bar-title").props.children).toBe("Bank");
+    expect(screen.getByTestId("income-total").props.children).toBe("€3,950.00");
+    expect(screen.getByTestId("expense-total").props.children).toBe("€1,164.99");
   });
 
   it("sorts on the web", async () => {
@@ -164,7 +334,7 @@ describe("TransactionList", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Sort" }));
     await fireEvent.press(screen.getByRole("menuitem", { name: "Amount" }));
 
-    expect(rowNames()).toEqual(["October salary", "Flat rent", "Carry Over", "Carry Over", "Top up", "Lunch"]);
+    expect(rowNames()).toEqual(["Carry Over", "Carry Over", "October salary", "Flat rent", "Top up", "Lunch"]);
   });
 
   it("filters while typing after 200 ms", async () => {
@@ -176,6 +346,21 @@ describe("TransactionList", () => {
 
     await act(async () => jest.advanceTimersByTime(1));
     expect(rowNames()).toEqual(["Lunch"]);
+    expect(screen.getByTestId("income-total").props.children).toBe("€0.00");
+    expect(screen.getByTestId("expense-total").props.children).toBe("€14.99");
+  });
+
+  it("focuses search with / on the web, but not while a form covers the list", async () => {
+    const view = await renderList({ layout: "web" });
+    expect(mockShortcuts.focusSearch).toBeDefined();
+
+    mockFocused = false;
+    await view.rerender(
+      <UndoProvider db={{ execute }}>
+        <TransactionList period={october} locale="en-GB" layout="web" onOpen={jest.fn()} onShift={jest.fn()} />
+      </UndoProvider>,
+    );
+    expect(mockShortcuts.focusSearch).toBeUndefined();
   });
 
   it("opens the form on a tap", async () => {
@@ -195,13 +380,51 @@ describe("TransactionList", () => {
 
     await fireEvent(row, "touchStart", { nativeEvent: { pageX: 300, pageY: 100 } });
     expect(row.props.onMoveShouldSetResponder({ nativeEvent: { pageX: 280, pageY: 101 } })).toBe(true);
-    await fireEvent(row, "responderRelease", { nativeEvent: { pageX: 200, pageY: 102 } });
+    await fireEvent(row, "responderRelease", { nativeEvent: { pageX: 160, pageY: 102 } });
 
     expect(screen.queryByText("Lunch")).toBeNull();
     expect(screen.getByText("Deleted · Undo")).toBeTruthy();
     await act(async () => jest.advanceTimersByTime(5000));
     expect(execute).toHaveBeenCalledWith("DELETE FROM transactions WHERE id = ?", ["lunch"]);
     expect(screen.queryByText("Deleted · Undo")).toBeNull();
+  });
+
+  it("shows Undo after a delete from the transaction form", async () => {
+    // The form deletes with requestDelete and closes. The list below it offers the Undo.
+    function FormDelete() {
+      const { requestDelete } = useUndo();
+      return <Pressable accessibilityRole="button" accessibilityLabel="Form delete" onPress={() => requestDelete("lunch")} />;
+    }
+    await render(
+      <UndoProvider db={{ execute }}>
+        <TransactionList period={october} locale="en-GB" layout="phone" onOpen={jest.fn()} onShift={jest.fn()} />
+        <FormDelete />
+      </UndoProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", { name: "Form delete" }));
+    expect(screen.queryByText("Lunch")).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: "Deleted. Undo" }));
+    expect(screen.getByText("Lunch")).toBeTruthy();
+    expect(screen.queryByText("Deleted · Undo")).toBeNull();
+  });
+
+  it("hides the Undo toast when the app goes to the background and the delete runs early", async () => {
+    // The provider subscribes once, on mount.
+    let appStateListener: ((state: string) => void) | undefined;
+    jest.spyOn(AppState, "addEventListener").mockImplementationOnce((_type, listener) => {
+      appStateListener = listener as (state: string) => void;
+      return { remove: jest.fn() } as unknown as ReturnType<typeof AppState.addEventListener>;
+    });
+    await renderList({ layout: "web" });
+    await fireEvent(screen.getByTestId("row-lunch"), "keyDown", { nativeEvent: { key: "Delete" } });
+    expect(screen.getByText("Deleted · Undo")).toBeTruthy();
+
+    await act(async () => appStateListener?.("background"));
+
+    expect(execute).toHaveBeenCalledWith("DELETE FROM transactions WHERE id = ?", ["lunch"]);
+    expect(screen.queryByText("Deleted · Undo")).toBeNull();
+    expect(screen.queryByText("Lunch")).toBeNull();
   });
 
   it("ignores a short or vertical swipe", async () => {

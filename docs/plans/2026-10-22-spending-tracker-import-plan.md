@@ -18,8 +18,11 @@ The backup is the native SQLite file of Spending Tracker. It has these tables:
 | `Category` | `Id`, `Name`, `Type` (`Expense`, `Income`, `Transfer`, `Carry`), `Icon` (for example `80-shopping-cart`), `Colour` |
 | `Transaction` | `Id`, `Type` (`Expense`, `Income`, `Transfer`), `Date` (.NET ticks), `Amount` (float), `Note`, `ProfileId`, `CategoryId`, `RecurringTransactionId` |
 | `RecurringTransaction` | `Id`, `Type`, `Date` (start, ticks), `EndDate` (ticks or null), `Amount`, `Note`, `RecurringType` (`Monthly`, ...), `RecurringPeriod`, `ProfileId`, `CategoryId` |
+| `Strategy` (optional) | `ProfileId` (null for the default), `CarryPositiveOnly` |
 
-`Strategy` is not imported. All budget amounts in it are 0.
+The budgets of `Strategy` are not imported. All budget amounts in it are 0. Only `CarryPositiveOnly` is read, for the carry adjustments of `mapping.json`.
+
+The ticks of all dates are at midnight of the local date of the user, so the UTC date of the ticks is the date that Spending Tracker shows. The import does not read `Profile.StartingBalance`; check that it is 0 in the backup.
 
 Rules that the brainstorm agreed:
 
@@ -28,7 +31,7 @@ Rules that the brainstorm agreed:
 - A transfer is two rows: negative amount on the source profile, positive on the target. They become one `transfer` row.
 - The earliest row in the `Carry` category of each account is an opening balance. `mapping.json` lists their source IDs, and the user edits the list. The parser never reads the note text. Other `Carry` rows become income in the category that the mapping gives for the `Carry` category.
 - Rules are imported. A linked row on the schedule of its rule gets the ID `occurrenceId(ruleId, date)`, `source: "recurring"` and `recurring_rule_id`. This includes rows after today, as in Spending Tracker. `generateDue()` skips an occurrence ID that exists, and the "Hide Future Transactions" setting hides these rows. Other linked rows import as normal rows.
-- All other IDs are UUIDv5 from a fixed import namespace and a key such as `st:transaction:101`. A second run updates the same rows.
+- All other IDs are UUIDv5 from a fixed import namespace and a key with the user ID, such as `st:<user id>:transaction:101`. A second run updates the same rows and keeps the `sort_order` of the accounts and categories that the first run created.
 - Out of scope: the in-app import UI (step 2) and the change to `expense-tracker-spec.md` section 7 that step 2 needs.
 
 Do not commit a real backup file or a real `mapping.json`. They have personal data. Add `mapping.json` to `.gitignore` in Task 11.
@@ -244,8 +247,8 @@ Expected: PASS.
    - `SourceProfile`, `SourceCategory`, `SourceTransaction`, `SourceRecurring`: one type for each table, with the column names and types from the Context table. Nullable columns are `| null`.
    - `SourceData`: `{ profiles, categories, transactions, recurring }`, one array for each.
    - `Existing`: the response body of `GET /api/import/existing`.
-   - `Mapping`: `{ currency: string; accounts: Record<string, AccountEntry>; categories: Record<string, CategoryEntry>; opening_balances: number[]; rows_without_account: { action: "skip" } | { action: "match"; target: string } }`. `AccountEntry` is `{ name; action: "create" | "match" | "skip"; target?; color?; reason? }`. `CategoryEntry` is `{ name; type: "expense" | "income" | "transfer"; action; target?; icon?; color?; reason? }`. The keys are the source IDs as strings.
-   - `Problem`: `{ kind; sourceIds: number[]; message: string }`. `kind` is one of `unpaired_transfer`, `no_account`, `same_account_transfer`, `invalid_amount`, `unsupported_recurrence`, `missing_occurrence`.
+   - `Mapping`: `{ currency: string; accounts: Record<string, AccountEntry>; categories: Record<string, CategoryEntry>; opening_balances: number[]; rows_without_account: { action: "skip" } | { action: "match"; target: string } | { action: "create"; name: string }; unpaired_transfers: { action: "skip" } | { action: "import"; expense_category: string; income_category: string }; carry_adjustments: { action: "skip" } | { action: "import"; category: string } }`. `AccountEntry` is `{ name; action: "create" | "match" | "skip"; target?; color?; reason? }`. `CategoryEntry` is `{ name; type: "expense" | "income" | "transfer"; action; target?; icon?; color?; reason? }`. The keys are the source IDs as strings.
+   - `Problem`: `{ kind; sourceIds: number[]; message: string }`. `kind` is one of `unpaired_transfer`, `no_account`, `same_account_transfer`, `invalid_amount`, `category_type`, `unsupported_recurrence`, `missing_occurrence`.
    - `UploadOp`: `{ op: "PUT" | "PATCH"; table: "accounts" | "categories" | "recurring_rules" | "transactions"; id: string; data: Record<string, unknown> }`.
    - `ImportPlan`: `{ ops: UploadOp[]; problems: Problem[]; counts: Record<string, number> }`. The keys of `counts` are `accounts`, `categories`, `recurring_rules`, `transactions`, `transfers`, `occurrences`.
 
@@ -321,7 +324,7 @@ In `mapping.test.ts`:
    - Category 15 is `match` with type `income` and `target: "Other income"`. If `existing` has no "Other income", it is `create` with `name: "Other income"`.
    - A match ignores archived existing rows.
    - `opening_balances` has the ID of the earliest `Carry` row of each profile. If two rows have the same date, it takes the lower ID.
-   - `rows_without_account` is `{ action: "skip" }`.
+   - `rows_without_account` is `{ action: "create", name: "No account" }` when a row that is not a transfer has no profile, else `{ action: "skip" }`. The created account is archived.
 2. `validateMapping(source, mapping, existing)` returns a list of error strings:
    - Empty list for the proposed mapping.
    - An error for a `match` target that does not exist, for an archived target, and for a category target of the wrong type.
@@ -399,7 +402,7 @@ In `plan.test.ts`, in `describe("transactions")`:
 1. An expense row gives a `PUT` on `transactions` with `id: importId("transaction", id)`, `type: "expense"`, `amount_minor`, `currency_code` from the mapping, `date`, `name` and `note` from `splitNote`, the mapped `category_id` and `account_id`, `to_account_id: null`, `recurring_rule_id: null`, `source: "import"`, `import_batch_id` and `external_id: "st:" + id`.
 2. A `Carry` row that is not in `opening_balances` gives an `income` row in the category that the mapping gives for the `Carry` category. A `Carry` row in `opening_balances` gives no transaction.
 3. Transfer rows 201 (-50.00, profile 3) and 202 (50.00, profile 2) on the same date give one row: `type: "transfer"`, `account_id` of profile 3, `to_account_id` of profile 2, `amount_minor: 5000`, `category_id: null`, `id: importId("transfer", 201)`, `external_id: "st:201+202"`. `counts.transfers` is 1.
-4. A transfer row with no partner (the next ID has another date, the same sign, or the same profile) gives a problem `unpaired_transfer` with its ID, and no op. Pairing works from the lowest ID up. Row N pairs only with row N+1.
+4. A transfer row with no partner (the next ID has another date, the same sign, or the same profile) gives a problem `unpaired_transfer` with its ID. With `unpaired_transfers.action` `import`, a negative row imports as an expense and a positive row as income, in the categories of the mapping. A half with no profile never imports. Pairing works from the lowest ID up. Row N pairs only with row N+1.
 5. A transfer where both profiles map to the same account gives a problem `same_account_transfer` and no op.
 6. A row with no `ProfileId` gives a problem `no_account` when `rows_without_account` is `skip`. With `{ action: "match", target: "Wallet" }`, it imports with the ID of the seeded Wallet account. A transfer half with no profile is always `unpaired_transfer`.
 7. An expense or income with amount 0 or below, or an amount that rounds to 0, gives a problem `invalid_amount` and no op.
@@ -432,12 +435,12 @@ Expected: PASS.
 
 In `plan.test.ts`, in `describe("recurring")`, with `today` `2026-10-22`:
 
-1. A rule with `RecurringType` `Monthly`, `RecurringPeriod` 1, start 2026-07-31 and no end date gives a `PUT` on `recurring_rules` with `id: importId("rule", id)`, `frequency: "monthly"`, `start_date: "2026-07-31"`, `end_date: null`, and `name`, `note`, `amount_minor`, `category_id`, `account_id` and `type` from the rule.
-2. The frequency table: `Daily`/1 is `daily`, `Weekly`/1 is `weekly`, `Weekly`/2 is `biweekly`, `Monthly`/1 is `monthly`, `Yearly`/1 is `yearly`. Any other pair, or a rule of type `Transfer`, gives a problem `unsupported_recurrence` and no rule op. Its linked rows then import as normal rows by the Task 9 rules.
+1. A rule with `RecurringType` `Monthly`, `RecurringPeriod` 1, start 2026-07-31 and no end date gives a `PUT` on `recurring_rules` with `id: importId("rule", id)`, `frequency: "monthly"`, `start_date: "2026-07-31"`, `end_date: null`, `generated_through: "2026-09-30"` (the last scheduled date on or before the earlier of `today` and the date of the latest linked row, see item 6), and `name`, `note`, `amount_minor`, `category_id`, `account_id` and `type` from the rule.
+2. The frequency table: `Daily`/1 is `daily`, `Weekly`/1 is `weekly`, `Weekly`/2 is `biweekly`, `Monthly`/1 is `monthly`, `Monthly`/3 is `quarterly`, `Monthly`/12 and `Yearly`/1 are `yearly`. Any other pair, a rule of type `Transfer`, or a rule with an end date before its start date gives a problem `unsupported_recurrence` and no rule op. Its linked rows then import as normal rows by the Task 9 rules.
 3. Linked rows on 2026-07-31, 2026-08-31 and 2026-09-30 get `id: occurrenceId(ruleId, date)`, `source: "recurring"` and `recurring_rule_id: ruleId`. `counts.occurrences` is 3.
 4. A linked row on 2026-10-31 (after today) also gets `id: occurrenceId(ruleId, date)`. `counts.occurrences` is then 4. A linked row after today that is not on the schedule imports as a normal row.
 5. A linked row on a past date that is not in `occurrenceDates(rule, today)`, for example 2026-08-15, imports as a normal row with `importId("transaction", id)` and `recurring_rule_id: null`.
-6. A past date in `occurrenceDates(rule, today)` with no linked row gives a problem `missing_occurrence` with the rule ID and the date in the message. The message says that the generator creates a row for that date.
+6. Let `latest` be the date of the latest linked row of the rule, or `today` if the rule has no linked row. A scheduled date on or before the earlier of `today` and `latest` with no linked row gives a problem `missing_occurrence` with the rule ID and the date in the message: the user deleted it in the old app. The rule keeps its start date and all its linked rows on the schedule. Its `generated_through` is the last scheduled date on or before the earlier of `today` and `latest`, or null if there is no such date. So the app does not create the deleted dates again, but it creates the due dates after `latest`, which the old app had not created yet when the backup was made.
 7. Every rule op passes `validateRecurringRule` from `app/src/domain/validation.ts`.
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -470,14 +473,14 @@ The script has no automated test. It joins the tested parser with the API, and t
 
 - [ ] **Step 1: Write the script**
 
-`node scripts/import-spending-tracker.ts <backup-file> [--api <url>] [--mapping <path>]`. The default for `--api` is `http://localhost:8080`, and the default for `--mapping` is `mapping.json` in the current directory. The script does these steps in this order:
+`node scripts/import-spending-tracker.ts <backup-file> [--api <url>] [--mapping <path>]`. The default for `--api` is `http://localhost:18080` (the API port of the local stack), and the default for `--mapping` is `mapping.json` in the current directory. The script does these steps in this order:
 
 1. Open the backup read-only with `new DatabaseSync(path, { readOnly: true })` from `node:sqlite`. Read the four tables into a `SourceData`. If a table is missing, print "Not a Spending Tracker backup: table <name> is missing" and exit with code 1.
 2. Ask for the email, the password (no echo, with raw mode on stdin) and the TOTP code. Use `MT_EMAIL` and `MT_PASSWORD` from the environment when they are set. Call `POST /api/auth/login` with `device_name` `"import-spending-tracker"`. If the response has `mfa_token`, ask for the code and call `POST /api/auth/login/totp`. If the response has `access_token`, continue with it (the stack runs with `DISABLE_TOTP`). On an error, print the `error` code from the body and exit with code 1.
 3. Call `GET /api/import/existing` with the bearer token.
 4. If the mapping file does not exist, write `proposeMapping(source, existing)` as JSON with two-space indent. Print "Wrote <path>. Edit it, then run the script again." and exit with code 0.
 5. Read the mapping file. Run `validateMapping`. If it returns errors, print each error on its own line and exit with code 1.
-6. Compute `importBatchId` as `v5("st:batch:" + sha256 of the backup file, IMPORT_NAMESPACE)`. Export `IMPORT_NAMESPACE` from `convert.ts` for this. Call `buildPlan` with `userId` from the login response and `today` as the local date in `YYYY-MM-DD`.
+6. Compute `importBatchId` as `importId("batch", sha256 of the backup file, userId)`. Export `IMPORT_NAMESPACE` from `convert.ts` for this. Call `buildPlan` with `userId` from the login response and `today` as the local date in `YYYY-MM-DD`.
 7. If `mapping.currency` is not `existing.currency_code`, print a warning line.
 8. Print the summary: one line for each key of `counts`, then the problems grouped by `kind`, with the count and the first 10 messages of each group.
 9. Ask "Import? (y/N)". Any answer other than `y` exits with code 0 and sends nothing.

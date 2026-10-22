@@ -17,6 +17,7 @@ import {
   CodeField,
   ErrorText,
 } from "../../src/ui/auth/AuthUI";
+import { SIGN_IN_FAILED } from "../../src/ui/auth/LoginForms";
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -166,6 +167,7 @@ function RecoveryCodesStep({ tokens }: { tokens: TokenResponse }) {
   const { signIn } = useAuth();
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const codes = tokens.recovery_codes ?? [];
 
   return (
@@ -182,12 +184,17 @@ function RecoveryCodesStep({ tokens }: { tokens: TokenResponse }) {
       </View>
       <AuthLink label="Copy all" onPress={() => void Clipboard.setStringAsync(codes.join("\n"))} />
       <AuthCheckbox label="I saved these codes" checked={saved} onChange={setSaved} />
+      <ErrorText message={error} />
       <AuthButton
         label="Continue"
         disabled={!saved || busy}
         onPress={() => {
           setBusy(true);
-          void signIn(tokens);
+          setError(null);
+          signIn(tokens).catch(() => {
+            setBusy(false);
+            setError(SIGN_IN_FAILED);
+          });
         }}
       />
     </AuthScreen>

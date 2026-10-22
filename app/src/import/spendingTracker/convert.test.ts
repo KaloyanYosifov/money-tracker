@@ -65,6 +65,16 @@ describe("splitNote", () => {
     expect(splitNote(` ${text} `)).toEqual({ name: "x".repeat(120), note: text });
   });
 
+  it("uses the first line of a note with more lines as the name", () => {
+    expect(splitNote(" Groceries \n milk, eggs\n")).toEqual({ name: "Groceries", note: "Groceries \n milk, eggs" });
+    expect(splitNote("\n\nSecond line first")).toEqual({ name: "Second line first", note: null });
+  });
+
+  it("does not cut a character in two", () => {
+    const text = `${"x".repeat(119)}\u{1F600}yz`;
+    expect(splitNote(text)).toEqual({ name: "x".repeat(119), note: text });
+  });
+
   it("gives an empty name for no note", () => {
     expect(splitNote(null)).toEqual({ name: "", note: null });
   });

@@ -18,13 +18,14 @@ function decimalSeparator(locale?: string): string {
 }
 
 // Converts an unsigned decimal string with "." as the separator to minor units.
-// Returns null if the string has more fraction digits than the currency allows.
+// Accepts ".5" and "5." too. Returns null if the string has no digits or has
+// more fraction digits than the currency allows.
 function decimalToMinor(text: string, digits: number): bigint | null {
-  const match = /^(\d+)(?:\.(\d+))?$/.exec(text);
-  if (!match) return null;
+  const match = /^(\d*)(?:\.(\d*))?$/.exec(text);
+  if (!match || match[1] + (match[2] ?? "") === "") return null;
   const fraction = match[2] ?? "";
   if (fraction.length > digits) return null;
-  return BigInt(match[1] + fraction.padEnd(digits, "0"));
+  return BigInt((match[1] || "0") + fraction.padEnd(digits, "0"));
 }
 
 export function parseAmount(text: string, currency = "EUR", locale?: string): number | null {

@@ -4,6 +4,7 @@ import Svg, { Path } from "react-native-svg";
 import type { TransactionListRow } from "../../data/queries";
 import { formatAmount, minorUnits } from "../../domain/money";
 import { CategoryIcon, categoryIcons, type CategoryIconKey, type IconVariant } from "../icons/categoryIcons";
+import { TransferIcon } from "../icons/transferIcon";
 import { colors, type ThemeColors } from "../theme";
 import { isHovered } from "./interaction";
 
@@ -12,6 +13,8 @@ type Props = {
   iconStyle?: IconVariant;
   locale?: string;
   onPress?: () => void;
+  /** UserSettings.show_note: a line with the note under the subtitle. */
+  showNote?: boolean;
   theme?: ThemeColors;
 };
 
@@ -51,6 +54,15 @@ function amountColor(row: TransactionListRow, theme: ThemeColors): string {
   return theme.ink;
 }
 
+const TYPE_LABELS: Record<TransactionListRow["type"], string> = { expense: "Expense", income: "Income", transfer: "Transfer" };
+
+/** The name, or for a transaction without a name: the category, "Transfer" or the type. */
+function rowTitle(row: TransactionListRow): string {
+  if (row.name.trim() !== "") return row.name;
+  if (row.type === "transfer") return TYPE_LABELS.transfer;
+  return row.category_name || TYPE_LABELS[row.type];
+}
+
 function iconKey(row: TransactionListRow): CategoryIconKey | null {
   if (row.kind === "carryOver") return "piggy";
   if (row.category_icon && row.category_icon in categoryIcons) return row.category_icon as CategoryIconKey;
@@ -65,15 +77,22 @@ function RepeatMark({ color }: { color: string }) {
   );
 }
 
-export function TransactionRow({ row, iconStyle = "filled", locale, onPress, theme = colors.light }: Props) {
-  const carryOver = row.kind === "carryOver";
+export function TransactionRow({ row: listRow, iconStyle = "filled", locale, onPress, showNote = false, theme = colors.light }: Props) {
+  const carryOver = listRow.kind === "carryOver";
+  // transactionList gives a Carry Over as the absolute balance, with type "expense" when the balance is negative.
+  const row =
+    carryOver && listRow.type === "expense" && listRow.amount_minor > 0
+      ? { ...listRow, amount_minor: -listRow.amount_minor }
+      : listRow;
   const background = carryOver ? theme.carryOver : theme.row;
   const account = row.type === "transfer" ? `${row.account_name ?? ""} → ${row.to_account_name ?? ""}` : (row.account_name ?? "");
   const subtitle = `${account}, ${formatRowDate(row.date, locale)}`;
   const amount = formatAmount(row.amount_minor, row.currency_code, locale);
   const recurring = row.recurring_rule_id !== null;
   const icon = iconKey(row);
-  const label = [row.name, amountAccessibilityLabel(row), subtitle, recurring ? "repeats" : null]
+  const title = rowTitle(row);
+  const note = showNote && !carryOver ? row.note?.trim() || null : null;
+  const label = [title, amountAccessibilityLabel(row), subtitle, recurring ? "repeats" : null, note]
     .filter(Boolean)
     .join(", ");
 
@@ -101,14 +120,16 @@ export function TransactionRow({ row, iconStyle = "filled", locale, onPress, the
             color={theme.ink}
             background={background}
           />
+        ) : row.type === "transfer" && !carryOver ? (
+          <TransferIcon size={ICON_SIZE} color={theme.ink} />
         ) : null}
       </View>
       <View style={styles.body}>
-        <Text allowFontScaling style={[styles.name, { color: theme.ink }]}>
-          {row.name}
+        <Text allowFontScaling numberOfLines={2} style={[styles.name, { color: theme.ink }]}>
+          {title}
         </Text>
         <View style={styles.subtitleLine}>
-          <Text allowFontScaling style={[styles.subtitle, { color: theme.accent }]}>
+          <Text allowFontScaling numberOfLines={1} style={[styles.subtitle, { color: theme.accent }]}>
             {subtitle}
           </Text>
           {recurring ? (
@@ -117,6 +138,11 @@ export function TransactionRow({ row, iconStyle = "filled", locale, onPress, the
             </View>
           ) : null}
         </View>
+        {note ? (
+          <Text testID="transaction-note-line" allowFontScaling numberOfLines={1} style={[styles.note, { color: theme.accent }]}>
+            {note}
+          </Text>
+        ) : null}
       </View>
       <Text allowFontScaling style={[styles.amount, { color: amountColor(row, theme) }]}>
         {amount}
@@ -148,16 +174,20 @@ const styles = StyleSheet.create({
   subtitleLine: {
     flexDirection: "row",
     alignItems: "center",
-    flexWrap: "wrap",
   },
   subtitle: {
+    flexShrink: 1,
     fontSize: 11,
+  },
+  note: {
+    fontSize: 11,
+    fontStyle: "italic",
+    marginTop: 1,
   },
   repeat: {
     marginLeft: 4,
   },
   amount: {
-    alignSelf: "flex-start",
     fontSize: 19,
     marginLeft: 6,
   },

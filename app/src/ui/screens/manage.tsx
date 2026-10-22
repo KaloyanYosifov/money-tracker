@@ -37,6 +37,20 @@ export function useScreenSettings(): { settings: UserSettings | undefined; theme
 
 export { PALETTE };
 
+/** Note in a form in place of a hidden action, for example Delete of a record in use. */
+export function FormNote({ text, theme }: { text: string; theme: ThemeColors }) {
+  return (
+    <Text allowFontScaling style={[formStyles.note, { color: theme.accent }]}>
+      {text}
+    </Text>
+  );
+}
+
+/** The iOS keyboard in the colours of the app theme. */
+export function keyboardAppearance(theme: ThemeColors): "dark" | "light" {
+  return theme === colors.dark ? "dark" : "light";
+}
+
 export function ColorPalette({
   value,
   onChange,
@@ -157,18 +171,27 @@ export function ReorderList<T extends ListItem>({
                 <RowWithAction
                   key={item.id}
                   theme={theme}
-                  row={<ListRow title={item.name} icon={icon(item)} onPress={() => onOpen(item.id)} theme={theme} />}
+                  row={
+                    <View style={styles.archivedRow}>
+                      <ListRow title={item.name} icon={icon(item)} onPress={() => onOpen(item.id)} theme={theme} />
+                    </View>
+                  }
                   action={
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={`Restore ${item.name}`}
-                      onPress={() => onRestore(item.id)}
-                      hitSlop={8}
-                    >
-                      <Text allowFontScaling style={[styles.restore, { color: theme.accent }]}>
-                        Restore
+                    <View style={styles.archivedActions}>
+                      <Text allowFontScaling style={[styles.archivedTag, { color: theme.accent, borderColor: theme.accent }]}>
+                        Archived
                       </Text>
-                    </Pressable>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Restore ${item.name}`}
+                        onPress={() => onRestore(item.id)}
+                        hitSlop={8}
+                      >
+                        <Text allowFontScaling style={[styles.restore, { color: theme.accent }]}>
+                          Restore
+                        </Text>
+                      </Pressable>
+                    </View>
                   }
                 />
               ))
@@ -401,9 +424,22 @@ export const formStyles = StyleSheet.create({
     alignItems: "center",
     padding: 14,
   },
+  // The negative margin keeps the 32 point touch height, but centres the text on the line of the label.
   input: {
     fontSize: 16,
     minHeight: 32,
+    marginVertical: -4,
+  },
+  error: {
+    fontSize: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  note: {
+    fontSize: 13,
+    textAlign: "center",
+    marginTop: 16,
+    marginHorizontal: 18,
   },
 });
 
@@ -454,6 +490,24 @@ const styles = StyleSheet.create({
   },
   archivedTitle: {
     fontSize: 13,
+  },
+  archivedRow: {
+    opacity: 0.55,
+  },
+  archivedActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    // With the 8 of rowAction, Restore keeps the 14 margin of the row content from the edge.
+    paddingRight: 6,
+  },
+  archivedTag: {
+    fontSize: 11,
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    overflow: "hidden",
   },
   restore: {
     fontSize: 15,
@@ -517,8 +571,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
   },
+  // Wide enough for "Opening balance" on one line.
   label: {
-    width: 84,
+    width: 112,
     fontSize: 13,
     paddingTop: 3,
   },

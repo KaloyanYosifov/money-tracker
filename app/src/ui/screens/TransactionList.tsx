@@ -1,6 +1,8 @@
 import { useQuery } from "@powersync/react";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useIsFocused } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import {
+  Animated,
   FlatList,
   Modal,
   Pressable,
@@ -8,9 +10,12 @@ import {
   Text,
   TextInput,
   useColorScheme,
+  useWindowDimensions,
   View,
   type GestureResponderEvent,
+  type HostInstance,
   type KeyDownEvent,
+  type LayoutChangeEvent,
   type TextInputInstance,
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
@@ -18,7 +23,7 @@ import Svg, { Path } from "react-native-svg";
 import { UNDO_DELAY_MS, useUndo } from "../../data/UndoProvider";
 import {
   useCarryOver,
-  usePeriodTotals,
+  useShownPeriodTotals,
   useTransactionList,
   type TransactionListRow,
   type TransactionSort,
@@ -31,6 +36,7 @@ import { isHovered } from "../components/interaction";
 import { PaperBar } from "../components/PaperBar";
 import { TransactionRow } from "../components/TransactionRow";
 import { UndoToast } from "../components/UndoToast";
+import { useCloseWithOverlays } from "../overlays";
 import { colors, resolveTheme, type ThemeColors } from "../theme";
 
 type Layout = "web" | "phone";
@@ -49,7 +55,7 @@ type Props = {
 };
 
 export const SEARCH_DEBOUNCE_MS = 200;
-const SWIPE_DISTANCE = 60;
+const SWIPE_DISTANCE = 120;
 const SWIPE_START = 10;
 
 interface AccountOption {
@@ -65,26 +71,49 @@ interface MenuOption {
 
 type MenuKind = "account" | "filter" | "sort";
 
+/** The window position of the button that opened a menu (web). */
+interface MenuAnchor {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 const TYPE_LABELS: Record<Transaction["type"], string> = { expense: "Expense", income: "Income", transfer: "Transfer" };
 const SORT_LABELS: Record<TransactionSort, string> = { date: "Date", name: "Name", amount: "Amount" };
 
 function OptionMenu({
   title,
   options,
+  anchor,
   onSelect,
   onClose,
   theme,
 }: {
   title: string;
   options: MenuOption[];
+  /** Without an anchor the menu shows in the middle of the screen. */
+  anchor: MenuAnchor | null;
   onSelect: (value: string) => void;
   onClose: () => void;
   theme: ThemeColors;
 }) {
+  const window = useWindowDimensions();
+  useCloseWithOverlays(true, onClose);
+  // Below the button. A button in the right half aligns the right edges, so the menu stays in the window.
+  const position = anchor
+    ? {
+        position: "absolute" as const,
+        top: anchor.y + anchor.height + 4,
+        ...(anchor.x + anchor.width / 2 > window.width / 2
+          ? { right: Math.max(8, window.width - anchor.x - anchor.width) }
+          : { left: Math.max(8, anchor.x) }),
+      }
+    : null;
   return (
     <Modal transparent visible animationType="fade" onRequestClose={onClose}>
       <Pressable accessibilityLabel="Close menu" style={styles.backdrop} onPress={onClose}>
-        <View accessibilityRole="menu" style={[styles.menu, { backgroundColor: theme.row, borderColor: theme.line }]}>
+        <View accessibilityRole="menu" style={[styles.menu, position, { backgroundColor: theme.row, borderColor: theme.line }]}>
           <Text allowFontScaling style={[styles.menuTitle, { color: theme.accent }]}>
             {title}
           </Text>
@@ -114,15 +143,23 @@ type RowProps = {
   layout: Layout;
   locale?: string;
   iconStyle: "filled" | "outline";
+  showNote: boolean;
   theme: ThemeColors;
   onOpen: (id: string) => void;
   onDelete: (id: string) => void;
 };
 
-/** A list row. Swipe left (phone) or the Delete key (web) deletes it. Carry Over rows only show. */
-function ListItem({ row, layout, locale, iconStyle, theme, onOpen, onDelete }: RowProps) {
+/**
+ * A list row. Swipe left (phone) or the Delete key (web) deletes it. Carry Over rows only show.
+ * While the finger moves, the row follows it and shows the red Delete area behind it.
+ */
+function ListItem({ row, layout, locale, iconStyle, showNote, theme, onOpen, onDelete }: RowProps) {
   const start = useRef<{ x: number; y: number } | null>(null);
+  const [slide] = useState(() => new Animated.Value(0));
   const editable = row.kind === "transaction";
+  const swipeable = editable && layout !== "web";
+
+  const slideBack = () => Animated.spring(slide, { toValue: 0, useNativeDriver: false }).start();
 
   const offset = (event: GestureResponderEvent) => {
     if (!start.current) return null;
@@ -146,25 +183,43 @@ function ListItem({ row, layout, locale, iconStyle, theme, onOpen, onDelete }: R
             const move = offset(event);
             return move !== null && move.dx < -SWIPE_START && Math.abs(move.dx) > Math.abs(move.dy);
           },
+          // The list must not take a running swipe for a scroll.
+          onResponderTerminationRequest: () => false,
+          onResponderMove: (event: GestureResponderEvent) => {
+            const move = offset(event);
+            if (move) slide.setValue(Math.min(0, move.dx));
+          },
           onResponderRelease: (event: GestureResponderEvent) => {
             const move = offset(event);
             start.current = null;
             if (move && move.dx <= -SWIPE_DISTANCE && Math.abs(move.dx) > Math.abs(move.dy)) onDelete(row.id);
+            else slideBack();
           },
           onResponderTerminate: () => {
             start.current = null;
+            slideBack();
           },
         };
 
   return (
     <View testID={`row-${row.id}`} {...deleteHandlers}>
-      <TransactionRow
-        row={row}
-        iconStyle={iconStyle}
-        locale={locale}
-        theme={theme}
-        onPress={editable ? () => onOpen(row.id) : undefined}
-      />
+      {swipeable ? (
+        <View testID="swipe-delete" style={[styles.swipeDelete, { backgroundColor: theme.listRed }]}>
+          <Text allowFontScaling style={styles.swipeDeleteText}>
+            Delete
+          </Text>
+        </View>
+      ) : null}
+      <Animated.View testID="row-slide" style={swipeable ? { transform: [{ translateX: slide }] } : undefined}>
+        <TransactionRow
+          row={row}
+          iconStyle={iconStyle}
+          locale={locale}
+          showNote={showNote}
+          theme={theme}
+          onPress={editable ? () => onOpen(row.id) : undefined}
+        />
+      </Animated.View>
     </View>
   );
 }
@@ -177,16 +232,39 @@ function ToolbarButton({ label, onPress, children }: { label: string; onPress: (
   );
 }
 
-function BarButton({ label, onPress, theme }: { label: string; onPress: () => void; theme: ThemeColors }) {
+/** A paper bar menu button. With a value (an active filter) it shows the value in ink on a filled background. */
+function BarButton({
+  label,
+  value = null,
+  anchorRef,
+  onPress,
+  theme,
+}: {
+  label: string;
+  value?: string | null;
+  anchorRef?: RefObject<HostInstance | null>;
+  onPress: () => void;
+  theme: ThemeColors;
+}) {
   return (
     <Pressable
+      ref={anchorRef}
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityValue={value ? { text: value } : undefined}
       onPress={onPress}
-      style={(state) => [styles.barButton, (isHovered(state) || state.pressed) && { backgroundColor: theme.hover }]}
+      style={(state) => [
+        styles.barButton,
+        value ? { backgroundColor: theme.carryOver } : null,
+        (isHovered(state) || state.pressed) && { backgroundColor: theme.hover },
+      ]}
     >
-      <Text allowFontScaling style={[styles.barAction, { color: theme.accent }]}>
-        {`${label} ▾`}
+      <Text
+        allowFontScaling
+        numberOfLines={1}
+        style={[styles.barAction, { color: value ? theme.ink : theme.accent }, value ? styles.barActionActive : null]}
+      >
+        {`${value ?? label} ▾`}
       </Text>
     </Pressable>
   );
@@ -218,7 +296,7 @@ export function TransactionList({
   onShift,
 }: Props) {
   const scheme = useColorScheme();
-  const { hiddenIds, requestDelete, undo } = useUndo();
+  const { hiddenIds, pendingIds, requestDelete, undo } = useUndo();
   const { data: settingsRows } = useQuery<UserSettings>("SELECT * FROM user_settings LIMIT 1");
   const settings = settingsRows[0];
   const { data: accounts } = useQuery<AccountOption>(
@@ -232,8 +310,13 @@ export function TransactionList({
   const [searchText, setSearchText] = useState("");
   const [search, setSearch] = useState("");
   const [menu, setMenu] = useState<MenuKind | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<MenuAnchor | null>(null);
+  const accountButton = useRef<HostInstance>(null);
+  const sortButton = useRef<HostInstance>(null);
+  const filterButton = useRef<HostInstance>(null);
   const [toastVisible, setToastVisible] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [toolbarHeight, setToolbarHeight] = useState(0);
   const searchInput = useRef<TextInputInstance>(null);
 
   const { data: categoryRows } = useQuery<{ name: string }>("SELECT name FROM categories WHERE id = ?", [categoryId]);
@@ -251,12 +334,16 @@ export function TransactionList({
     [],
   );
 
-  useShortcuts(layout === "web" ? { focusSearch: () => searchInput.current?.focus() } : {});
+  // False while a form covers the list, so / does not focus the search below it.
+  const focused = useIsFocused();
+  useShortcuts(layout === "web" && focused ? { focusSearch: () => searchInput.current?.focus() } : {});
 
   const filters = useMemo(() => ({ accountId, categoryId, type }), [accountId, categoryId, type]);
-  const { data: rows } = useTransactionList(period, filters, sort, search);
-  const { data: totals } = usePeriodTotals(period, accountId);
-  const { data: carryRows } = useCarryOver(period.start, accountId === null ? null : [accountId]);
+  const { data: rows, isLoading: rowsLoading } = useTransactionList(period, filters, sort, search);
+  // The totals match the rows of the list: the same filters, and Carry Over only when the list shows it.
+  // The totals leave out the pending deletes (Undo), as the rows and the Spending chalkboard do.
+  const { data: totals, isLoading: totalsLoading } = useShownPeriodTotals(period, accountId, { categoryId, type, search });
+  const { data: carryRows, isLoading: carryLoading } = useCarryOver(period.start, accountId === null ? null : [accountId]);
 
   const visibleRows = useMemo(
     () => (hiddenIds.size === 0 ? rows : rows.filter((row) => !hiddenIds.has(row.id))),
@@ -266,22 +353,37 @@ export function TransactionList({
   const theme = colors[resolveTheme(settings?.theme ?? "system", scheme ?? "light")];
   const currency = settings?.currency_code ?? "EUR";
   const iconStyle = settings?.icon_style ?? "filled";
-  const carryOver = settings?.carry_over ? carryRows.reduce((sum, row) => sum + row.balance, 0) : 0;
+  const listHasCarryOver = categoryId === null && type === null && search.trim() === "";
+  // Carry Over, positive or negative, belongs to the income side, as on the Spending chalkboard.
+  const carryOver = settings?.carry_over && listHasCarryOver ? carryRows.reduce((sum, row) => sum + row.balance, 0) : 0;
   const income = (totals?.income ?? 0) + carryOver;
   const expense = totals?.expense ?? 0;
+  // A new period or filter runs the queries again. Until they finish, the totals stay blank instead of 0.
+  const totalsReady = !totalsLoading && !(settings?.carry_over && listHasCarryOver && carryLoading);
 
   const accountName = accounts.find((a) => a.id === accountId)?.name ?? "All Accounts";
   const title = categoryName ? `${accountName} · ${categoryName}` : accountName;
+  // The phone has no Filter button that shows the type, so the title shows it.
+  const phoneTitle = type ? `${title} · ${TYPE_LABELS[type]}` : title;
+  // The Filter button shows the active filter, so the hidden rows and Carry Over have a reason.
+  const activeFilter = [categoryName, type ? TYPE_LABELS[type] : null].filter(Boolean).join(" · ") || null;
 
-  const deleteRow = useCallback(
-    (id: string) => {
-      requestDelete(id);
+  // Every new pending delete shows the toast: a swipe here, or Delete in the transaction form above the list.
+  const hiddenCount = useRef(hiddenIds.size);
+  useEffect(() => {
+    if (hiddenIds.size > hiddenCount.current) {
       setToastVisible(true);
       if (toastTimer.current) clearTimeout(toastTimer.current);
       toastTimer.current = setTimeout(() => setToastVisible(false), UNDO_DELAY_MS);
-    },
-    [requestDelete],
-  );
+    }
+    hiddenCount.current = hiddenIds.size;
+  }, [hiddenIds]);
+
+  // A delete that already ran (the app went to the background, or the web page was hidden)
+  // has nothing to undo, so the toast goes away with the last pending delete.
+  const toastShown = toastVisible && pendingIds.size > 0;
+
+  const deleteRow = useCallback((id: string) => requestDelete(id), [requestDelete]);
 
   const undoDelete = () => {
     undo();
@@ -325,6 +427,13 @@ export function TransactionList({
   const menuTitles: Record<MenuKind, string> = { account: "Account", filter: "Filter", sort: "Sort" };
   const web = layout === "web";
 
+  // On the web the menu opens below its button. The phone keeps the menu in the middle.
+  const openMenu = (kind: MenuKind, button: RefObject<HostInstance | null>) => {
+    setMenuAnchor(null);
+    setMenu(kind);
+    if (web) button.current?.measureInWindow((x, y, width, height) => setMenuAnchor({ x, y, width, height }));
+  };
+
   return (
     <View style={[styles.screen, { backgroundColor: theme.row }]}>
       <PaperBar theme={theme} style={web ? styles.webBar : undefined}>
@@ -346,10 +455,11 @@ export function TransactionList({
               />
             </View>
             <Pressable
+              ref={accountButton}
               accessibilityRole="button"
               accessibilityLabel="Choose account"
               accessibilityValue={{ text: title }}
-              onPress={() => setMenu("account")}
+              onPress={() => openMenu("account", accountButton)}
               style={(state) => [
                 styles.accountChip,
                 { borderColor: theme.line, backgroundColor: isHovered(state) || state.pressed ? theme.hover : theme.row },
@@ -361,14 +471,20 @@ export function TransactionList({
               </Text>
             </Pressable>
             <View style={styles.barActions}>
-              <BarButton label="Sort" onPress={() => setMenu("sort")} theme={theme} />
-              <BarButton label="Filter" onPress={() => setMenu("filter")} theme={theme} />
+              <BarButton label="Sort" anchorRef={sortButton} onPress={() => openMenu("sort", sortButton)} theme={theme} />
+              <BarButton
+                label="Filter"
+                value={activeFilter}
+                anchorRef={filterButton}
+                onPress={() => openMenu("filter", filterButton)}
+                theme={theme}
+              />
               <ExportButton theme={theme} />
             </View>
           </>
         ) : (
           <Text testID="paper-bar-title" allowFontScaling style={[styles.barText, { color: theme.accent }]}>
-            {title}
+            {phoneTitle}
           </Text>
         )}
       </PaperBar>
@@ -379,14 +495,14 @@ export function TransactionList({
           allowFontScaling
           style={[styles.total, { color: theme.listGreen, backgroundColor: `${theme.listGreen}26` }]}
         >
-          {formatAmount(income, currency, locale)}
+          {totalsReady ? formatAmount(income, currency, locale) : " "}
         </Text>
         <Text
           testID="expense-total"
           allowFontScaling
           style={[styles.total, { color: theme.listRed, backgroundColor: `${theme.listRed}1f`, borderLeftColor: theme.line }, styles.totalRight]}
         >
-          {formatAmount(expense, currency, locale)}
+          {totalsReady ? formatAmount(expense, currency, locale) : " "}
         </Text>
       </View>
 
@@ -397,9 +513,11 @@ export function TransactionList({
         keyExtractor={(row) => row.id}
         initialNumToRender={20}
         ListEmptyComponent={
-          <Text allowFontScaling style={[styles.empty, { color: theme.ink }]}>
-            No transactions in this period
-          </Text>
+          rowsLoading ? undefined : (
+            <Text allowFontScaling style={[styles.empty, { color: theme.ink }]}>
+              No transactions in this period
+            </Text>
+          )
         }
         renderItem={({ item }) => (
           <ListItem
@@ -407,6 +525,7 @@ export function TransactionList({
             layout={layout}
             locale={locale}
             iconStyle={iconStyle}
+            showNote={Boolean(settings?.show_note)}
             theme={theme}
             onOpen={onOpen}
             onDelete={deleteRow}
@@ -415,7 +534,11 @@ export function TransactionList({
       />
 
       {web ? null : (
-        <View style={[styles.toolbar, { borderTopColor: theme.line, backgroundColor: theme.paper }]}>
+        <View
+          testID="toolbar"
+          onLayout={(event: LayoutChangeEvent) => setToolbarHeight(event.nativeEvent.layout.height)}
+          style={[styles.toolbar, { borderTopColor: theme.line, backgroundColor: theme.paper }]}
+        >
           <View style={styles.toolbarGroup}>
             <ToolbarButton label="Previous period" onPress={() => onShift(-1)}>
               <ToolbarIcon d="M15 5 8 12l7 7" color={theme.accent} />
@@ -435,12 +558,14 @@ export function TransactionList({
         </View>
       )}
 
-      <UndoToast visible={toastVisible} onUndo={undoDelete} />
+      {/* On the phone the toast sits above the bottom toolbar, so ‹ › and Filter stay free. */}
+      <UndoToast visible={toastShown} onUndo={undoDelete} theme={theme} bottom={(web ? 0 : toolbarHeight) + 24} />
 
       {menu ? (
         <OptionMenu
           title={menuTitles[menu]}
           options={menuOptions(menu)}
+          anchor={menuAnchor}
           onSelect={(value) => select(menu, value)}
           onClose={() => setMenu(null)}
           theme={theme}
@@ -516,6 +641,10 @@ const styles = StyleSheet.create({
   barAction: {
     fontSize: 13,
   },
+  barActionActive: {
+    fontWeight: "600",
+    maxWidth: 160,
+  },
   disabled: {
     opacity: 0.45,
   },
@@ -551,6 +680,21 @@ const styles = StyleSheet.create({
   },
   list: {
     flex: 1,
+  },
+  swipeDelete: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: "flex-end",
+    justifyContent: "center",
+    paddingRight: 20,
+  },
+  swipeDeleteText: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "600",
   },
   empty: {
     textAlign: "center",

@@ -21,7 +21,7 @@ export default function SettingsRoute() {
         onOpenSyncProblems={() => router.push("/sync-problems" as Href)}
         onOpenSessions={() => router.push("/sessions" as Href)}
         onLogout={() => void logout().catch(showLogoutError)}
-        onResetLocalData={() => void resetLocalData()}
+        onResetLocalData={() => void resetLocalData().catch(showResetError)}
       />
     </DeskScreen>
   );
@@ -31,4 +31,10 @@ function showLogoutError() {
   const message = "The server did not end the session. Check the connection and try again.";
   if (Platform.OS === "web") window.alert(message);
   else Alert.alert("Log out failed", message);
+}
+
+function showResetError() {
+  const message = "The local data was not reset. Try again.";
+  if (Platform.OS === "web") window.alert(message);
+  else Alert.alert("Reset failed", message);
 }

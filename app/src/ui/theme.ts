@@ -1,6 +1,7 @@
 import type { ColorSchemeName } from "react-native";
 
 import type { UserSettings } from "../generated/schema";
+import { PALETTE } from "./palette";
 
 export type ThemeName = "light" | "dark";
 
@@ -22,7 +23,13 @@ export type ThemeColors = {
   listRed: string;
   transferButton: string;
   settingsBlue: string;
+  /** Row chevrons and the "off" track of a switch. */
+  control: string;
+  /** Header icons such as the ⋮ menu. */
+  icon: string;
 };
+
+const PALETTE_GREY = PALETTE.find((entry) => entry.label === "Grey")?.hex ?? "#8a8a8a";
 
 export const colors: Record<ThemeName, ThemeColors> = {
   light: {
@@ -42,6 +49,8 @@ export const colors: Record<ThemeName, ThemeColors> = {
     listRed: "#c62f2f",
     transferButton: "#36c94a",
     settingsBlue: "#1d4f9a",
+    control: "#e2d9c8",
+    icon: "#8a5a44",
   },
   dark: {
     statusBar: "#2b1a10",
@@ -60,6 +69,9 @@ export const colors: Record<ThemeName, ThemeColors> = {
     listRed: "#ef6461",
     transferButton: "#2ea83f",
     settingsBlue: "#7fa8e8",
+    // The line colour is almost the row colour in the dark theme, so chevrons and switch tracks use the palette grey.
+    control: PALETTE_GREY,
+    icon: "#e8dccb",
   },
 };
 

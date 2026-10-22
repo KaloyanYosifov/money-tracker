@@ -39,6 +39,12 @@ name: App Lock
       true: ${PHASE == 'failed'}
     commands:
       # The system Face ID prompt stays open after a failed match until it is cancelled.
+      # The "Face Not Recognized" prompt can come a moment after run.ts sends the failed match.
+      - extendedWaitUntil:
+          visible:
+            text: Cancel
+          timeout: 10000
+          optional: true
       - tapOn:
           text: Cancel
           optional: true

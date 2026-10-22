@@ -2,7 +2,13 @@ import { useQuery } from "@powersync/react";
 import { useState, type ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, useColorScheme, View, type TextStyle } from "react-native";
 
-import { useBudgetProgress, useCarryOver, useCategoryTotals, usePeriodTotals, type CategoryTotal } from "../../data/queries";
+import {
+  useBudgetProgress,
+  useCarryOver,
+  useShownCategoryTotals,
+  useShownPeriodTotals,
+  type CategoryTotal,
+} from "../../data/queries";
 import { formatAmount, minorUnits } from "../../domain/money";
 import type { Period } from "../../domain/period";
 import type { UserSettings } from "../../generated/schema";
@@ -80,9 +86,10 @@ export function Chalkboard({ period, locale, showRotateHint = false, onCategoryP
   const account = accounts.find((a) => a.id === chosenAccount) ?? null;
   const accountId = account?.id ?? null;
 
-  const { data: totals } = usePeriodTotals(period, accountId);
-  const { data: incomeCategories } = useCategoryTotals(period, accountId, "income");
-  const { data: expenseCategories } = useCategoryTotals(period, accountId, "expense");
+  // Without the pending deletes (Undo), as in the transaction list.
+  const { data: totals } = useShownPeriodTotals(period, accountId);
+  const { data: incomeCategories } = useShownCategoryTotals(period, accountId, "income");
+  const { data: expenseCategories } = useShownCategoryTotals(period, accountId, "expense");
   const { data: carryRows } = useCarryOver(period.start, accountId === null ? null : [accountId]);
   const { data: budget } = useBudgetProgress(period);
 
@@ -132,7 +139,7 @@ export function Chalkboard({ period, locale, showRotateHint = false, onCategoryP
           <Pressable accessibilityRole="button" accessibilityLabel="Previous account" hitSlop={12} onPress={() => cycle(-1)}>
             <Text style={[...chalkText, styles.arrow]}>‹</Text>
           </Pressable>
-          <Text allowFontScaling style={[...chalkText, styles.pickerText]}>
+          <Text allowFontScaling numberOfLines={1} ellipsizeMode="tail" style={[...chalkText, styles.pickerText]}>
             {account?.name ?? "All Accounts"}
           </Text>
           <Pressable accessibilityRole="button" accessibilityLabel="Next account" hitSlop={12} onPress={() => cycle(1)}>
@@ -213,8 +220,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 40,
     marginBottom: 10,
+    // A long account name shrinks, so the arrows keep clear of the screen edges.
+    paddingHorizontal: 32,
   },
   pickerText: {
+    flexShrink: 1,
+    textAlign: "center",
     fontSize: 14,
     letterSpacing: 0.5,
   },

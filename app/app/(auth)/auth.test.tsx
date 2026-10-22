@@ -1,9 +1,10 @@
 import { Slot } from "expo-router";
 import { act, fireEvent, renderRouter, screen, waitFor } from "expo-router/testing-library";
-import { Text } from "react-native";
+import { Pressable, Text } from "react-native";
 
 import type { AuthStatus } from "../../src/auth/AuthProvider";
 import type { TokenResponse } from "../../src/auth/api";
+import { useSessionActions } from "../../src/data/session";
 import RootLayout from "../_layout";
 import Invite from "./invite";
 import Login from "./login";
@@ -42,6 +43,8 @@ const mockDb = {
   connect: jest.fn(async () => {}),
   disconnect: jest.fn(async () => {}),
   disconnectAndClear: jest.fn(async () => {}),
+  // The upload queue (ps_crud) is empty.
+  getOptional: jest.fn(async () => ({ n: 0 })),
 };
 
 // The root banners count the sync problems.
@@ -78,6 +81,15 @@ const tokens: TokenResponse = {
 
 const RECOVERY_CODES = Array.from({ length: 10 }, (_, i) => `code-${i}`);
 
+function LogoutPage() {
+  const { logout } = useSessionActions();
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel="Log out" onPress={() => void logout().catch(() => {})}>
+      <Text>Log out</Text>
+    </Pressable>
+  );
+}
+
 function renderApp(initialUrl: string) {
   return renderRouter(
     {
@@ -88,6 +100,7 @@ function renderApp(initialUrl: string) {
       "(main)/_layout": () => <Slot />,
       "(main)/spending": () => <Text>Spending page</Text>,
       "sync-problems": () => <Text>Sync problems page</Text>,
+      settings: LogoutPage,
     },
     { initialUrl },
   );
@@ -149,6 +162,21 @@ describe("login", () => {
   });
 });
 
+describe("login sign-in failure", () => {
+  it("shows an error and enables Log in again when the sign-in fails", async () => {
+    mockApi.login.mockResolvedValue({ ok: true, value: tokens });
+    mockAuth.signIn.mockRejectedValueOnce(new Error("storage failed"));
+    await renderApp("/login");
+
+    await fireEvent.changeText(await screen.findByLabelText("Email"), "ana@example.com");
+    await fireEvent.changeText(screen.getByLabelText("Password"), "correct horse battery");
+    await fireEvent.press(screen.getByRole("button", { name: "Log in" }));
+
+    expect(await screen.findByText("Could not finish the login. Try again.")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Log in" })).toBeEnabled();
+  });
+});
+
 describe("login TOTP", () => {
   it("auto-submits 6 digits and signs in", async () => {
     mockApi.loginTotp.mockResolvedValue({ ok: true, value: tokens });
@@ -173,6 +201,41 @@ describe("login TOTP", () => {
 
     await waitFor(() => expect(mockAuth.signIn).toHaveBeenCalledWith(tokens));
     expect(mockApi.loginTotp).toHaveBeenCalledWith({ mfaToken: "mfa-1", recoveryCode: "abcd-efgh" });
+  });
+
+  it("submits the recovery code with Enter and changes the subtitle in recovery mode", async () => {
+    mockApi.loginTotp.mockResolvedValue({ ok: true, value: tokens });
+    await goToTotp();
+    expect(screen.getByText("Type the 6-digit code from your authenticator app.")).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByText("Use a recovery code"));
+    expect(screen.queryByText("Type the 6-digit code from your authenticator app.")).toBeNull();
+    expect(screen.getByText("Type one of your recovery codes.")).toBeOnTheScreen();
+
+    const field = screen.getByLabelText("Recovery code");
+    await fireEvent(field, "submitEditing");
+    expect(mockApi.loginTotp).not.toHaveBeenCalled();
+    await fireEvent.changeText(field, " abcd-efgh ");
+    await fireEvent(field, "submitEditing");
+
+    await waitFor(() => expect(mockAuth.signIn).toHaveBeenCalledWith(tokens));
+    expect(mockApi.loginTotp).toHaveBeenCalledWith({ mfaToken: "mfa-1", recoveryCode: "abcd-efgh" });
+
+    await fireEvent.press(screen.getByText("Use the authenticator app"));
+    expect(screen.getByText("Type the 6-digit code from your authenticator app.")).toBeOnTheScreen();
+  });
+});
+
+describe("login TOTP sign-in failure", () => {
+  it("shows an error and lets the user type a code again when the sign-in fails", async () => {
+    mockApi.loginTotp.mockResolvedValue({ ok: true, value: tokens });
+    mockAuth.signIn.mockRejectedValueOnce(new Error("storage failed"));
+    await goToTotp();
+
+    await fireEvent.changeText(screen.getByLabelText("6-digit code"), "123456");
+
+    expect(await screen.findByText("Could not finish the login. Try again.")).toBeOnTheScreen();
+    expect(screen.getByLabelText("6-digit code")).toBeEnabled();
   });
 });
 
@@ -240,6 +303,28 @@ describe("invite", () => {
   });
 });
 
+describe("invite sign-in failure", () => {
+  it("shows an error and enables Continue again when the sign-in fails", async () => {
+    mockApi.acceptInvite.mockResolvedValue({
+      ok: true,
+      value: { otpauth_url: "otpauth://totp/Money%20Tracker:ana", secret: "JBSWY3DPEHPK3PXP", totp_required: false },
+    });
+    mockApi.confirmInvite.mockResolvedValue({ ok: true, value: { ...tokens, recovery_codes: RECOVERY_CODES } });
+    mockAuth.signIn.mockRejectedValueOnce(new Error("storage failed"));
+    await renderApp("/invite?token=invite-1");
+
+    await fireEvent.changeText(await screen.findByLabelText("Password"), "long enough password");
+    await fireEvent.changeText(screen.getByLabelText("Repeat password"), "long enough password");
+    await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+    await screen.findByText("code-0");
+    await fireEvent.press(screen.getByRole("checkbox", { name: "I saved these codes" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+
+    expect(await screen.findByText("Could not finish the login. Try again.")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled();
+  });
+});
+
 describe("root gate", () => {
   it("sends signedOut users to login", async () => {
     const router = await renderApp("/spending");
@@ -299,5 +384,21 @@ describe("root gate", () => {
 
     expect(await screen.findByText("Sync problems page")).toBeOnTheScreen();
     expect(router.getPathname()).toBe("/sync-problems");
+  });
+
+  it("connects the database again when the server does not end the session at logout", async () => {
+    mockAuth.status = "signedIn";
+    mockAuth.userId = "user-1";
+    mockAuth.signOut.mockRejectedValueOnce(new Error("logout failed: network"));
+    await renderApp("/settings");
+    await act(async () => {});
+    expect(mockDb.connect).toHaveBeenCalledTimes(1);
+
+    await fireEvent.press(await screen.findByRole("button", { name: "Log out" }));
+    await act(async () => {});
+
+    // The local data was cleared before the API call. The user is still signed in, so sync downloads it again.
+    expect(mockDb.disconnectAndClear).toHaveBeenCalledTimes(1);
+    expect(mockDb.connect).toHaveBeenCalledTimes(2);
   });
 });
