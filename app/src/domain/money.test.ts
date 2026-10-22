@@ -1,4 +1,4 @@
-import { amountInputText, currencySymbol, formatAmount, minorUnits, parseAmount } from "./money";
+import { amountInputText, currencySymbol, formatAmount, minorUnits, parseAmount, parseSignedAmount } from "./money";
 
 describe("parseAmount", () => {
   it("parses a dot decimal into minor units", () => {
@@ -21,6 +21,30 @@ describe("parseAmount", () => {
   it("rejects values above 1000000000000 minor units", () => {
     expect(parseAmount("10000000000", "EUR")).toBe(1000000000000);
     expect(parseAmount("10000000000.01", "EUR")).toBeNull();
+  });
+});
+
+describe("parseSignedAmount", () => {
+  it("parses positive and negative amounts", () => {
+    expect(parseSignedAmount("12.50", "EUR")).toBe(1250);
+    expect(parseSignedAmount("-12.50", "EUR")).toBe(-1250);
+    expect(parseSignedAmount("-12,50", "EUR", "de")).toBe(-1250);
+  });
+
+  it("returns 0 for empty text and zero", () => {
+    expect(parseSignedAmount("", "EUR")).toBe(0);
+    expect(parseSignedAmount("0", "EUR")).toBe(0);
+    expect(parseSignedAmount("-0", "EUR")).toBe(0);
+  });
+
+  it("rejects text that is not an amount", () => {
+    expect(parseSignedAmount("abc", "EUR")).toBeNull();
+    expect(parseSignedAmount("1.234", "EUR")).toBeNull();
+    expect(parseSignedAmount("-", "EUR")).toBeNull();
+  });
+
+  it("rejects values above 1000000000000 minor units", () => {
+    expect(parseSignedAmount("10000000000.01", "EUR")).toBeNull();
   });
 });
 

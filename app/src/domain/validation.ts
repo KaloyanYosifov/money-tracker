@@ -54,6 +54,7 @@ export interface AccountInput {
   name: string;
   color: string;
   sort_order?: number;
+  opening_balance_minor?: number | null;
 }
 
 const transactionTypes: readonly string[] = ["expense", "income", "transfer"];
@@ -148,5 +149,10 @@ export function validateAccount(input: AccountInput): FieldError[] {
   checkText(errors, "name", input.name, 1, 60);
   checkColor(errors, input.color);
   checkSortOrder(errors, input.sort_order);
+  const balance = input.opening_balance_minor;
+  if (balance !== undefined && balance !== null) {
+    if (!Number.isInteger(balance)) errors.push({ field: "opening_balance_minor", code: "invalid" });
+    else if (Math.abs(balance) > MAX_AMOUNT_MINOR) errors.push({ field: "opening_balance_minor", code: "out_of_range" });
+  }
   return errors;
 }

@@ -33,6 +33,7 @@ An offline-first money tracker for iPhone, iPad and the browser. The data syncs 
 | `make e2e-web` | Runs the Playwright web suite (`npm --workspace e2e run test:web`) against the e2e stack |
 | `make e2e-ios` | Runs the Maestro iOS suite against the e2e stack, on the `IOS_PHONE_SIMULATOR` (default "iPhone 17e") and `IOS_TABLET_SIMULATOR` (default "iPad (A16)") simulators, so the dev simulators keep their dev build |
 | `make e2e-cross` | Runs the cross-app scenarios (web and iOS) against the e2e stack |
+| `node scripts/import-spending-tracker.ts <backup>` | Imports a Spending Tracker backup (its SQLite file) through the API. The first run writes `mapping.json`, which you can edit. The second run shows a summary and imports after you confirm. A second import updates the same rows and creates no duplicates. Options: `--api <url>` (default `http://localhost:8080`) and `--mapping <path>` |
 
 The npm scripts `npm run generate` and `npm run check-generated` do the same as the `make` targets.
 

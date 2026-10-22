@@ -36,6 +36,20 @@ export function parseAmount(text: string, currency = "EUR", locale?: string): nu
   return Number(minor);
 }
 
+/** Like parseAmount, but also accepts 0, a leading "-" and empty text (0). */
+export function parseSignedAmount(text: string, currency = "EUR", locale?: string): number | null {
+  let rest = text.trim();
+  if (rest === "") return 0;
+  const negative = rest.startsWith("-");
+  if (negative) rest = rest.slice(1);
+  const separator = decimalSeparator(locale);
+  const normalized = rest.replace(/\s/g, "").split(separator).join(".").replace(/,/g, ".");
+  const minor = decimalToMinor(normalized, minorUnits(currency));
+  if (minor === null || minor > MAX_BIG) return null;
+  if (minor === 0n) return 0;
+  return negative ? -Number(minor) : Number(minor);
+}
+
 export function formatAmount(
   minor: number,
   currency: string,

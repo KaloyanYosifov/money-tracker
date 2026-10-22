@@ -34,6 +34,7 @@ func New(cfg *config.Config, logger *slog.Logger, pool *pgxpool.Pool) *http.Serv
 	})
 	authHandlers.Register(mux)
 	mux.Handle("POST /api/sync/upload", authHandlers.RequireUser(sync.NewUploadHandler(pool, logger)))
+	mux.Handle("GET /api/import/existing", authHandlers.RequireUser(sync.NewExistingHandler(pool, logger)))
 
 	var handler http.Handler = mux
 	handler = limitBody(handler)

@@ -9,3 +9,6 @@ api/bin/
 e2e/test-results/
 e2e/playwright-report/
 app/public/@powersync/
+mapping.json
+# Spending Tracker backups in the repo root have personal data.
+/*-spending-tracker

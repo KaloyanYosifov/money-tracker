@@ -366,3 +366,41 @@ func TestApply(t *testing.T) {
 		}
 	})
 }
+
+func TestApplyAccountOpeningBalance(t *testing.T) {
+	ctx := context.Background()
+	pool := testutil.StartPostgres(t)
+	a := seedUser(t, pool, "a@example.com")
+
+	balance := func(id string) int64 {
+		t.Helper()
+		var v int64
+		if err := pool.QueryRow(ctx, `SELECT opening_balance_minor FROM accounts WHERE id = $1`, id).Scan(&v); err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+
+	first := newID(t, pool)
+	wantStatus(t, apply(t, pool, a.userID, put("accounts", first, data(t,
+		`{"user_id":%q,"name":"Savings","color":"#112233","sort_order":5,"opening_balance_minor":-5000}`, a.userID))), sync.Applied, "")
+	if got := balance(first); got != -5000 {
+		t.Errorf("opening_balance_minor = %d, want -5000", got)
+	}
+
+	second := newID(t, pool)
+	wantStatus(t, apply(t, pool, a.userID, put("accounts", second, data(t,
+		`{"user_id":%q,"name":"Card","color":"#112233","sort_order":6}`, a.userID))), sync.Applied, "")
+	if got := balance(second); got != 0 {
+		t.Errorf("opening_balance_minor with no value = %d, want 0", got)
+	}
+
+	wantStatus(t, apply(t, pool, a.userID, patch("accounts", first, data(t, `{"name":"Savings 2"}`))), sync.Applied, "")
+	if got := balance(first); got != -5000 {
+		t.Errorf("opening_balance_minor after PATCH = %d, want -5000", got)
+	}
+
+	third := newID(t, pool)
+	wantStatus(t, apply(t, pool, a.userID, put("accounts", third, data(t,
+		`{"user_id":%q,"name":"Too big","color":"#112233","sort_order":7,"opening_balance_minor":1000000000001}`, a.userID))), sync.Rejected, "invalid_record")
+}

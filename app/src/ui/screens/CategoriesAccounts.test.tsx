@@ -279,6 +279,29 @@ describe("AccountForm", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("saves a negative opening balance", async () => {
+    const onClose = jest.fn();
+    await render(<AccountForm id={null} platform="ios" onClose={onClose} />);
+
+    await fireEvent.changeText(screen.getByPlaceholderText("Name"), "Card");
+    await fireEvent.changeText(screen.getByLabelText("Opening balance"), "-25.00");
+    await fireEvent.press(screen.getByRole("button", { name: "Save" }));
+
+    const saved = mockDb.prepare("SELECT * FROM accounts WHERE name = 'Card'").get() as Record<string, unknown>;
+    expect(saved).toMatchObject({ opening_balance_minor: -2500 });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("shows an error for an opening balance that is not an amount and disables Save", async () => {
+    await render(<AccountForm id={null} platform="ios" onClose={jest.fn()} />);
+
+    await fireEvent.changeText(screen.getByPlaceholderText("Name"), "Card");
+    await fireEvent.changeText(screen.getByLabelText("Opening balance"), "abc");
+
+    expect(screen.getByText("Not a valid amount")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Save" }).props.accessibilityState?.disabled).toBe(true);
+  });
+
   it("shows the rejected data of a sync problem, and a save removes the problem", async () => {
     loadFixture(mockDb, {
       sync_problems: [

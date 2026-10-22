@@ -11,6 +11,7 @@
     "name": { "type": "string", "minLength": 1, "maxLength": 60 },
     "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
     "sort_order": { "type": "integer", "minimum": 0 },
+    "opening_balance_minor": { "type": "integer", "minimum": -1000000000000, "maximum": 1000000000000, "default": 0 },
     "archived_at": { "type": ["string", "null"], "format": "date-time" }
   }
 }

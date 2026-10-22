@@ -8,6 +8,7 @@ const accounts = new Table({
   name: column.text,
   color: column.text,
   sort_order: column.integer,
+  opening_balance_minor: column.integer,
   archived_at: column.text,
 });
 

@@ -175,6 +175,20 @@ describe("carryOver", () => {
       { account_id: "wallet", account_name: "Wallet", balance: 44000 },
     ]);
   });
+
+  it("adds the opening balance of the account", () => {
+    db.prepare(`UPDATE accounts SET opening_balance_minor = 10000 WHERE id = 'wallet'`).run();
+    expect(all(db, carryOver(october.start, ["wallet"], today))).toEqual([
+      { account_id: "wallet", account_name: "Wallet", balance: 53000 },
+    ]);
+  });
+
+  it("shows an opening balance for an account with no rows", () => {
+    db.prepare(`UPDATE accounts SET opening_balance_minor = -2500 WHERE id = 'empty'`).run();
+    expect(all(db, carryOver(october.start, ["empty"], today))).toEqual([
+      { account_id: "empty", account_name: "Empty", balance: -2500 },
+    ]);
+  });
 });
 
 describe("hide_future", () => {
@@ -223,6 +237,14 @@ describe("transactionList", () => {
     const rows = all<ListRow>(db, transactionList(october, { accountId: "wallet" }, "date", "", today));
     expect(rows.filter((r) => r.kind === "carryOver")).toMatchObject([
       { account_id: "wallet", type: "expense", amount_minor: 56000 },
+    ]);
+  });
+
+  it("shows a Carry Over row for an account with only an opening balance", () => {
+    db.prepare(`UPDATE accounts SET opening_balance_minor = -2500 WHERE id = 'empty'`).run();
+    const rows = all<ListRow>(db, transactionList(october, {}, "date", "", today));
+    expect(rows.filter((r) => r.kind === "carryOver" && r.account_id === "empty")).toMatchObject([
+      { kind: "carryOver", account_id: "empty", type: "expense", amount_minor: 2500 },
     ]);
   });
 

@@ -27,7 +27,7 @@ Rules that the brainstorm agreed:
 - Amount in minor units = `Math.round(Math.abs(Amount) * 10 ** minorUnits(currency))`. An expense or income with a negative or zero amount is a problem and is skipped.
 - A transfer is two rows: negative amount on the source profile, positive on the target. They become one `transfer` row.
 - The earliest row in the `Carry` category of each account is an opening balance. `mapping.json` lists their source IDs, and the user edits the list. The parser never reads the note text. Other `Carry` rows become income in the category that the mapping gives for the `Carry` category.
-- Rules are imported. Past occurrences get the ID `occurrenceId(ruleId, date)`, `source: "recurring"` and `recurring_rule_id`, when the date is in `occurrenceDates(rule, today)`. Other linked rows import as normal rows. Linked rows after today are skipped, because `generateDue()` creates them.
+- Rules are imported. A linked row on the schedule of its rule gets the ID `occurrenceId(ruleId, date)`, `source: "recurring"` and `recurring_rule_id`. This includes rows after today, as in Spending Tracker. `generateDue()` skips an occurrence ID that exists, and the "Hide Future Transactions" setting hides these rows. Other linked rows import as normal rows.
 - All other IDs are UUIDv5 from a fixed import namespace and a key such as `st:transaction:101`. A second run updates the same rows.
 - Out of scope: the in-app import UI (step 2) and the change to `expense-tracker-spec.md` section 7 that step 2 needs.
 
@@ -247,7 +247,7 @@ Expected: PASS.
    - `Mapping`: `{ currency: string; accounts: Record<string, AccountEntry>; categories: Record<string, CategoryEntry>; opening_balances: number[]; rows_without_account: { action: "skip" } | { action: "match"; target: string } }`. `AccountEntry` is `{ name; action: "create" | "match" | "skip"; target?; color?; reason? }`. `CategoryEntry` is `{ name; type: "expense" | "income" | "transfer"; action; target?; icon?; color?; reason? }`. The keys are the source IDs as strings.
    - `Problem`: `{ kind; sourceIds: number[]; message: string }`. `kind` is one of `unpaired_transfer`, `no_account`, `same_account_transfer`, `invalid_amount`, `unsupported_recurrence`, `missing_occurrence`.
    - `UploadOp`: `{ op: "PUT" | "PATCH"; table: "accounts" | "categories" | "recurring_rules" | "transactions"; id: string; data: Record<string, unknown> }`.
-   - `ImportPlan`: `{ ops: UploadOp[]; problems: Problem[]; counts: Record<string, number> }`. The keys of `counts` are `accounts`, `categories`, `recurring_rules`, `transactions`, `transfers`, `occurrences`, `skipped_future`.
+   - `ImportPlan`: `{ ops: UploadOp[]; problems: Problem[]; counts: Record<string, number> }`. The keys of `counts` are `accounts`, `categories`, `recurring_rules`, `transactions`, `transfers`, `occurrences`.
 
 - [ ] **Step 2: Write the failing tests**
 
@@ -435,7 +435,7 @@ In `plan.test.ts`, in `describe("recurring")`, with `today` `2026-10-22`:
 1. A rule with `RecurringType` `Monthly`, `RecurringPeriod` 1, start 2026-07-31 and no end date gives a `PUT` on `recurring_rules` with `id: importId("rule", id)`, `frequency: "monthly"`, `start_date: "2026-07-31"`, `end_date: null`, and `name`, `note`, `amount_minor`, `category_id`, `account_id` and `type` from the rule.
 2. The frequency table: `Daily`/1 is `daily`, `Weekly`/1 is `weekly`, `Weekly`/2 is `biweekly`, `Monthly`/1 is `monthly`, `Yearly`/1 is `yearly`. Any other pair, or a rule of type `Transfer`, gives a problem `unsupported_recurrence` and no rule op. Its linked rows then import as normal rows by the Task 9 rules.
 3. Linked rows on 2026-07-31, 2026-08-31 and 2026-09-30 get `id: occurrenceId(ruleId, date)`, `source: "recurring"` and `recurring_rule_id: ruleId`. `counts.occurrences` is 3.
-4. A linked row on 2026-10-31 (after today) gives no op. `counts.skipped_future` is 1.
+4. A linked row on 2026-10-31 (after today) also gets `id: occurrenceId(ruleId, date)`. `counts.occurrences` is then 4. A linked row after today that is not on the schedule imports as a normal row.
 5. A linked row on a past date that is not in `occurrenceDates(rule, today)`, for example 2026-08-15, imports as a normal row with `importId("transaction", id)` and `recurring_rule_id: null`.
 6. A past date in `occurrenceDates(rule, today)` with no linked row gives a problem `missing_occurrence` with the rule ID and the date in the message. The message says that the generator creates a row for that date.
 7. Every rule op passes `validateRecurringRule` from `app/src/domain/validation.ts`.
@@ -447,7 +447,7 @@ Expected: FAIL in `describe("recurring")`.
 
 - [ ] **Step 3: Implement**
 
-In `plan.ts`, add the rule step before the transaction step. Use `occurrenceDates` from `../../domain/recurrence.ts` and `occurrenceId` from `../../domain/ids.ts`. Put the rule ops between the categories and the transactions. Fill `counts.recurring_rules`, `counts.occurrences` and `counts.skipped_future`.
+In `plan.ts`, add the rule step before the transaction step. Use `occurrenceDates` from `../../domain/recurrence.ts` and `occurrenceId` from `../../domain/ids.ts`. Put the rule ops between the categories and the transactions. Fill `counts.recurring_rules` and `counts.occurrences`.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 

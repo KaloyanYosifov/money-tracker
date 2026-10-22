@@ -277,6 +277,22 @@ describe("accounts", () => {
     });
   });
 
+  it("stores the opening balance", async () => {
+    const result = await saveAccount(db, { name: "Savings", color: "#0000ff", opening_balance_minor: -5000 });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(row("accounts", result.id)).toMatchObject({ opening_balance_minor: -5000 });
+  });
+
+  it("rejects an opening balance that is not an integer", async () => {
+    const result = await saveAccount(db, { name: "Savings", color: "#0000ff", opening_balance_minor: 1.5 });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors).toContainEqual({ field: "opening_balance_minor", code: "invalid" });
+  });
+
   it("rejects an account without a name", async () => {
     expect(await saveAccount(db, { name: "", color: "#0000ff" })).toEqual({
       ok: false,

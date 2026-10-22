@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-
 
 import { archiveAccount, deleteAccount, restoreAccount, saveAccount } from "../../data/mutations";
 import { deleteSyncProblem, problemRecord, useSyncProblem } from "../../data/syncProblems";
+import { amountInputText, parseSignedAmount } from "../../domain/money";
 import { validateAccount } from "../../domain/validation";
 import type { Account } from "../../generated/schema";
 import { isHovered } from "../components/interaction";
@@ -109,7 +110,7 @@ type FormProps = {
 
 /** The form for a new or an existing account. */
 export function AccountForm({ id, platform, problemId, onClose }: FormProps) {
-  const { theme } = useScreenSettings();
+  const { settings, theme } = useScreenSettings();
   const account = useQuery<Account>("SELECT * FROM accounts WHERE id = ?", [id ?? ""]);
   const usage = useQuery<{ used: number }>(
     `SELECT (EXISTS (SELECT 1 FROM transactions WHERE ? IN (account_id, to_account_id))
@@ -125,6 +126,7 @@ export function AccountForm({ id, platform, problemId, onClose }: FormProps) {
       key={existing?.id ?? "new"}
       existing={existing}
       used={Boolean(usage.data[0]?.used)}
+      currency={settings?.currency_code ?? "EUR"}
       platform={platform ?? defaultPlatform()}
       theme={theme}
       problemId={problemId}
@@ -136,6 +138,7 @@ export function AccountForm({ id, platform, problemId, onClose }: FormProps) {
 function AccountFormBody({
   existing,
   used,
+  currency,
   platform,
   theme,
   problemId,
@@ -143,6 +146,7 @@ function AccountFormBody({
 }: {
   existing: Account | undefined;
   used: boolean;
+  currency: string;
   platform: ScreenPlatform;
   theme: ThemeColors;
   problemId?: string;
@@ -151,12 +155,23 @@ function AccountFormBody({
   const db = usePowerSync();
   const [name, setName] = useState(existing?.name ?? "");
   const [color, setColor] = useState(existing?.color ?? PALETTE[0].hex);
+  const [balanceText, setBalanceText] = useState(
+    existing?.opening_balance_minor ? amountInputText(existing.opening_balance_minor, currency) : "",
+  );
   const [nameTouched, setNameTouched] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const input = { id: existing?.id, name, color, sort_order: existing?.sort_order };
+  const openingBalance = parseSignedAmount(balanceText, currency);
+  const input = {
+    id: existing?.id,
+    name,
+    color,
+    sort_order: existing?.sort_order,
+    opening_balance_minor: openingBalance ?? undefined,
+  };
   const errors = validateAccount(input);
   const nameError = errors.find((e) => e.field === "name");
+  const canSave = errors.length === 0 && openingBalance !== null && !busy;
 
   async function run(action: () => Promise<boolean>) {
     if (busy) return;
@@ -180,7 +195,7 @@ function AccountFormBody({
       <FormHeader
         title={existing ? "Edit Account" : "New Account"}
         platform={platform}
-        canSave={errors.length === 0 && !busy}
+        canSave={canSave}
         onCancel={onClose}
         onSave={() => void save()}
         theme={theme}
@@ -200,6 +215,22 @@ function AccountFormBody({
               setName(text);
               setNameTouched(true);
             }}
+            style={[formStyles.input, { color: theme.ink }]}
+          />
+        </FormField>
+        <FormField
+          label="Opening balance"
+          error={openingBalance === null ? "Not a valid amount" : undefined}
+          theme={theme}
+        >
+          <TextInput
+            allowFontScaling
+            accessibilityLabel="Opening balance"
+            keyboardType="numbers-and-punctuation"
+            placeholder={amountInputText(0, currency)}
+            placeholderTextColor={theme.accent}
+            value={balanceText}
+            onChangeText={setBalanceText}
             style={[formStyles.input, { color: theme.ink }]}
           />
         </FormField>

@@ -22,6 +22,10 @@ type Account struct {
 	// Name corresponds to the JSON schema field "name".
 	Name string `json:"name"`
 
+	// OpeningBalanceMinor corresponds to the JSON schema field
+	// "opening_balance_minor".
+	OpeningBalanceMinor int `json:"opening_balance_minor,omitempty,omitzero"`
+
 	// SortOrder corresponds to the JSON schema field "sort_order".
 	SortOrder int `json:"sort_order"`
 
@@ -63,6 +67,15 @@ func (j *Account) UnmarshalJSON(value []byte) error {
 	}
 	if utf8.RuneCountInString(string(plain.Name)) > 60 {
 		return fmt.Errorf("field %s length: must be <= %d", "name", 60)
+	}
+	if v, ok := raw["opening_balance_minor"]; !ok || v == nil {
+		plain.OpeningBalanceMinor = 0
+	}
+	if 1000000000000 < plain.OpeningBalanceMinor {
+		return fmt.Errorf("field %s: must be <= %v", "opening_balance_minor", 1000000000000)
+	}
+	if -1000000000000 > plain.OpeningBalanceMinor {
+		return fmt.Errorf("field %s: must be >= %v", "opening_balance_minor", -1000000000000)
 	}
 	if 0 > plain.SortOrder {
 		return fmt.Errorf("field %s: must be >= %v", "sort_order", 0)
@@ -1021,6 +1034,6 @@ func (j *UserSettings) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 const MinSupportedSchemaVersion = 1

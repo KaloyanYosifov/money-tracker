@@ -74,8 +74,9 @@ export function categoryTotals(
   };
 }
 
-// Balance per account from all rows before a date: income minus expense plus
-// transfers in minus transfers out. Takes the parameters before, today, before, today.
+// Balance per account from the opening balance and all rows before a date:
+// income minus expense plus transfers in minus transfers out.
+// Takes the parameters before, today, before, today.
 const balancesCte = `balances AS (
     SELECT account_id, SUM(delta) AS balance FROM (
       SELECT t.account_id, CASE WHEN t.type = 'income' THEN t.amount_minor ELSE -t.amount_minor END AS delta
@@ -83,6 +84,9 @@ const balancesCte = `balances AS (
       UNION ALL
       SELECT t.to_account_id, t.amount_minor
         FROM transactions t WHERE t.type = 'transfer' AND t.date < ? AND ${visible}
+      UNION ALL
+      SELECT a.id, a.opening_balance_minor
+        FROM accounts a WHERE a.opening_balance_minor <> 0
     )
     GROUP BY account_id
   )`;

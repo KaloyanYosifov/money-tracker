@@ -173,6 +173,7 @@ export function saveAccount(db: MutationDb, input: AccountInput): Promise<SaveRe
 
     const values: Row = { name: input.name, color: input.color };
     if (input.sort_order !== undefined) values.sort_order = input.sort_order;
+    if (input.opening_balance_minor !== undefined && input.opening_balance_minor !== null) values.opening_balance_minor = input.opening_balance_minor;
     const id = await write(tx, "accounts", input.id, values, async () => ({
       user_id: (await currentSettings(tx)).user_id,
       sort_order: input.sort_order ?? (await nextSortOrder(tx, "accounts")),
