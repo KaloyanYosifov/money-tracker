@@ -259,6 +259,13 @@ describe("carryOver", () => {
       { account_id: "empty", account_name: "Empty", balance: -2500 },
     ]);
   });
+
+  it("gives 0 for an account that is excluded from Carry Over", () => {
+    db.prepare(`UPDATE accounts SET exclude_from_carry_over = 1 WHERE id = 'closed'`).run();
+    expect(all(db, carryOver(october.start, ["closed"], today))).toEqual([
+      { account_id: "closed", account_name: "Closed", balance: 0 },
+    ]);
+  });
 });
 
 describe("hide_future", () => {
@@ -339,6 +346,12 @@ describe("transactionList", () => {
     expect(rows.filter((r) => r.kind === "carryOver" && r.account_id === "empty")).toMatchObject([
       { kind: "carryOver", account_id: "empty", type: "expense", amount_minor: 2500 },
     ]);
+  });
+
+  it("has no Carry Over row for an account that is excluded from Carry Over", () => {
+    db.prepare(`UPDATE accounts SET exclude_from_carry_over = 1 WHERE id = 'closed'`).run();
+    const rows = all<ListRow>(db, transactionList(october, {}, "date", "", today));
+    expect(rows.filter((r) => r.kind === "carryOver" && r.account_id === "closed")).toEqual([]);
   });
 
   it("has no Carry Over rows when carry_over is off", () => {

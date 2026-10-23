@@ -172,6 +172,7 @@ export function buildPlan(source: SourceData, mapping: Mapping, existing: Existi
         color: PALETTE[PALETTE.length - 1].hex,
         sort_order: keptSortOrder(existing.accounts, withoutAccount) ?? accountSort++,
         opening_balance_minor: 0,
+        exclude_from_carry_over: true,
         archived_at: `${today}T00:00:00Z`,
       },
     });

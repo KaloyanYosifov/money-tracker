@@ -95,8 +95,9 @@ export interface Mapping {
   /** Source transaction IDs of the Carry rows that are opening balances. */
   opening_balances: number[];
   /**
-   * Rows with no ProfileId. create puts them in a new archived account, so
-   * they count in their month but not in Carry Over or the balances.
+   * Rows with no ProfileId. create puts them in a new archived account with
+   * exclude_from_carry_over, so they count in their month but not in Carry Over
+   * or the balances.
    */
   rows_without_account:
     | { action: "skip" }

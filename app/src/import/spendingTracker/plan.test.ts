@@ -271,7 +271,12 @@ describe("transactions", () => {
   it("puts rows without an account in a new archived account", () => {
     const { ops } = plan();
     const id = importId("account", "none", USER_ID);
-    expect(op(ops, "accounts", id)?.data).toMatchObject({ name: "No account", archived_at: "2026-10-22T00:00:00Z", sort_order: 5 });
+    expect(op(ops, "accounts", id)?.data).toMatchObject({
+      name: "No account",
+      archived_at: "2026-10-22T00:00:00Z",
+      sort_order: 5,
+      exclude_from_carry_over: true,
+    });
     expect(transactionWithExternalId(ops, "st:120")?.data.account_id).toBe(id);
   });
 

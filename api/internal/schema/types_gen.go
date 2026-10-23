@@ -16,6 +16,10 @@ type Account struct {
 	// Color corresponds to the JSON schema field "color".
 	Color string `json:"color"`
 
+	// ExcludeFromCarryOver corresponds to the JSON schema field
+	// "exclude_from_carry_over".
+	ExcludeFromCarryOver bool `json:"exclude_from_carry_over,omitempty,omitzero"`
+
 	// ID corresponds to the JSON schema field "id".
 	ID string `json:"id"`
 
@@ -61,6 +65,9 @@ func (j *Account) UnmarshalJSON(value []byte) error {
 	}
 	if matched, _ := regexp.MatchString(`^#[0-9a-fA-F]{6}$`, string(plain.Color)); !matched {
 		return fmt.Errorf("field %s pattern match: must match %s", "Color", `^#[0-9a-fA-F]{6}$`)
+	}
+	if v, ok := raw["exclude_from_carry_over"]; !ok || v == nil {
+		plain.ExcludeFromCarryOver = false
 	}
 	if utf8.RuneCountInString(string(plain.Name)) < 1 {
 		return fmt.Errorf("field %s length: must be >= %d", "name", 1)
@@ -1044,6 +1051,6 @@ func (j *UserSettings) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
-const SchemaVersion = 3
+const SchemaVersion = 4
 
 const MinSupportedSchemaVersion = 3

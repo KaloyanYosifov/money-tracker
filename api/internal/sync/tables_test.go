@@ -10,7 +10,7 @@ import (
 
 func TestTableWhitelist(t *testing.T) {
 	want := map[string][]string{
-		"accounts":        {"id", "user_id", "name", "color", "sort_order", "opening_balance_minor", "archived_at"},
+		"accounts":        {"id", "user_id", "name", "color", "sort_order", "opening_balance_minor", "exclude_from_carry_over", "archived_at"},
 		"categories":      {"id", "user_id", "type", "name", "icon", "color", "sort_order", "archived_at"},
 		"transactions":    {"id", "user_id", "type", "amount_minor", "currency_code", "date", "name", "category_id", "account_id", "to_account_id", "note", "recurring_rule_id", "source", "import_batch_id", "external_id", "created_at", "updated_at"},
 		"recurring_rules": {"id", "user_id", "type", "amount_minor", "name", "category_id", "account_id", "to_account_id", "note", "frequency", "start_date", "end_date", "generated_through"},

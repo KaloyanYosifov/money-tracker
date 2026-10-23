@@ -104,7 +104,8 @@ export function categoryTotals(
 }
 
 // Balance per account from the opening balance and all rows before a date:
-// income minus expense plus transfers in minus transfers out.
+// income minus expense plus transfers in minus transfers out. An account with
+// exclude_from_carry_over has no balance: its rows count only in their period.
 // Takes the parameters before, today, before, today.
 const balancesCte = `balances AS (
     SELECT account_id, SUM(delta) AS balance FROM (
@@ -117,6 +118,7 @@ const balancesCte = `balances AS (
       SELECT a.id, a.opening_balance_minor
         FROM accounts a WHERE a.opening_balance_minor <> 0
     )
+    WHERE account_id NOT IN (SELECT id FROM accounts WHERE exclude_from_carry_over = 1)
     GROUP BY account_id
   )`;
 

@@ -9,6 +9,7 @@ const accounts = new Table({
   color: column.text,
   sort_order: column.integer,
   opening_balance_minor: column.integer,
+  exclude_from_carry_over: column.integer,
   archived_at: column.text,
 });
 

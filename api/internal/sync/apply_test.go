@@ -405,6 +405,40 @@ func TestApplyAccountOpeningBalance(t *testing.T) {
 		`{"user_id":%q,"name":"Too big","color":"#112233","sort_order":7,"opening_balance_minor":1000000000001}`, a.userID))), sync.Rejected, "invalid_record")
 }
 
+func TestApplyAccountExcludeFromCarryOver(t *testing.T) {
+	ctx := context.Background()
+	pool := testutil.StartPostgres(t)
+	a := seedUser(t, pool, "a@example.com")
+
+	excluded := func(id string) bool {
+		t.Helper()
+		var v bool
+		if err := pool.QueryRow(ctx, `SELECT exclude_from_carry_over FROM accounts WHERE id = $1`, id).Scan(&v); err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+
+	first := newID(t, pool)
+	wantStatus(t, apply(t, pool, a.userID, put("accounts", first, data(t,
+		`{"user_id":%q,"name":"No account","color":"#112233","sort_order":5,"exclude_from_carry_over":true}`, a.userID))), sync.Applied, "")
+	if !excluded(first) {
+		t.Error("exclude_from_carry_over = false, want true")
+	}
+
+	second := newID(t, pool)
+	wantStatus(t, apply(t, pool, a.userID, put("accounts", second, data(t,
+		`{"user_id":%q,"name":"Card","color":"#112233","sort_order":6}`, a.userID))), sync.Applied, "")
+	if excluded(second) {
+		t.Error("exclude_from_carry_over with no value = true, want false")
+	}
+
+	wantStatus(t, apply(t, pool, a.userID, patch("accounts", first, data(t, `{"name":"No account 2"}`))), sync.Applied, "")
+	if !excluded(first) {
+		t.Error("exclude_from_carry_over after PATCH = false, want true")
+	}
+}
+
 func TestApplyRecurringRule(t *testing.T) {
 	ctx := context.Background()
 	pool := testutil.StartPostgres(t)
