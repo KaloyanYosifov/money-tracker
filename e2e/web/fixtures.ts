@@ -178,13 +178,16 @@ export async function addTransaction(page: Page, t: NewTransaction): Promise<voi
   const name = page.getByPlaceholder("Name", { exact: true });
   await name.fill(t.name);
   if (t.category) {
+    await page.getByTestId("transaction-category").click();
     await page.getByRole("radiogroup", { name: "Category" }).getByRole("radio", { name: t.category, exact: true }).click();
   }
   if (t.account) {
     const group = t.type === "transfer" ? "From" : "Account";
+    await page.getByTestId("transaction-account").click();
     await page.getByRole("radiogroup", { name: group }).getByRole("radio", { name: t.account, exact: true }).click();
   }
   if (t.toAccount) {
+    await page.getByTestId("transaction-to-account").click();
     await page.getByRole("radiogroup", { name: "To" }).getByRole("radio", { name: t.toAccount, exact: true }).click();
   }
   await name.press("Enter");

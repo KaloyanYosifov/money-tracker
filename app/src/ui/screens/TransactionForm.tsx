@@ -20,8 +20,8 @@ import { DateField } from "../components/DateField";
 import { GroupedSection } from "../components/GroupedSection";
 import { isHovered } from "../components/interaction";
 import { SegmentedControl } from "../components/SegmentedControl";
+import { SelectField } from "../components/SelectField";
 import { ThemedSwitch } from "../components/ThemedSwitch";
-import { CategoryIcon, categoryIcons, type CategoryIconKey } from "../icons/categoryIcons";
 import { useBottomInset } from "../nav/bottomInset";
 import { colors, resolveTheme, type ThemeColors } from "../theme";
 import { FormAction, FormField, FormHeader, formStyles, keyboardAppearance } from "./manage";
@@ -197,8 +197,8 @@ function FormBody({
   const [touched, setTouched] = useState<ReadonlySet<string>>(new Set());
   const [serverErrors, setServerErrors] = useState<FieldError[]>([]);
   const [saving, setSaving] = useState(false);
-  // While a calendar is open, Enter and Escape belong to the calendar, not to the form.
-  const [calendarOpen, setCalendarOpen] = useState(false);
+  // While a calendar or a select sheet is open, Enter and Escape belong to it, not to the form.
+  const [sheetOpen, setSheetOpen] = useState(false);
   // Two taps (or Enter key repeats) before the next render both see saving false. The ref stops the second save.
   const savingRef = useRef(false);
 
@@ -280,7 +280,7 @@ function FormBody({
     }
   }
 
-  useShortcuts(calendarOpen ? {} : { save: () => void save(), cancel: onClose });
+  useShortcuts(sheetOpen ? {} : { save: () => void save(), cancel: onClose });
 
   function changeType(next: TransactionType) {
     if (next === type) return;
@@ -391,7 +391,7 @@ function FormBody({
               }}
               accessibilityLabel="Date"
               weekStartDay={weekStartDay}
-              onOpenChange={setCalendarOpen}
+              onOpenChange={setSheetOpen}
               locale={locale}
               today={today}
               theme={theme}
@@ -400,53 +400,34 @@ function FormBody({
 
           {transfer ? null : (
             <Field label="Category" error={errorFor("category_id")} today={today} theme={theme}>
-              <View accessibilityRole="radiogroup" accessibilityLabel="Category" style={styles.grid}>
-                {visibleCategories.map((category) => {
-                  const selected = category.id === categoryId;
-                  return (
-                    <Pressable
-                      key={category.id}
-                      testID={`category-option-${category.name}`}
-                      accessibilityRole="radio"
-                      accessibilityLabel={category.name}
-                      accessibilityState={{ checked: selected }} aria-checked={selected}
-                      onPress={() => {
-                        setCategoryId(category.id);
-                        touch("category_id");
-                      }}
-                      style={(state) => [
-                        styles.cell,
-                        selected
-                          ? { backgroundColor: theme.paper, borderColor: theme.accent }
-                          : (isHovered(state) || state.pressed) && { backgroundColor: theme.hover },
-                      ]}
-                    >
-                      {category.icon in categoryIcons ? (
-                        <CategoryIcon
-                          icon={category.icon as CategoryIconKey}
-                          variant={iconStyle}
-                          color={theme.ink}
-                          background={selected ? theme.paper : theme.row}
-                        />
-                      ) : null}
-                      <Text allowFontScaling numberOfLines={2} style={[styles.cellText, { color: theme.ink }]}>
-                        {category.name}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+              <SelectField
+                label="Category"
+                testID="transaction-category"
+                optionTestIDPrefix="category-option-"
+                placeholder="Select a category"
+                options={visibleCategories}
+                value={categoryId}
+                onChange={(next) => {
+                  setCategoryId(next);
+                  touch("category_id");
+                }}
+                iconStyle={iconStyle}
+                onOpenChange={setSheetOpen}
+                theme={theme}
+              />
             </Field>
           )}
 
           <AccountChoice
             label={transfer ? "From" : "Account"}
+            testID="transaction-account"
             accounts={accounts}
             value={accountId}
             onChange={(next) => {
               setAccountId(next);
               touch("account_id");
             }}
+            onOpenChange={setSheetOpen}
             error={errorFor("account_id")}
             today={today}
             theme={theme}
@@ -454,12 +435,14 @@ function FormBody({
           {transfer ? (
             <AccountChoice
               label="To"
+              testID="transaction-to-account"
               accounts={accounts}
               value={toAccountId}
               onChange={(next) => {
                 setToAccountId(next);
                 touch("to_account_id");
               }}
+              onOpenChange={setSheetOpen}
               error={errorFor("to_account_id")}
               today={today}
               theme={theme}
@@ -505,7 +488,7 @@ function FormBody({
                     placeholder="Never"
                     minDate={ruleStart}
                     weekStartDay={weekStartDay}
-                    onOpenChange={setCalendarOpen}
+                    onOpenChange={setSheetOpen}
                     locale={locale}
                     today={today}
                     theme={theme}
@@ -591,31 +574,35 @@ function AccountChoice({
   accounts,
   value,
   onChange,
+  onOpenChange,
   error,
   today,
   theme,
+  testID,
 }: {
   label: string;
   accounts: AccountRow[];
   value: string | null;
   onChange: (id: string) => void;
+  onOpenChange: (open: boolean) => void;
   error: FieldError | undefined;
   today: string;
   theme: ThemeColors;
+  testID: string;
 }) {
   return (
     <Field label={label} error={error} today={today} theme={theme}>
-      <View accessibilityRole="radiogroup" accessibilityLabel={label} style={styles.chips}>
-        {accounts.map((account) => (
-          <Chip
-            key={account.id}
-            label={account.name}
-            selected={account.id === value}
-            onPress={() => onChange(account.id)}
-            theme={theme}
-          />
-        ))}
-      </View>
+      <SelectField
+        label={label}
+        testID={testID}
+        optionTestIDPrefix="account-option-"
+        placeholder="Select an account"
+        options={accounts}
+        value={value}
+        onChange={onChange}
+        onOpenChange={onOpenChange}
+        theme={theme}
+      />
     </Field>
   );
 }
@@ -690,26 +677,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     padding: 0,
-  },
-  grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  cell: {
-    width: 76,
-    alignItems: "center",
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: "transparent",
-    borderRadius: 6,
-  },
-  // Up to two lines, so longer names ("Entertainment", "Personal Care") fit in the cell.
-  cellText: {
-    fontSize: 11,
-    lineHeight: 13,
-    marginTop: 2,
-    textAlign: "center",
   },
   chips: {
     flexDirection: "row",

@@ -118,6 +118,19 @@ async function typeAmount(text: string) {
   await fireEvent.changeText(screen.getByLabelText("Amount"), text);
 }
 
+const SELECT_FIELDS = {
+  Category: "transaction-category",
+  Account: "transaction-account",
+  From: "transaction-account",
+  To: "transaction-to-account",
+};
+
+/** Opens a select field and picks the option. */
+async function select(label: keyof typeof SELECT_FIELDS, name: string) {
+  await fireEvent.press(screen.getByTestId(SELECT_FIELDS[label]));
+  await fireEvent.press(within(screen.getByLabelText(label)).getByRole("radio", { name }));
+}
+
 async function saveAndWait() {
   await act(async () => {
     fireEvent.press(saveButton());
@@ -144,13 +157,12 @@ describe("TransactionForm", () => {
     expect(screen.getByTestId("transaction-date").props.accessibilityLabel).toBe("Date, Today");
     expect(screen.getByPlaceholderText("Name").props.value).toBe("");
 
-    const grid = within(screen.getByLabelText("Category"));
-    expect(grid.getAllByRole("radio").map((r) => r.props.accessibilityLabel)).toEqual(["Rent", "Groceries"]);
+    expect(screen.getByTestId("transaction-category").props.accessibilityLabel).toBe("Category, Select a category");
+    await fireEvent.press(screen.getByTestId("transaction-category"));
+    const sheet = within(screen.getByLabelText("Category"));
+    expect(sheet.getAllByRole("radio").map((r) => r.props.accessibilityLabel)).toEqual(["Rent", "Groceries"]);
 
-    const account = within(screen.getByLabelText("Account"));
-    expect(account.getByRole("radio", { name: "Wallet" }).props.accessibilityState).toEqual(
-      expect.objectContaining({ checked: true }),
-    );
+    expect(screen.getByTestId("transaction-account").props.accessibilityLabel).toBe("Account, Wallet");
     // Save stays pressable. A press on it shows the errors.
     expect(isDisabled(saveButton())).toBe(false);
   });
@@ -159,8 +171,18 @@ describe("TransactionForm", () => {
     await renderForm({ initialType: "income" });
 
     expect(screen.getByText("New Income")).toBeTruthy();
-    const grid = within(screen.getByLabelText("Category"));
-    expect(grid.getAllByRole("radio").map((r) => r.props.accessibilityLabel)).toEqual(["Salary"]);
+    await fireEvent.press(screen.getByTestId("transaction-category"));
+    const sheet = within(screen.getByLabelText("Category"));
+    expect(sheet.getAllByRole("radio").map((r) => r.props.accessibilityLabel)).toEqual(["Salary"]);
+  });
+
+  it("shows the selected category in the field and closes the sheet", async () => {
+    await renderForm();
+
+    await select("Category", "Groceries");
+
+    expect(screen.getByTestId("transaction-category").props.accessibilityLabel).toBe("Category, Groceries");
+    expect(screen.queryByRole("radio", { name: "Rent" })).toBeNull();
   });
 
   it("shows From and To and no category for a transfer", async () => {
@@ -168,10 +190,10 @@ describe("TransactionForm", () => {
 
     await fireEvent.press(screen.getByRole("tab", { name: "Transfer" }));
 
-    expect(screen.queryByLabelText("Category")).toBeNull();
-    expect(screen.queryByLabelText("Account")).toBeNull();
-    expect(screen.getByLabelText("From")).toBeTruthy();
-    expect(screen.getByLabelText("To")).toBeTruthy();
+    expect(screen.queryByTestId("transaction-category")).toBeNull();
+    expect(screen.queryByText("Account")).toBeNull();
+    expect(screen.getByTestId("transaction-account").props.accessibilityLabel).toBe("From, Wallet");
+    expect(screen.getByTestId("transaction-to-account").props.accessibilityLabel).toBe("To, Select an account");
   });
 
   it("takes the amount from a decimal field, with either separator", async () => {
@@ -181,7 +203,7 @@ describe("TransactionForm", () => {
 
     await typeAmount("14,99");
     await fireEvent.changeText(screen.getByPlaceholderText("Name"), "Coffee");
-    await fireEvent.press(within(screen.getByLabelText("Category")).getByRole("radio", { name: "Groceries" }));
+    await select("Category", "Groceries");
     await saveAndWait();
 
     expect(onClose).toHaveBeenCalled();
@@ -193,8 +215,8 @@ describe("TransactionForm", () => {
 
     await typeAmount("12");
     await fireEvent.changeText(screen.getByPlaceholderText("Name"), "Bread");
-    await fireEvent.press(within(screen.getByLabelText("Category")).getByRole("radio", { name: "Groceries" }));
-    await fireEvent.press(within(screen.getByLabelText("Account")).getByRole("radio", { name: "Bank" }));
+    await select("Category", "Groceries");
+    await select("Account", "Bank");
     await fireEvent.changeText(screen.getByPlaceholderText("Add a note"), "fresh");
     expect(isDisabled(saveButton())).toBe(false);
 
@@ -222,13 +244,13 @@ describe("TransactionForm", () => {
 
     await fireEvent.press(screen.getByRole("tab", { name: "Transfer" }));
     await typeAmount("5");
-    await fireEvent.press(within(screen.getByLabelText("To")).getByRole("radio", { name: "Wallet" }));
+    await select("To", "Wallet");
     expect(screen.getByTestId("error-to_account_id").props.children).toBe("Pick a different account");
 
     await saveAndWait();
     expect(mockDb.prepare("SELECT COUNT(*) AS n FROM transactions WHERE type = 'transfer'").get()).toEqual({ n: 0 });
 
-    await fireEvent.press(within(screen.getByLabelText("To")).getByRole("radio", { name: "Bank" }));
+    await select("To", "Bank");
     expect(screen.queryByTestId("error-to_account_id")).toBeNull();
     expect(isDisabled(saveButton())).toBe(false);
   });
@@ -252,7 +274,7 @@ describe("TransactionForm", () => {
     expect(mockDb.prepare("SELECT COUNT(*) AS n FROM transactions").get()).toEqual(count);
     expect(onClose).not.toHaveBeenCalled();
 
-    await fireEvent.press(within(screen.getByLabelText("Category")).getByRole("radio", { name: "Groceries" }));
+    await select("Category", "Groceries");
     expect(screen.queryByTestId("error-category_id")).toBeNull();
   });
 
@@ -263,9 +285,7 @@ describe("TransactionForm", () => {
     expect(screen.getByLabelText("Amount").props.value).toBe("14.99");
     expect(screen.getByPlaceholderText("Name").props.value).toBe("Lunch");
     expect(screen.getByTestId("transaction-date").props.accessibilityLabel).toBe("Date, Mon, 5 Oct 2026");
-    expect(within(screen.getByLabelText("Account")).getByRole("radio", { name: "Bank" }).props.accessibilityState).toEqual(
-      expect.objectContaining({ checked: true }),
-    );
+    expect(screen.getByTestId("transaction-account").props.accessibilityLabel).toBe("Account, Bank");
 
     await fireEvent.changeText(screen.getByPlaceholderText("Name"), "Team lunch");
     await saveAndWait();
@@ -294,7 +314,7 @@ describe("TransactionForm", () => {
 
     await typeAmount("50");
     await fireEvent.changeText(screen.getByPlaceholderText("Name"), "Gym");
-    await fireEvent.press(within(screen.getByLabelText("Category")).getByRole("radio", { name: "Rent" }));
+    await select("Category", "Rent");
     await fireEvent.press(screen.getByTestId("transaction-date"));
     await fireEvent.press(screen.getByRole("button", { name: "Previous month" }));
     await fireEvent.press(screen.getByTestId("day-2026-09-19"));
@@ -418,7 +438,7 @@ describe("TransactionForm", () => {
     await renderForm();
     await typeAmount("12");
     await fireEvent.changeText(screen.getByPlaceholderText("Name"), "Bread");
-    await fireEvent.press(within(screen.getByLabelText("Category")).getByRole("radio", { name: "Groceries" }));
+    await select("Category", "Groceries");
 
     await act(async () => {
       const button = saveButton();

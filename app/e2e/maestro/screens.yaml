@@ -27,6 +27,8 @@ name: Every screen, and a decimal amount
 - hideKeyboard:
     optional: true
 - tapOn:
+    id: transaction-category
+- tapOn:
     id: category-option-Groceries
 - tapOn:
     id: transaction-save
