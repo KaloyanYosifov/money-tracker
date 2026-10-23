@@ -265,13 +265,10 @@ export function buildPlan(source: SourceData, mapping: Mapping, existing: Existi
       if (scheduled.has(date) && !claimed.has(date)) claimed.set(date, t.Id);
     }
 
-    // The old app created the occurrences up to the date of the rule's latest
-    // row. A scheduled date before it with no row was deleted by the user, so
-    // generated_through stops the app from creating it again. The app creates
-    // the due dates after it, which the old app had not created yet. A rule
-    // with no rows lost all its past dates, up to today.
-    const latest = rows.reduce((max, t) => (ticksToDate(t.Date) > max ? ticksToDate(t.Date) : max), "");
-    const created = occurrenceDates(rule, latest !== "" && latest < today ? latest : today).dates;
+    // The old app creates the occurrences ahead of time, so a scheduled date up
+    // to today with no row was deleted by the user. generated_through stops the
+    // app from creating it again.
+    const created = occurrenceDates(rule, today).dates;
     const missing = created.filter((date) => !claimed.has(date));
     if (missing.length > 0) {
       problems.push({

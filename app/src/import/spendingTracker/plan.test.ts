@@ -521,23 +521,27 @@ describe("recurring", () => {
     expect(op(ops, "transactions", occurrenceId(ruleId, "2026-09-30"))?.data.external_id).toBe("st:303");
   });
 
-  it("lets the app create the due dates after the latest row of the backup", () => {
+  it("marks the past dates after the latest row of the backup as deleted", () => {
     const source = sourceFixture();
     source.transactions = source.transactions.filter((t) => t.Id !== 303 && t.Id !== 304);
     const { ops, problems } = plan(source);
-    expect(op(ops, "recurring_rules", ruleId)?.data.generated_through).toBe("2026-08-31");
-    expect(problems).not.toContainEqual(expect.objectContaining({ kind: "missing_occurrence" }));
-  });
-
-  it("reports only the gaps before the latest row of the backup", () => {
-    const source = sourceFixture();
-    source.transactions = source.transactions.filter((t) => t.Id !== 301 && t.Id !== 303 && t.Id !== 304);
-    const { ops, problems } = plan(source);
-    expect(op(ops, "recurring_rules", ruleId)?.data.generated_through).toBe("2026-08-31");
+    expect(op(ops, "recurring_rules", ruleId)?.data.generated_through).toBe("2026-09-30");
     expect(problems).toContainEqual({
       kind: "missing_occurrence",
       sourceIds: [1],
-      message: "rule 1: no row on 2026-07-31; the app does not create these dates again",
+      message: "rule 1: no row on 2026-09-30; the app does not create these dates again",
+    });
+  });
+
+  it("reports all past gaps, before and after the latest row of the backup", () => {
+    const source = sourceFixture();
+    source.transactions = source.transactions.filter((t) => t.Id !== 301 && t.Id !== 303 && t.Id !== 304);
+    const { ops, problems } = plan(source);
+    expect(op(ops, "recurring_rules", ruleId)?.data.generated_through).toBe("2026-09-30");
+    expect(problems).toContainEqual({
+      kind: "missing_occurrence",
+      sourceIds: [1],
+      message: "rule 1: no row on 2026-07-31, 2026-09-30; the app does not create these dates again",
     });
   });
 
