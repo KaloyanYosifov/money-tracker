@@ -2,12 +2,14 @@
 //
 //   node scripts/import-spending-tracker.ts <backup-file> [--api <url>] [--mapping <path>]
 //
-// The first run writes mapping.json. Edit it, then run the script again to
-// see the summary and import. The IDs come from the backup and the user, so a second
-// import updates the same rows and creates no duplicates.
+// The script shows the mapping and the summary, then asks to import. To change the
+// mapping, choose edit: the script writes mapping.json, opens it in $EDITOR and shows
+// the new summary. A later run uses the saved mapping.json. The IDs come from the backup
+// and the user, so a second import updates the same rows and creates no duplicates.
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
+import { spawnSync } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 import { isatty } from "node:tty";
 
@@ -16,8 +18,11 @@ import {
   buildPlan,
   importId,
   proposeMapping,
+  refreshMapping,
   validateMapping,
   type Existing,
+  type ImportPlan,
+  type PlanOptions,
   type Mapping,
   type SourceData,
   type UploadOp,
@@ -38,7 +43,7 @@ function isYes(answer: string): boolean {
   return /^y(es)?$/i.test(answer);
 }
 
-function parseArgs(argv: string[]) {
+async function parseArgs(argv: string[]) {
   const args = { backup: "", api: "http://localhost:18080", mapping: "mapping.json" };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -47,6 +52,8 @@ function parseArgs(argv: string[]) {
     else if (!args.backup) args.backup = arg;
     else fail(`Unknown argument: ${arg}`);
   }
+  // A file dropped into the terminal comes with quotes or with "\ " for each space.
+  args.backup ||= (await ask("Path of the Spending Tracker backup: ")).replace(/^(['"])(.*)\1$/, "$2").replace(/\\ /g, " ");
   if (!args.backup) fail("Usage: node scripts/import-spending-tracker.ts <backup-file> [--api <url>] [--mapping <path>]");
   args.api = args.api.replace(/\/+$/, "");
   if (!URL.canParse(args.api)) fail(`--api is not a URL: ${args.api}`);
@@ -212,8 +219,102 @@ async function upload(api: string, token: string, ops: UploadOp[]): Promise<Reje
   return rejected;
 }
 
+function readMapping(path: string): Mapping {
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as Mapping;
+  } catch (err) {
+    fail(`Cannot read ${path}: ${errorText(err)}`);
+  }
+}
+
+// Writes the mapping, opens it in $EDITOR and reads it again. If the JSON is not
+// valid, the editor opens again.
+async function editMapping(path: string, mapping: Mapping): Promise<Mapping> {
+  if (!interactive) fail("Edit needs a terminal.");
+  writeFileSync(path, `${JSON.stringify(mapping, null, 2)}\n`);
+  const editor = process.env.VISUAL || process.env.EDITOR || "vi";
+  for (;;) {
+    const result = spawnSync(`${editor} "${path}"`, { shell: true, stdio: "inherit" });
+    if (result.status !== 0) fail(`${editor} exited with status ${result.status}. The mapping is in ${path}.`);
+    try {
+      return JSON.parse(readFileSync(path, "utf8")) as Mapping;
+    } catch (err) {
+      console.log(`${path} is not valid JSON: ${errorText(err)}`);
+      await ask("Press Enter to open the editor again.");
+    }
+  }
+}
+
+function describe(entry: { name: string; action: string; target?: string; reason?: string }): string {
+  if (entry.action === "match") return `${entry.name} -> existing "${entry.target}"`;
+  if (entry.action === "create") return `${entry.name} -> new`;
+  return `${entry.name} -> skip${entry.reason ? ` (${entry.reason})` : ""}`;
+}
+
+function printMapping(mapping: Mapping) {
+  console.log(`\nCurrency: ${mapping.currency}`);
+  console.log("\nAccounts:");
+  for (const entry of Object.values(mapping.accounts)) console.log(`  ${describe(entry)}`);
+  console.log("\nCategories:");
+  for (const entry of Object.values(mapping.categories)) console.log(`  ${describe(entry)} [${entry.type}]`);
+  const rows = mapping.rows_without_account;
+  console.log(
+    `\nRows without account: ${rows.action === "create" ? `new account "${rows.name}"` : rows.action === "match" ? `existing "${rows.target}"` : "skip"}`,
+  );
+  const transfers = mapping.unpaired_transfers;
+  console.log(
+    `Unpaired transfers: ${transfers.action === "import" ? `import into "${transfers.expense_category}" / "${transfers.income_category}"` : `skip${transfers.reason ? ` (${transfers.reason})` : ""}`}`,
+  );
+  const carry = mapping.carry_adjustments;
+  console.log(
+    `Carry adjustments: ${carry.action === "import" ? `import into "${carry.category}"` : `skip${carry.reason ? ` (${carry.reason})` : ""}`}`,
+  );
+}
+
+function printSummary(plan: ImportPlan, mapping: Mapping, existing: Existing) {
+  console.log("\nSummary:");
+  if (mapping.currency !== existing.currency_code) {
+    console.log(`  Warning: the mapping currency ${mapping.currency} is not the account currency ${existing.currency_code || "(none)"}.`);
+  }
+  for (const [key, count] of Object.entries(plan.counts)) console.log(`  ${key}: ${count}`);
+  const groups = new Map<string, string[]>();
+  for (const p of plan.problems) groups.set(p.kind, [...(groups.get(p.kind) ?? []), p.message]);
+  for (const [kind, messages] of groups) {
+    console.log(`\n${kind}: ${messages.length}`);
+    for (const message of messages.slice(0, 10)) console.log(`  ${message}`);
+  }
+}
+
+// Shows the mapping and the summary until the user imports or stops. Returns null when the user stops.
+async function confirmPlan(
+  path: string,
+  mapping: Mapping,
+  source: SourceData,
+  existing: Existing,
+  options: PlanOptions,
+): Promise<ImportPlan | null> {
+  for (;;) {
+    let plan: ImportPlan | null = null;
+    const errors = validateMapping(source, mapping, existing);
+    if (errors.length > 0) {
+      console.log("\nThe mapping has errors:");
+      for (const error of errors) console.log(`  ${error}`);
+    } else {
+      printMapping(mapping);
+      plan = buildPlan(source, mapping, existing, options);
+      printSummary(plan, mapping, existing);
+    }
+
+    const choices = plan ? "[y]es / [e]dit mapping / [N]o" : "[e]dit mapping / [N]o";
+    const answer = (await ask(`\nImport? ${choices} `)).toLowerCase();
+    if (plan && isYes(answer)) return plan;
+    if (answer !== "e" && answer !== "edit") return null;
+    mapping = await editMapping(path, mapping);
+  }
+}
+
 async function main() {
-  const args = parseArgs(process.argv.slice(2));
+  const args = await parseArgs(process.argv.slice(2));
   if (!existsSync(args.backup)) fail(`No such file: ${args.backup}`);
   let source: SourceData;
   try {
@@ -236,43 +337,23 @@ async function main() {
     fail(`Cannot reach ${args.api}: ${errorText(err)}`);
   }
 
-  if (!existsSync(args.mapping)) {
-    writeFileSync(args.mapping, `${JSON.stringify(proposeMapping(source, existing), null, 2)}\n`);
-    console.log(`Wrote ${args.mapping}. Edit it, then run the script again.`);
-    return;
-  }
-
   let mapping: Mapping;
-  try {
-    mapping = JSON.parse(readFileSync(args.mapping, "utf8")) as Mapping;
-  } catch (err) {
-    fail(`Cannot read ${args.mapping}: ${errorText(err)}`);
-  }
-  const errors = validateMapping(source, mapping, existing);
-  if (errors.length > 0) {
-    for (const error of errors) console.error(error);
-    process.exit(1);
+  if (existsSync(args.mapping)) {
+    console.log(`Using ${args.mapping}.`);
+    const refreshed = refreshMapping(source, readMapping(args.mapping), existing);
+    mapping = refreshed.mapping;
+    for (const change of refreshed.changes) console.log(`  ${change}`);
+  } else {
+    mapping = proposeMapping(source, existing);
   }
 
   const hash = createHash("sha256").update(readFileSync(args.backup)).digest("hex");
-  const plan = buildPlan(source, mapping, existing, {
+  const plan = await confirmPlan(args.mapping, mapping, source, existing, {
     userId,
     importBatchId: importId("batch", hash, userId),
     today: localDate(),
   });
-
-  if (mapping.currency !== existing.currency_code) {
-    console.log(`Warning: the mapping currency ${mapping.currency} is not the account currency ${existing.currency_code || "(none)"}.`);
-  }
-  for (const [key, count] of Object.entries(plan.counts)) console.log(`${key}: ${count}`);
-  const groups = new Map<string, string[]>();
-  for (const p of plan.problems) groups.set(p.kind, [...(groups.get(p.kind) ?? []), p.message]);
-  for (const [kind, messages] of groups) {
-    console.log(`\n${kind}: ${messages.length}`);
-    for (const message of messages.slice(0, 10)) console.log(`  ${message}`);
-  }
-
-  if (!isYes(await ask("\nImport? (y/N) "))) return;
+  if (!plan) return;
 
   const rejected = await upload(args.api, token, plan.ops);
   console.log(`Applied ${plan.ops.length - rejected.length} ops.`);

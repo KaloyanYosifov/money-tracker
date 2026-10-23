@@ -1,5 +1,5 @@
 import { existingFixture, row, sourceFixture, ticks } from "./fixtures";
-import { proposeMapping, validateMapping } from "./mapping";
+import { proposeMapping, refreshMapping, validateMapping } from "./mapping";
 
 describe("proposeMapping", () => {
   it("takes the currency of the user, or EUR", () => {
@@ -198,5 +198,31 @@ describe("validateMapping", () => {
     const mapping = proposed();
     mapping.rows_without_account = { action: "match", target: "Nowhere" };
     expect(validateMapping(source, mapping, existing)).toEqual([expect.stringMatching(/rows_without_account/)]);
+  });
+});
+
+describe("refreshMapping", () => {
+  it("replaces a match with no existing target by the proposed entry", () => {
+    const saved = proposeMapping(sourceFixture(), existingFixture());
+    const existing = existingFixture();
+    existing.categories = existing.categories.filter((c) => c.name !== "Eating Out");
+    const { mapping, changes } = refreshMapping(sourceFixture(), saved, existing);
+    expect(mapping.categories[4]).toMatchObject({ name: "Eating Out", type: "expense", action: "create" });
+    expect(changes).toEqual(['category 4 "Eating Out": "Eating Out" does not exist, now create']);
+    expect(validateMapping(sourceFixture(), mapping, existing)).toEqual([]);
+  });
+
+  it("keeps a match to an archived target, so that validateMapping reports it", () => {
+    const saved = proposeMapping(sourceFixture(), existingFixture());
+    const existing = existingFixture();
+    existing.categories.find((c) => c.name === "Eating Out")!.archived = true;
+    const { mapping, changes } = refreshMapping(sourceFixture(), saved, existing);
+    expect(mapping.categories[4]).toEqual(saved.categories[4]);
+    expect(changes).toEqual([]);
+  });
+
+  it("changes nothing when all targets exist", () => {
+    const saved = proposeMapping(sourceFixture(), existingFixture());
+    expect(refreshMapping(sourceFixture(), saved, existingFixture())).toEqual({ mapping: saved, changes: [] });
   });
 });

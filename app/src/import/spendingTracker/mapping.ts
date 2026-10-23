@@ -168,6 +168,43 @@ export function proposeMapping(source: SourceData, existing: Existing): Mapping 
   return mapping;
 }
 
+function describeAction(entry: { action: string; target?: string }): string {
+  return entry.action === "match" ? `match "${entry.target}"` : entry.action;
+}
+
+/**
+ * A saved mapping, with each match that has no existing target replaced by
+ * the proposed entry. A target that is archived or that two records share
+ * stays, so that validateMapping reports it. changes lists the replaced entries.
+ */
+export function refreshMapping(
+  source: SourceData,
+  mapping: Mapping,
+  existing: Existing,
+): { mapping: Mapping; changes: string[] } {
+  const proposed = proposeMapping(source, existing);
+  const accounts = { ...mapping.accounts };
+  const categories = { ...mapping.categories };
+  const changes: string[] = [];
+  const missing = (records: Named[], target: string | undefined) =>
+    !records.some((r) => sameName(r.name, target ?? ""));
+
+  for (const [id, entry] of Object.entries(accounts)) {
+    const next = proposed.accounts[id];
+    if (entry.action !== "match" || !next || !missing(existing.accounts, entry.target)) continue;
+    accounts[id] = next;
+    changes.push(`account ${id} "${entry.name}": "${entry.target}" does not exist, now ${describeAction(next)}`);
+  }
+  for (const [id, entry] of Object.entries(categories)) {
+    const next = proposed.categories[id];
+    const records = existing.categories.filter((c) => c.type === entry.type);
+    if (entry.action !== "match" || !next || !missing(records, entry.target)) continue;
+    categories[id] = next;
+    changes.push(`category ${id} "${entry.name}": "${entry.target}" does not exist, now ${describeAction(next)}`);
+  }
+  return { mapping: { ...mapping, accounts, categories }, changes };
+}
+
 /** The errors of a mapping that the user edited. An empty list means buildPlan can use it. */
 export function validateMapping(source: SourceData, mapping: Mapping, existing: Existing): string[] {
   const errors: string[] = [];

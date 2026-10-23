@@ -4,7 +4,7 @@ E2E_COMPOSE := docker compose -f $(COMPOSE_FILE) -f deploy/compose/docker-compos
 IOS_PHONE_SIMULATOR ?= iPhone 17e
 IOS_TABLET_SIMULATOR ?= iPad (A16)
 
-.PHONY: setup generate check-generated test-api test-app test stack-up stack-up-no-otp stack-down e2e-stack-up e2e-stack-down e2e-web e2e-ios e2e-cross
+.PHONY: setup generate check-generated test-api test-app test stack-up stack-up-no-otp stack-down invite import e2e-stack-up e2e-stack-down e2e-web e2e-ios e2e-cross
 
 setup:
 	./scripts/setup-macos.sh
@@ -32,6 +32,13 @@ stack-up-no-otp:
 
 stack-down:
 	docker compose -f $(COMPOSE_FILE) down -v
+
+invite:
+	@./scripts/invite-user.sh
+
+# BACKUP is optional. Without it, the script asks for the path.
+import:
+	@node scripts/import-spending-tracker.ts $(BACKUP)
 
 # The e2e stack has its own database. The suites delete its data, never the dev data.
 e2e-stack-up:

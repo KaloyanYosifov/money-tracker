@@ -10,5 +10,5 @@ export {
   ticksToDate,
   toMinor,
 } from "./convert.ts";
-export { proposeMapping, validateMapping } from "./mapping.ts";
+export { proposeMapping, refreshMapping, validateMapping } from "./mapping.ts";
 export { buildPlan, type PlanOptions } from "./plan.ts";
