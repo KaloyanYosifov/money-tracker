@@ -313,3 +313,47 @@ export function saveOverallBudget(db: MutationDb, period: UserSettings["time_per
     return { ok: true, id };
   });
 }
+
+/**
+ * Writes or deletes the budget of one expense category for the period. A null
+ * amount deletes the budget. It runs inside a caller's transaction, so the AI
+ * Insights accept flow can save a budget and a card status together.
+ */
+export async function writeCategoryBudget(
+  tx: SqlRunner,
+  categoryId: string,
+  period: UserSettings["time_period"],
+  amountMinor: number | null,
+): Promise<SaveResult> {
+  const existing = await tx.getOptional<{ id: string }>(
+    "SELECT id FROM budgets WHERE category_id = ? AND period = ? ORDER BY id LIMIT 1",
+    [categoryId, period],
+  );
+  // A null amount deletes the budget. A delete must work for any category type,
+  // so switching a category to income can clear the budget it had.
+  if (amountMinor === null) {
+    if (!existing) return { ok: true, id: "" };
+    await tx.execute("DELETE FROM budgets WHERE id = ?", [existing.id]);
+    return { ok: true, id: existing.id };
+  }
+  const category = await tx.getOptional<{ type: string }>("SELECT type FROM categories WHERE id = ?", [categoryId]);
+  if (!category || category.type !== "expense") return fail([{ field: "category_id", code: "invalid" }]);
+  if (!Number.isInteger(amountMinor) || amountMinor < 1 || amountMinor > MAX_AMOUNT_MINOR) {
+    return fail([{ field: "amount_minor", code: "out_of_range" }]);
+  }
+  const id = await write(tx, "budgets", existing?.id, { amount_minor: amountMinor }, async () => {
+    const settings = await currentSettings(tx);
+    return { user_id: settings.user_id, category_id: categoryId, period };
+  });
+  return { ok: true, id };
+}
+
+/** Inserts, updates or deletes the budget of one expense category for the period. */
+export function saveCategoryBudget(
+  db: MutationDb,
+  categoryId: string,
+  period: UserSettings["time_period"],
+  amountMinor: number | null,
+): Promise<SaveResult> {
+  return db.writeTransaction((tx) => writeCategoryBudget(tx, categoryId, period, amountMinor));
+}

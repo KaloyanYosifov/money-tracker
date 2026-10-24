@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react-n
 
 import { createTestDatabase, loadFixture, type TestDatabase } from "../../../test/sqlite";
 import * as mutations from "../../data/mutations";
+import { amountInputText } from "../../domain/money";
 import { DUPLICATE_ACCOUNT_MESSAGE, DUPLICATE_CATEGORY_MESSAGE } from "../../domain/validation";
 import type { Shortcuts } from "../../hooks/useShortcuts";
 import { AccountForm, AccountsScreen } from "./Accounts";
@@ -287,6 +288,82 @@ describe("CategoryForm", () => {
     expect(screen.queryByRole("button", { name: "Archive" })).toBeNull();
     await fireEvent.press(screen.getByRole("button", { name: "Restore" }));
     expect(row("categories", "old")?.archived_at).toBeNull();
+  });
+});
+
+describe("category budget", () => {
+  function insertBudget(categoryId: string, amount: number, period = "monthly") {
+    mockDb
+      .prepare("INSERT INTO budgets (id, user_id, category_id, period, amount_minor) VALUES (?, 'u1', ?, ?, ?)")
+      .run(`b-${categoryId}`, categoryId, period, amount);
+  }
+
+  function budgetRow(categoryId: string) {
+    return mockDb.prepare("SELECT * FROM budgets WHERE category_id = ?").get(categoryId) as Record<string, unknown> | undefined;
+  }
+
+  it("shows the Budget field for an expense category", async () => {
+    await render(<CategoryForm id="groceries" platform="ios" onClose={jest.fn()} />);
+
+    expect(screen.getByLabelText("Monthly budget")).toBeTruthy();
+    expect(screen.getByText("Empty means no budget. The period is the Time Period from Settings.")).toBeTruthy();
+  });
+
+  it("hides the Budget field for an income category", async () => {
+    await render(<CategoryForm id="salary" platform="ios" onClose={jest.fn()} />);
+    expect(screen.queryByLabelText("Monthly budget")).toBeNull();
+
+    await render(<CategoryForm id={null} initialType="income" platform="ios" onClose={jest.fn()} />);
+    expect(screen.queryByLabelText("Monthly budget")).toBeNull();
+  });
+
+  it("shows the stored amount", async () => {
+    insertBudget("groceries", 50000);
+    await render(<CategoryForm id="groceries" platform="ios" onClose={jest.fn()} />);
+
+    expect(screen.getByLabelText("Monthly budget").props.value).toBe(amountInputText(50000, "EUR"));
+  });
+
+  it("save writes the budget", async () => {
+    const onClose = jest.fn();
+    await render(<CategoryForm id="travel" platform="ios" onClose={onClose} />);
+
+    await fireEvent.changeText(screen.getByLabelText("Monthly budget"), "150");
+    await fireEvent.press(screen.getByRole("button", { name: "Save" }));
+
+    expect(budgetRow("travel")).toMatchObject({ amount_minor: 15000, period: "monthly" });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("an empty field deletes the budget", async () => {
+    insertBudget("travel", 15000);
+    await render(<CategoryForm id="travel" platform="ios" onClose={jest.fn()} />);
+
+    await fireEvent.changeText(screen.getByLabelText("Monthly budget"), "");
+    await fireEvent.press(screen.getByRole("button", { name: "Save" }));
+
+    expect(budgetRow("travel")).toBeUndefined();
+  });
+
+  it("an invalid amount blocks the save", async () => {
+    await render(<CategoryForm id="travel" platform="ios" onClose={jest.fn()} />);
+
+    await fireEvent.changeText(screen.getByLabelText("Monthly budget"), "abc");
+
+    expect(screen.getByText("Invalid amount")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Save" }).props.accessibilityState).toEqual({ disabled: true });
+  });
+
+  it("saves a new category with a budget", async () => {
+    await render(<CategoryForm id={null} initialType="expense" platform="ios" onClose={jest.fn()} />);
+
+    await fireEvent.changeText(screen.getByPlaceholderText("Name"), "Pets");
+    await fireEvent.changeText(screen.getByLabelText("Monthly budget"), "80");
+    await fireEvent.press(screen.getByRole("button", { name: "Save" }));
+
+    const category = mockDb.prepare("SELECT * FROM categories WHERE name = 'Pets'").get() as { id: string } | undefined;
+    expect(category).toBeTruthy();
+    expect(budgetRow(category!.id)).toMatchObject({ amount_minor: 8000, period: "monthly" });
   });
 });
 

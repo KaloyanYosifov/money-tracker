@@ -1,4 +1,5 @@
 import { asyncDatabase, createTestDatabase, loadFixture, type AsyncTestDatabase, type TestDatabase } from "../../test/sqlite";
+import { MAX_AMOUNT_MINOR } from "../domain/money";
 import {
   archiveAccount,
   archiveCategory,
@@ -8,6 +9,7 @@ import {
   restoreCategory,
   saveAccount,
   saveCategory,
+  saveCategoryBudget,
   saveRecurringRule,
   saveTransaction,
   updateSettings,
@@ -501,6 +503,97 @@ describe("saveRecurringRule", () => {
       ok: false,
       errors: [{ field: "end_date", code: "out_of_range" }],
     });
+  });
+});
+
+describe("saveCategoryBudget", () => {
+  function budgetRows(categoryId: string, period: string) {
+    return sqlite
+      .prepare("SELECT * FROM budgets WHERE category_id = ? AND period = ?")
+      .all(categoryId, period) as Record<string, unknown>[];
+  }
+
+  it("inserts a budget for an expense category", async () => {
+    const result = await saveCategoryBudget(db, "food", "monthly", 50000);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const rows = budgetRows("food", "monthly");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: result.id, user_id: "u1", category_id: "food", period: "monthly", amount_minor: 50000 });
+  });
+
+  it("updates the existing budget", async () => {
+    const first = await saveCategoryBudget(db, "food", "monthly", 50000);
+    if (!first.ok) throw new Error("first save failed");
+    const second = await saveCategoryBudget(db, "food", "monthly", 45000);
+
+    expect(second).toEqual({ ok: true, id: first.id });
+    const rows = budgetRows("food", "monthly");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ amount_minor: 45000 });
+  });
+
+  it("keeps budgets of other periods", async () => {
+    sqlite
+      .prepare("INSERT INTO budgets (id, user_id, category_id, period, amount_minor) VALUES (?, ?, ?, ?, ?)")
+      .run("b-weekly", "u1", "food", "weekly", 10000);
+
+    await saveCategoryBudget(db, "food", "monthly", 50000);
+
+    expect(budgetRows("food", "weekly")).toHaveLength(1);
+    expect(budgetRows("food", "monthly")).toHaveLength(1);
+  });
+
+  it("deletes the budget for null", async () => {
+    const first = await saveCategoryBudget(db, "food", "monthly", 50000);
+    if (!first.ok) throw new Error("first save failed");
+
+    const result = await saveCategoryBudget(db, "food", "monthly", null);
+
+    expect(result).toEqual({ ok: true, id: first.id });
+    expect(budgetRows("food", "monthly")).toHaveLength(0);
+  });
+
+  it("does nothing for null with no budget", async () => {
+    const result = await saveCategoryBudget(db, "food", "monthly", null);
+
+    expect(result).toEqual({ ok: true, id: "" });
+    expect(budgetRows("food", "monthly")).toHaveLength(0);
+  });
+
+  it("rejects an income category", async () => {
+    const result = await saveCategoryBudget(db, "salary", "monthly", 50000);
+
+    expect(result).toEqual({ ok: false, errors: [{ field: "category_id", code: "invalid" }] });
+    expect(budgetRows("salary", "monthly")).toHaveLength(0);
+  });
+
+  it("deletes a budget even after the category becomes income", async () => {
+    await saveCategoryBudget(db, "food", "monthly", 50000);
+    sqlite.prepare("UPDATE categories SET type = 'income' WHERE id = 'food'").run();
+
+    const result = await saveCategoryBudget(db, "food", "monthly", null);
+
+    expect(result.ok).toBe(true);
+    expect(budgetRows("food", "monthly")).toHaveLength(0);
+  });
+
+  it.each([0, 1.5, MAX_AMOUNT_MINOR + 1])("rejects the out-of-range amount %p", async (amount) => {
+    const result = await saveCategoryBudget(db, "food", "monthly", amount);
+
+    expect(result).toEqual({ ok: false, errors: [{ field: "amount_minor", code: "out_of_range" }] });
+    expect(budgetRows("food", "monthly")).toHaveLength(0);
+  });
+
+  it("does not touch the overall budget", async () => {
+    sqlite
+      .prepare("INSERT INTO budgets (id, user_id, category_id, period, amount_minor) VALUES (?, ?, ?, ?, ?)")
+      .run("b-overall", "u1", null, "monthly", 200000);
+
+    await saveCategoryBudget(db, "food", "monthly", 50000);
+
+    expect(row("budgets", "b-overall")).toMatchObject({ category_id: null, amount_minor: 200000 });
   });
 });
 

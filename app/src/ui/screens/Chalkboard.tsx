@@ -5,13 +5,16 @@ import { Pressable, ScrollView, StyleSheet, Text, useColorScheme, View, type Tex
 import {
   useBudgetProgress,
   useCarryOver,
+  useCategoryBudgets,
   useShownCategoryTotals,
   useShownPeriodTotals,
+  type CategoryBudget,
   type CategoryTotal,
 } from "../../data/queries";
 import { formatAmount, minorUnits } from "../../domain/money";
 import type { Period } from "../../domain/period";
 import type { UserSettings } from "../../generated/schema";
+import { useLayoutMode } from "../../hooks/useLayoutMode";
 import { isHovered } from "../components/interaction";
 import { currencyName } from "../components/TransactionRow";
 import { colors, resolveTheme, summaryFontFamily } from "../theme";
@@ -92,6 +95,13 @@ export function Chalkboard({ period, locale, showRotateHint = false, onCategoryP
   const { data: expenseCategories } = useShownCategoryTotals(period, accountId, "expense");
   const { data: carryRows } = useCarryOver(period.start, accountId === null ? null : [accountId]);
   const { data: budget } = useBudgetProgress(period);
+  const { data: categoryBudgetRows } = useCategoryBudgets(period);
+  const wide = useLayoutMode() === "sidebar";
+  // Keep the first row of each category. The query orders by id, so a sync merge
+  // that made two budget rows for one category resolves to the same row the form
+  // and writeCategoryBudget edit (the lowest id).
+  const budgetByCategory = new Map<string, CategoryBudget>();
+  for (const b of categoryBudgetRows) if (!budgetByCategory.has(b.category_id)) budgetByCategory.set(b.category_id, b);
 
   const theme = colors[resolveTheme(settings?.theme ?? "system", scheme ?? "light")];
   const currency = settings?.currency_code ?? "EUR";
@@ -119,18 +129,51 @@ export function Chalkboard({ period, locale, showRotateHint = false, onCategoryP
     setChosenAccount(options[(index + step + options.length) % options.length]);
   };
 
-  const categoryLine = (row: CategoryTotal, testID: string): ReactNode => (
-    <Pressable
-      key={row.category_id}
-      testID={testID}
-      accessibilityRole="button"
-      accessibilityLabel={`${row.name}, ${spokenAmount(row.total, currency)}`}
-      onPress={() => onCategoryPress(row.category_id, accountId)}
-      style={(state) => [styles.categoryLine, (isHovered(state) || state.pressed) && styles.chalkHover]}
-    >
-      <Line label={row.name} amount={format(row.total)} textStyle={chalkText} size="sub" />
-    </Pressable>
-  );
+  const categoryLine = (row: CategoryTotal, testID: string, categoryBudget?: CategoryBudget): ReactNode => {
+    // The bar uses row.total, not the query's spent_minor, so it matches the line
+    // amount while a pending Undo delete hides a transaction. Both cover the same
+    // rows (expense, this category, the period, Hide Future, all accounts).
+    const spent = row.total;
+    const over = categoryBudget ? spent > categoryBudget.amount_minor : false;
+    const rest = categoryBudget ? Math.abs(categoryBudget.amount_minor - spent) : 0;
+    const fillShare = categoryBudget
+      ? Math.min(1, categoryBudget.amount_minor > 0 ? spent / categoryBudget.amount_minor : 1)
+      : 0;
+    const amountText =
+      categoryBudget && wide ? `${format(row.total)} / ${format(categoryBudget.amount_minor)}` : format(row.total);
+    const label = categoryBudget
+      ? `${row.name}, ${spokenAmount(row.total, currency)}, budget ${spokenAmount(categoryBudget.amount_minor, currency)}`
+      : `${row.name}, ${spokenAmount(row.total, currency)}`;
+    return (
+      <Pressable
+        key={row.category_id}
+        testID={testID}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        onPress={() => onCategoryPress(row.category_id, accountId)}
+        style={(state) => [styles.categoryLine, (isHovered(state) || state.pressed) && styles.chalkHover]}
+      >
+        <Line label={row.name} amount={amountText} textStyle={chalkText} size="sub" />
+        {categoryBudget ? (
+          <>
+            {wide ? null : (
+              <Text allowFontScaling style={[...chalkText, styles.budgetText, over ? { color: theme.chalkRed } : null]}>
+                {over
+                  ? `of ${format(categoryBudget.amount_minor)} · ${format(rest)} over`
+                  : `of ${format(categoryBudget.amount_minor)} · ${format(rest)} left`}
+              </Text>
+            )}
+            <View testID="category-budget-bar" style={styles.budgetBar}>
+              <View
+                testID="category-budget-fill"
+                style={[styles.budgetFill, { width: `${fillShare * 100}%`, backgroundColor: theme.chalkRed }]}
+              />
+            </View>
+          </>
+        ) : null}
+      </Pressable>
+    );
+  };
 
   return (
     <Texture kind="chalk" style={[styles.board, { backgroundColor: theme.chalkBackground }]}>
@@ -161,7 +204,9 @@ export function Chalkboard({ period, locale, showRotateHint = false, onCategoryP
         ) : null}
 
         <Line label="Expense" amount={format(expense)} textStyle={chalkText} amountColor={theme.chalkRed} size="big" />
-        {expenseCategories.map((row) => categoryLine(row, "expense-category"))}
+        {expenseCategories.map((row) =>
+          categoryLine(row, "expense-category", account ? undefined : budgetByCategory.get(row.category_id)),
+        )}
         {account ? (
           <Line label="Transfer out" amount={format(totals?.transfer_out ?? 0)} textStyle={chalkText} size="sub" />
         ) : null}
@@ -272,6 +317,23 @@ const styles = StyleSheet.create({
     marginHorizontal: -6,
     paddingHorizontal: 6,
     borderRadius: 4,
+  },
+  budgetText: {
+    fontSize: 11,
+    paddingLeft: 18,
+  },
+  budgetBar: {
+    height: 5,
+    borderWidth: 1,
+    borderColor: `${CHALK_WHITE}b3`,
+    borderRadius: 4,
+    marginLeft: 18,
+    marginTop: 2,
+    marginBottom: 4,
+    overflow: "hidden",
+  },
+  budgetFill: {
+    height: "100%",
   },
   chalkHover: {
     backgroundColor: "rgba(255, 255, 255, 0.08)",

@@ -2,8 +2,9 @@ import { usePowerSync, useQuery } from "@powersync/react";
 import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { archiveCategory, deleteCategory, restoreCategory, saveCategory } from "../../data/mutations";
+import { archiveCategory, deleteCategory, restoreCategory, saveCategory, saveCategoryBudget } from "../../data/mutations";
 import { deleteSyncProblem, problemRecord, useSyncProblem } from "../../data/syncProblems";
+import { amountInputText, parseAmount } from "../../domain/money";
 import { validateCategory } from "../../domain/validation";
 import type { Category, UserSettings } from "../../generated/schema";
 import { useShortcuts } from "../../hooks/useShortcuts";
@@ -124,16 +125,28 @@ export function CategoryForm({ id, initialType = "expense", platform, problemId,
     [id ?? "", id ?? "", id ?? ""],
   );
   const { problem, isLoading: problemLoading } = useSyncProblem(problemId);
+  const timePeriod = settings?.time_period;
+  const budget = useQuery<{ amount_minor: number }>(
+    "SELECT amount_minor FROM budgets WHERE category_id = ? AND period = ? ORDER BY id LIMIT 1",
+    [id ?? "", timePeriod ?? ""],
+  );
   const existing = id ? problemRecord(problem, category.data[0]) : undefined;
-  if (category.isLoading || usage.isLoading || problemLoading || (id && !existing)) return null;
+  // Wait for settings: the stored budget depends on the time_period, and a form
+  // built before it loads could delete or overwrite the wrong period's budget.
+  if (category.isLoading || usage.isLoading || problemLoading || budget.isLoading || !settings || (id && !existing)) {
+    return null;
+  }
 
   return (
     <CategoryFormBody
-      key={existing?.id ?? "new"}
+      key={`${existing?.id ?? "new"}:${timePeriod}`}
       existing={existing}
       used={Boolean(usage.data[0]?.used)}
       initialType={initialType}
-      iconStyle={settings?.icon_style ?? "filled"}
+      iconStyle={settings.icon_style}
+      storedBudget={budget.data[0]?.amount_minor ?? null}
+      currency={settings.currency_code}
+      timePeriod={settings.time_period}
       platform={platform ?? defaultPlatform()}
       theme={theme}
       problemId={problemId}
@@ -147,6 +160,9 @@ function CategoryFormBody({
   used,
   initialType,
   iconStyle,
+  storedBudget,
+  currency,
+  timePeriod,
   platform,
   theme,
   problemId,
@@ -156,6 +172,9 @@ function CategoryFormBody({
   used: boolean;
   initialType: CategoryType;
   iconStyle: UserSettings["icon_style"];
+  storedBudget: number | null;
+  currency: string;
+  timePeriod: UserSettings["time_period"];
   platform: ScreenPlatform;
   theme: ThemeColors;
   problemId?: string;
@@ -167,15 +186,23 @@ function CategoryFormBody({
   const [name, setName] = useState(existing?.name ?? "");
   const [icon, setIcon] = useState(existing?.icon ?? "tag");
   const [color, setColor] = useState(existing?.color ?? PALETTE[0].hex);
+  const [budgetText, setBudgetText] = useState(storedBudget !== null ? amountInputText(storedBudget, currency) : "");
   const [nameTouched, setNameTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   // A save error of the name from saveCategory / saveAccount, for example a duplicate name.
   const [nameSaveError, setNameSaveError] = useState<string | null>(null);
+  // The id of a new category that a first save already inserted. A retry after a
+  // failed budget write then updates it, instead of inserting a duplicate name.
+  const [savedId, setSavedId] = useState<string | null>(null);
 
-  const input = { id: existing?.id, type, name, icon, color, sort_order: existing?.sort_order };
+  const input = { id: existing?.id ?? savedId ?? undefined, type, name, icon, color, sort_order: existing?.sort_order };
   const errors = validateCategory(input);
   const nameError = errors.find((e) => e.field === "name");
+
+  const periodTitle = timePeriod.charAt(0).toUpperCase() + timePeriod.slice(1);
+  const budgetValue = budgetText.trim() === "" ? null : parseAmount(budgetText, currency);
+  const budgetInvalid = type === "expense" && budgetText.trim() !== "" && budgetValue === null;
 
   async function run(action: () => Promise<boolean>) {
     if (busy) return;
@@ -190,12 +217,24 @@ function CategoryFormBody({
     }
   }
 
+  const canSave = errors.length === 0 && !budgetInvalid && !busy;
+
   const save = () =>
     run(async () => {
       const result = await saveCategory(db, input);
       if (!result.ok) {
         setNameSaveError(result.errors.find((e) => e.field === "name")?.message ?? null);
         return false;
+      }
+      setSavedId(result.id);
+      // A category can hold at most one budget: the one for the current period.
+      // An income category clears any budget it had.
+      const nextBudget = type === "expense" ? budgetValue : null;
+      if (nextBudget !== storedBudget) {
+        const budgetResult = await saveCategoryBudget(db, result.id, timePeriod, nextBudget);
+        // Surface the failure. The category is saved, so a retry writes only the
+        // budget (input now carries savedId, so it updates the category).
+        if (!budgetResult.ok) throw new Error("budget save failed");
       }
       if (problemId) await deleteSyncProblem(db, problemId);
       return true;
@@ -204,7 +243,7 @@ function CategoryFormBody({
   // Web: Enter saves a valid form, Escape closes it.
   useShortcuts({
     save: () => {
-      if (errors.length === 0) void save();
+      if (canSave) void save();
     },
     cancel: onClose,
   });
@@ -214,7 +253,7 @@ function CategoryFormBody({
       <FormHeader
         title={existing ? "Edit Category" : "New Category"}
         platform={platform}
-        canSave={errors.length === 0 && !busy}
+        canSave={canSave}
         onCancel={onClose}
         onSave={() => void save()}
         theme={theme}
@@ -286,6 +325,22 @@ function CategoryFormBody({
         <FormField label="Colour" theme={theme}>
           <ColorPalette value={color} onChange={setColor} theme={theme} />
         </FormField>
+        {type === "expense" ? (
+          <>
+            <FormField label={`${periodTitle} budget`} error={budgetInvalid ? "Invalid amount" : undefined} theme={theme}>
+              <TextInput
+                allowFontScaling
+                accessibilityLabel={`${periodTitle} budget`}
+                keyboardType="decimal-pad"
+                keyboardAppearance={keyboardAppearance(theme)}
+                value={budgetText}
+                onChangeText={setBudgetText}
+                style={[formStyles.input, { color: theme.ink }]}
+              />
+            </FormField>
+            <FormNote text="Empty means no budget. The period is the Time Period from Settings." theme={theme} />
+          </>
+        ) : null}
         {existing && existing.archived_at ? (
           <FormAction
             label="Restore"

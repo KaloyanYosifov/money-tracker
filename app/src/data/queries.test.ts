@@ -4,9 +4,11 @@ import {
   budgetProgress,
   carryOver,
   cashFlowSeries,
+  categoryBudgets,
   categoryTotals,
   periodTotals,
   transactionList,
+  type CategoryBudget,
   type SqlQuery,
 } from "./queries";
 
@@ -457,6 +459,56 @@ describe("budgetProgress", () => {
       amount_minor: 50000,
       spent_minor: 29000,
     });
+  });
+});
+
+describe("categoryBudgets", () => {
+  // October food expenses in the fixture: 20000 (10-05) + 3000 (10-06) + 1000 (10-25, future).
+  const foodBudget = { id: "cb-food", user_id: "u1", category_id: "food", period: "monthly", amount_minor: 50000 };
+
+  it("returns the spent amount of each category budget", () => {
+    loadFixture(db, { budgets: [foodBudget] });
+    expect(all<CategoryBudget>(db, categoryBudgets(october, today))).toEqual([
+      { budget_id: "cb-food", category_id: "food", amount_minor: 50000, spent_minor: 24000 },
+    ]);
+  });
+
+  it("counts all accounts", () => {
+    loadFixture(db, { budgets: [foodBudget] });
+    db.prepare(
+      "INSERT INTO transactions (id, user_id, type, amount_minor, currency_code, date, name, category_id, account_id, source) VALUES (?, 'u1', 'expense', 6000, 'EUR', '2026-10-08', 'Bank food', 'food', 'bank', 'manual')",
+    ).run("tb-food");
+    expect(first<CategoryBudget>(db, categoryBudgets(october, today))?.spent_minor).toBe(30000);
+  });
+
+  it("ignores budgets of another period", () => {
+    loadFixture(db, { budgets: [{ ...foodBudget, period: "weekly" }] });
+    expect(all(db, categoryBudgets(october, today))).toEqual([]);
+  });
+
+  it("ignores the overall budget", () => {
+    loadFixture(db, { budgets: [{ id: "cb-overall", user_id: "u1", category_id: null, period: "monthly", amount_minor: 50000 }] });
+    expect(all(db, categoryBudgets(october, today))).toEqual([]);
+  });
+
+  it("ignores archived categories", () => {
+    loadFixture(db, { budgets: [{ id: "cb-old", user_id: "u1", category_id: "old", period: "monthly", amount_minor: 50000 }] });
+    expect(all(db, categoryBudgets(october, today))).toEqual([]);
+  });
+
+  it("gives a budget with no expenses a spent of 0", () => {
+    db.prepare(
+      "INSERT INTO categories (id, user_id, type, name, icon, color, sort_order) VALUES ('transport', 'u1', 'expense', 'Transport', 'bus', '#000000', 5)",
+    ).run();
+    loadFixture(db, { budgets: [{ id: "cb-transport", user_id: "u1", category_id: "transport", period: "monthly", amount_minor: 15000 }] });
+    expect(first<CategoryBudget>(db, categoryBudgets(october, today))?.spent_minor).toBe(0);
+  });
+
+  it("follows Hide Future", () => {
+    loadFixture(db, { budgets: [foodBudget] });
+    expect(first<CategoryBudget>(db, categoryBudgets(october, today))?.spent_minor).toBe(24000);
+    setSettings(db, { hide_future: 1 });
+    expect(first<CategoryBudget>(db, categoryBudgets(october, today))?.spent_minor).toBe(23000);
   });
 });
 

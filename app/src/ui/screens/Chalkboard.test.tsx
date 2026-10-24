@@ -1,8 +1,9 @@
 import { StyleSheet } from "react-native";
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { fireEvent, render, screen, within } from "@testing-library/react-native";
 
 import { createTestDatabase, loadFixture, type TestDatabase } from "../../../test/sqlite";
 import { UndoProvider } from "../../data/UndoProvider";
+import type { LayoutMode } from "../../hooks/useLayoutMode";
 import { Chalkboard } from "./Chalkboard";
 
 let mockDb: TestDatabase;
@@ -13,6 +14,11 @@ jest.mock("@powersync/react", () => ({
     data: mockDb.prepare(sql).all(parameters),
     isLoading: false,
   }),
+}));
+
+let mockLayout: LayoutMode = "tabs";
+jest.mock("../../hooks/useLayoutMode", () => ({
+  useLayoutMode: () => mockLayout,
 }));
 
 const october = { start: "2026-10-01", end: "2026-10-31" };
@@ -218,5 +224,72 @@ describe("Chalkboard", () => {
     const style = StyleSheet.flatten(screen.getByText("Balance").props.style);
     expect(style.fontFamily).toBe("DroidSansMono");
     expect(style.textShadowColor).toBeDefined();
+  });
+});
+
+describe("category budgets", () => {
+  const chalkRed = "#ff8a86";
+
+  afterEach(() => {
+    mockLayout = "tabs";
+  });
+
+  function fillWidth() {
+    return StyleSheet.flatten(screen.getByTestId("category-budget-fill").props.style).width;
+  }
+
+  it("shows the bar and the rest under a budgeted line", async () => {
+    // Groceries spent 155230 in October; budget 200000.
+    load({}, { budgets: [{ id: "b-gro", user_id: "u1", category_id: "groceries", period: "monthly", amount_minor: 200000 }] });
+    await renderBoard();
+
+    expect(screen.getAllByTestId("category-budget-bar")).toHaveLength(1);
+    expect(fillWidth()).toBe(`${(155230 / 200000) * 100}%`);
+    expect(screen.getByText("of €2,000.00 · €447.70 left")).toBeTruthy();
+  });
+
+  it("shows over budget in red", async () => {
+    // Shopping spent 46619; budget 30000.
+    load({}, { budgets: [{ id: "b-shop", user_id: "u1", category_id: "shopping", period: "monthly", amount_minor: 30000 }] });
+    await renderBoard();
+
+    const text = screen.getByText("of €300.00 · €166.19 over");
+    expect(StyleSheet.flatten(text.props.style).color).toBe(chalkRed);
+    expect(fillWidth()).toBe("100%");
+  });
+
+  it("shows no bar for a category with no budget", async () => {
+    load({}, { budgets: [{ id: "b-gro", user_id: "u1", category_id: "groceries", period: "monthly", amount_minor: 200000 }] });
+    await renderBoard();
+
+    const rentLine = screen.getAllByTestId("expense-category").find((l) => String(l.props.accessibilityLabel).startsWith("Rent"));
+    expect(rentLine).toBeTruthy();
+    expect(within(rentLine!).queryByTestId("category-budget-bar")).toBeNull();
+  });
+
+  it("shows the budget on the line in the wide layout", async () => {
+    mockLayout = "sidebar";
+    load({}, { budgets: [{ id: "b-gro", user_id: "u1", category_id: "groceries", period: "monthly", amount_minor: 200000 }] });
+    await renderBoard();
+
+    expect(screen.getByText("€1,552.30 / €2,000.00")).toBeTruthy();
+    expect(screen.queryByText(/left/)).toBeNull();
+    expect(screen.getByTestId("category-budget-bar")).toBeTruthy();
+  });
+
+  it("shows no bars for one account", async () => {
+    load({}, { budgets: [{ id: "b-gro", user_id: "u1", category_id: "groceries", period: "monthly", amount_minor: 200000 }] });
+    await renderBoard();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Next account" }));
+    expect(screen.queryAllByTestId("category-budget-bar")).toHaveLength(0);
+  });
+
+  it("includes the budget in the accessibility label", async () => {
+    load({}, { budgets: [{ id: "b-gro", user_id: "u1", category_id: "groceries", period: "monthly", amount_minor: 200000 }] });
+    await renderBoard();
+
+    const line = screen.getAllByTestId("expense-category").find((l) => String(l.props.accessibilityLabel).startsWith("Groceries"));
+    expect(line?.props.accessibilityLabel).toBe("Groceries, 1,552 euro 30, budget 2,000 euro");
   });
 });

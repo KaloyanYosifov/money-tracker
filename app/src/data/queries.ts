@@ -297,6 +297,33 @@ export function budgetProgress(range: Period, today: string): SqlQuery {
   };
 }
 
+export interface CategoryBudget {
+  budget_id: string;
+  category_id: string;
+  amount_minor: number;
+  spent_minor: number;
+}
+
+/**
+ * The budget of each non-archived expense category for the time_period setting,
+ * with the amount spent in the range. Leaves out the overall budget and the
+ * budgets of other periods.
+ */
+export function categoryBudgets(range: Period, today: string): SqlQuery {
+  return {
+    sql: `SELECT b.id AS budget_id, b.category_id, b.amount_minor,
+        (SELECT COALESCE(SUM(t.amount_minor), 0) FROM transactions t
+          WHERE t.type = 'expense' AND t.category_id = b.category_id
+            AND t.date BETWEEN ? AND ? AND ${visible}) AS spent_minor
+      FROM budgets b
+      JOIN user_settings s ON s.time_period = b.period
+      JOIN categories c ON c.id = b.category_id AND c.archived_at IS NULL AND c.type = 'expense'
+      WHERE b.category_id IS NOT NULL
+      ORDER BY c.sort_order, c.name COLLATE NOCASE, b.id`,
+    parameters: [range.start, range.end, today],
+  };
+}
+
 export interface CashFlowPoint {
   start: string;
   end: string;
@@ -379,6 +406,10 @@ export function useTransactionList(
 
 export function useBudgetProgress(range: Period) {
   return useFirstRow<BudgetProgress>(budgetProgress(range, localToday()));
+}
+
+export function useCategoryBudgets(range: Period) {
+  return useRows<CategoryBudget>(categoryBudgets(range, localToday()));
 }
 
 export function useCashFlowSeries(endRange: Period, kind: PeriodKind, settings: PeriodSettings, count: number) {
