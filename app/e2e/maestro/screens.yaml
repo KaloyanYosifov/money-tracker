@@ -90,10 +90,16 @@ name: Every screen, and a decimal amount
 # Settings, the currency symbol and Devices.
 - tapOn:
     id: menu
-- extendedWaitUntil:
-    visible:
+# On a small phone the row is below the screen.
+- scrollUntilVisible:
+    element:
       text: "Currency Symbol, €"
+    direction: DOWN
     timeout: 10000
+- scrollUntilVisible:
+    element:
+      text: Devices
+    direction: UP
 - tapOn:
     text: Devices
 - extendedWaitUntil:

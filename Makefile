@@ -1,4 +1,5 @@
 COMPOSE_FILE := deploy/compose/docker-compose.yml
+DEV_ENV := deploy/compose/dev.env
 E2E_COMPOSE := docker compose -f $(COMPOSE_FILE) -f deploy/compose/docker-compose.e2e.yml
 # The iOS suites install a Release build. Other simulators than the dev ones keep the dev build.
 IOS_PHONE_SIMULATOR ?= iPhone 17e
@@ -24,13 +25,17 @@ test-app:
 
 test: test-api test-app
 
-stack-up:
+# The compose files load dev.env. A fresh checkout gets it from the example.
+$(DEV_ENV):
+	cp $(DEV_ENV).example $(DEV_ENV)
+
+stack-up: $(DEV_ENV)
 	docker compose -f $(COMPOSE_FILE) up -d --build --wait
 
-stack-up-no-otp:
+stack-up-no-otp: $(DEV_ENV)
 	DISABLE_TOTP=true docker compose -f $(COMPOSE_FILE) up -d --build --wait
 
-stack-down:
+stack-down: $(DEV_ENV)
 	docker compose -f $(COMPOSE_FILE) down -v
 
 invite:
@@ -41,10 +46,10 @@ import:
 	@node scripts/import-spending-tracker.ts $(BACKUP)
 
 # The e2e stack has its own database. The suites delete its data, never the dev data.
-e2e-stack-up:
+e2e-stack-up: $(DEV_ENV)
 	$(E2E_COMPOSE) up -d --build --wait
 
-e2e-stack-down:
+e2e-stack-down: $(DEV_ENV)
 	$(E2E_COMPOSE) down -v
 
 e2e-web:
