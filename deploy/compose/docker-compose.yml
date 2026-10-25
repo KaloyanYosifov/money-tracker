@@ -41,9 +41,26 @@ services:
     environment:
       # Run "DISABLE_TOTP=true make stack-up" to log in without TOTP. Keep it off for the e2e suites.
       DISABLE_TOTP: ${DISABLE_TOTP:-false}
+      AI_BASE_URL: http://ai:8080
     depends_on:
       migrate:
         condition: service_completed_successfully
+
+  # The AI gateway. It has no database access. Without a token it starts, but
+  # its tasks fail. Run "CLAUDE_CODE_OAUTH_TOKEN=... make stack-up" to use Claude.
+  ai:
+    image: money-tracker-ai:dev
+    build:
+      context: ../..
+      dockerfile: deploy/docker/ai.Dockerfile
+    environment:
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      LISTEN_ADDR: :8080
+    healthcheck:
+      test: ["CMD", "/mtai", "healthcheck"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
 
   powersync:
     build:

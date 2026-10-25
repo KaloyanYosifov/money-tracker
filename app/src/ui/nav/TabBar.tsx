@@ -15,17 +15,27 @@ export interface Page {
   usesPeriod: boolean;
 }
 
-/** The pages in shortcut order (keys 1 to 5). The iPhone tabs show the first four. */
+/**
+ * The pages in shortcut order. Keys 1 to 5 open the first five, so AI
+ * Insights, the sixth, has no key and Reports keeps key 5.
+ */
 export const PAGES: readonly Page[] = [
   { name: "spending", title: "Spending", icon: "tag", usesPeriod: true },
   { name: "transactions", title: "Transactions", icon: "notepad", usesPeriod: true },
   { name: "categories", title: "Categories", icon: "cabinet", usesPeriod: false },
   { name: "accounts", title: "Accounts", icon: "people", usesPeriod: false },
   { name: "reports", title: "Reports", icon: "pie", usesPeriod: true },
+  { name: "insights", title: "AI Insights", icon: "sparkle", usesPeriod: false },
 ];
 
+/** The pages of the user. AI Insights shows only while its switch in Settings is on. */
+export function pagesFor(insightsEnabled: boolean): Page[] {
+  return PAGES.filter((page) => insightsEnabled || page.name !== "insights");
+}
+
 // The iPhone opens Reports by rotation. The browser has no landscape mode, so its tabs show all pages.
-const PHONE_TABS = Platform.OS === "web" ? PAGES : PAGES.slice(0, 4);
+// A page with no screen in the layout has no route, and the tab bar skips it.
+const PHONE_TABS = Platform.OS === "web" ? PAGES : PAGES.filter((page) => page.name !== "reports");
 
 export function pageFor(routeName: string): Page | undefined {
   return PAGES.find((page) => page.name === routeName);

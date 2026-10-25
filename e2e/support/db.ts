@@ -8,6 +8,8 @@ export const SYNCED_TABLES = [
   "recurring_rules",
   "budgets",
   "user_settings",
+  "insights",
+  "insight_questions",
 ] as const;
 
 export type SyncedTable = (typeof SYNCED_TABLES)[number];

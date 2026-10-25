@@ -287,6 +287,274 @@ func (j *Category) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
+type Insight struct {
+	// The suggested record of a budget or recurring_rule card. The API checks its
+	// shape for each kind.
+	Action *InsightAction `json:"action,omitempty,omitzero"`
+
+	// Body corresponds to the JSON schema field "body".
+	Body string `json:"body"`
+
+	// Set by the server.
+	CreatedAt *time.Time `json:"created_at,omitempty,omitzero"`
+
+	// Fingerprint corresponds to the JSON schema field "fingerprint".
+	Fingerprint string `json:"fingerprint"`
+
+	// ID corresponds to the JSON schema field "id".
+	ID string `json:"id"`
+
+	// Kind corresponds to the JSON schema field "kind".
+	Kind InsightKind `json:"kind"`
+
+	// Status corresponds to the JSON schema field "status".
+	Status InsightStatus `json:"status"`
+
+	// Title corresponds to the JSON schema field "title".
+	Title string `json:"title"`
+
+	// Set by the server.
+	UpdatedAt *time.Time `json:"updated_at,omitempty,omitzero"`
+
+	// UserID corresponds to the JSON schema field "user_id".
+	UserID string `json:"user_id"`
+}
+
+// The suggested record of a budget or recurring_rule card. The API checks its
+// shape for each kind.
+type InsightAction map[string]interface{}
+
+type InsightKind string
+
+const InsightKindBudget InsightKind = "budget"
+const InsightKindRecurringRule InsightKind = "recurring_rule"
+const InsightKindTip InsightKind = "tip"
+
+var enumValues_InsightKind = []interface{}{
+	"tip",
+	"budget",
+	"recurring_rule",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *InsightKind) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_InsightKind {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_InsightKind, v)
+	}
+	*j = InsightKind(v)
+	return nil
+}
+
+type InsightQuestion struct {
+	// The suggested record of the answer. The API checks its shape.
+	Action *InsightQuestionAction `json:"action,omitempty,omitzero"`
+
+	// Answer corresponds to the JSON schema field "answer".
+	Answer InsightQuestionAnswer `json:"answer,omitempty,omitzero"`
+
+	// AnsweredAt corresponds to the JSON schema field "answered_at".
+	AnsweredAt *time.Time `json:"answered_at,omitempty,omitzero"`
+
+	// CategoryID corresponds to the JSON schema field "category_id".
+	CategoryID string `json:"category_id"`
+
+	// Set by the server.
+	CreatedAt *time.Time `json:"created_at,omitempty,omitzero"`
+
+	// Error corresponds to the JSON schema field "error".
+	Error InsightQuestionError `json:"error,omitempty,omitzero"`
+
+	// ID corresponds to the JSON schema field "id".
+	ID string `json:"id"`
+
+	// Question corresponds to the JSON schema field "question".
+	Question string `json:"question"`
+
+	// Status corresponds to the JSON schema field "status".
+	Status InsightQuestionStatus `json:"status"`
+
+	// Set by the server.
+	UpdatedAt *time.Time `json:"updated_at,omitempty,omitzero"`
+
+	// UserID corresponds to the JSON schema field "user_id".
+	UserID string `json:"user_id"`
+}
+
+// The suggested record of the answer. The API checks its shape.
+type InsightQuestionAction map[string]interface{}
+
+type InsightQuestionAnswer *string
+
+type InsightQuestionError *string
+
+type InsightQuestionStatus string
+
+const InsightQuestionStatusAnswered InsightQuestionStatus = "answered"
+const InsightQuestionStatusFailed InsightQuestionStatus = "failed"
+const InsightQuestionStatusPending InsightQuestionStatus = "pending"
+
+var enumValues_InsightQuestionStatus = []interface{}{
+	"pending",
+	"answered",
+	"failed",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *InsightQuestionStatus) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_InsightQuestionStatus {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_InsightQuestionStatus, v)
+	}
+	*j = InsightQuestionStatus(v)
+	return nil
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *InsightQuestion) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["category_id"]; raw != nil && !ok {
+		return fmt.Errorf("field category_id in InsightQuestion: required")
+	}
+	if _, ok := raw["id"]; raw != nil && !ok {
+		return fmt.Errorf("field id in InsightQuestion: required")
+	}
+	if _, ok := raw["question"]; raw != nil && !ok {
+		return fmt.Errorf("field question in InsightQuestion: required")
+	}
+	if _, ok := raw["status"]; raw != nil && !ok {
+		return fmt.Errorf("field status in InsightQuestion: required")
+	}
+	if _, ok := raw["user_id"]; raw != nil && !ok {
+		return fmt.Errorf("field user_id in InsightQuestion: required")
+	}
+	if _, ok := raw["created_at"]; raw != nil && ok {
+		return fmt.Errorf("field created_at in InsightQuestion: read only")
+	}
+	if _, ok := raw["updated_at"]; raw != nil && ok {
+		return fmt.Errorf("field updated_at in InsightQuestion: read only")
+	}
+	type Plain InsightQuestion
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if utf8.RuneCountInString(string(plain.Question)) < 1 {
+		return fmt.Errorf("field %s length: must be >= %d", "question", 1)
+	}
+	if utf8.RuneCountInString(string(plain.Question)) > 500 {
+		return fmt.Errorf("field %s length: must be <= %d", "question", 500)
+	}
+	*j = InsightQuestion(plain)
+	return nil
+}
+
+type InsightStatus string
+
+const InsightStatusAccepted InsightStatus = "accepted"
+const InsightStatusDismissed InsightStatus = "dismissed"
+const InsightStatusOpen InsightStatus = "open"
+
+var enumValues_InsightStatus = []interface{}{
+	"open",
+	"accepted",
+	"dismissed",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *InsightStatus) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_InsightStatus {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_InsightStatus, v)
+	}
+	*j = InsightStatus(v)
+	return nil
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *Insight) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["body"]; raw != nil && !ok {
+		return fmt.Errorf("field body in Insight: required")
+	}
+	if _, ok := raw["fingerprint"]; raw != nil && !ok {
+		return fmt.Errorf("field fingerprint in Insight: required")
+	}
+	if _, ok := raw["id"]; raw != nil && !ok {
+		return fmt.Errorf("field id in Insight: required")
+	}
+	if _, ok := raw["kind"]; raw != nil && !ok {
+		return fmt.Errorf("field kind in Insight: required")
+	}
+	if _, ok := raw["status"]; raw != nil && !ok {
+		return fmt.Errorf("field status in Insight: required")
+	}
+	if _, ok := raw["title"]; raw != nil && !ok {
+		return fmt.Errorf("field title in Insight: required")
+	}
+	if _, ok := raw["user_id"]; raw != nil && !ok {
+		return fmt.Errorf("field user_id in Insight: required")
+	}
+	if _, ok := raw["created_at"]; raw != nil && ok {
+		return fmt.Errorf("field created_at in Insight: read only")
+	}
+	if _, ok := raw["updated_at"]; raw != nil && ok {
+		return fmt.Errorf("field updated_at in Insight: read only")
+	}
+	type Plain Insight
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if utf8.RuneCountInString(string(plain.Body)) > 500 {
+		return fmt.Errorf("field %s length: must be <= %d", "body", 500)
+	}
+	if utf8.RuneCountInString(string(plain.Fingerprint)) > 200 {
+		return fmt.Errorf("field %s length: must be <= %d", "fingerprint", 200)
+	}
+	if utf8.RuneCountInString(string(plain.Title)) > 80 {
+		return fmt.Errorf("field %s length: must be <= %d", "title", 80)
+	}
+	*j = Insight(plain)
+	return nil
+}
+
 type RecurringRule struct {
 	// AccountID corresponds to the JSON schema field "account_id".
 	AccountID string `json:"account_id"`
@@ -709,6 +977,8 @@ type UploadOpTable string
 const UploadOpTableAccounts UploadOpTable = "accounts"
 const UploadOpTableBudgets UploadOpTable = "budgets"
 const UploadOpTableCategories UploadOpTable = "categories"
+const UploadOpTableInsightQuestions UploadOpTable = "insight_questions"
+const UploadOpTableInsights UploadOpTable = "insights"
 const UploadOpTableRecurringRules UploadOpTable = "recurring_rules"
 const UploadOpTableTransactions UploadOpTable = "transactions"
 const UploadOpTableUserSettings UploadOpTable = "user_settings"
@@ -720,6 +990,8 @@ var enumValues_UploadOpTable = []interface{}{
 	"recurring_rules",
 	"budgets",
 	"user_settings",
+	"insights",
+	"insight_questions",
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -819,6 +1091,9 @@ type UserSettings struct {
 
 	// ID corresponds to the JSON schema field "id".
 	ID string `json:"id"`
+
+	// InsightsEnabled corresponds to the JSON schema field "insights_enabled".
+	InsightsEnabled bool `json:"insights_enabled"`
 
 	// MonthStartDay corresponds to the JSON schema field "month_start_day".
 	MonthStartDay int `json:"month_start_day"`
@@ -997,6 +1272,9 @@ func (j *UserSettings) UnmarshalJSON(value []byte) error {
 	if _, ok := raw["id"]; raw != nil && !ok {
 		return fmt.Errorf("field id in UserSettings: required")
 	}
+	if _, ok := raw["insights_enabled"]; raw != nil && !ok {
+		return fmt.Errorf("field insights_enabled in UserSettings: required")
+	}
 	if _, ok := raw["month_start_day"]; raw != nil && !ok {
 		return fmt.Errorf("field month_start_day in UserSettings: required")
 	}
@@ -1051,6 +1329,6 @@ func (j *UserSettings) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
-const SchemaVersion = 4
+const SchemaVersion = 5
 
 const MinSupportedSchemaVersion = 3

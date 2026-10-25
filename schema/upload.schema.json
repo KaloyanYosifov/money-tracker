@@ -24,7 +24,7 @@
         "op": { "type": "string", "enum": ["PUT", "PATCH", "DELETE"] },
         "table": {
           "type": "string",
-          "enum": ["accounts", "categories", "transactions", "recurring_rules", "budgets", "user_settings"]
+          "enum": ["accounts", "categories", "transactions", "recurring_rules", "budgets", "user_settings", "insights", "insight_questions"]
         },
         "id": { "type": "string", "format": "uuid" },
         "data": { "type": "object" }

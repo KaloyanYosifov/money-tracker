@@ -133,24 +133,31 @@ export function saveTransaction(db: MutationDb, input: TransactionInput): Promis
  * occurrence that the user deleted stays deleted.
  */
 export async function saveRecurringRule(db: MutationDb, input: RecurringRuleInput, today: string): Promise<SaveResult> {
-  const result = await db.writeTransaction(async (tx): Promise<SaveResult> => {
-    const errors = validateRecurringRule(input, await categoryType(tx, input.category_id));
-    await checkAccounts(tx, input, errors);
-    if (errors.length > 0) return fail(errors);
-
-    const values: Row = {
-      ...moneyValues(input),
-      frequency: input.frequency,
-      start_date: input.start_date,
-      end_date: input.end_date ?? null,
-    };
-    const id = await write(tx, "recurring_rules", input.id, values, async () => ({
-      user_id: (await currentSettings(tx)).user_id,
-    }));
-    return { ok: true, id };
-  });
+  const result = await db.writeTransaction((tx) => writeRecurringRule(tx, input));
   if (result.ok) await generateDue(db, today);
   return result;
+}
+
+/**
+ * Validates and writes a recurring rule inside a caller's transaction, so the
+ * AI Insights accept flow can save a rule and a card status together. The
+ * caller runs generateDue after the transaction.
+ */
+export async function writeRecurringRule(tx: SqlRunner, input: RecurringRuleInput): Promise<SaveResult> {
+  const errors = validateRecurringRule(input, await categoryType(tx, input.category_id));
+  await checkAccounts(tx, input, errors);
+  if (errors.length > 0) return fail(errors);
+
+  const values: Row = {
+    ...moneyValues(input),
+    frequency: input.frequency,
+    start_date: input.start_date,
+    end_date: input.end_date ?? null,
+  };
+  const id = await write(tx, "recurring_rules", input.id, values, async () => ({
+    user_id: (await currentSettings(tx)).user_id,
+  }));
+  return { ok: true, id };
 }
 
 // Inserts get the next sort_order after all rows of the table.
@@ -280,6 +287,7 @@ const settingsColumns: readonly string[] = [
   "theme",
   "summary_font",
   "icon_style",
+  "insights_enabled",
 ];
 
 /** Updates the changed columns of the one user_settings row. Booleans are stored as 0 or 1. */

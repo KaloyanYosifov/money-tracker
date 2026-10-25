@@ -58,6 +58,7 @@ const userSettings = {
   theme: "light",
   summary_font: "mono",
   icon_style: "filled",
+  insights_enabled: false,
 };
 
 beforeEach(() => {
@@ -209,6 +210,31 @@ describe("Settings", () => {
     } finally {
       spy.mockRestore();
     }
+  });
+
+  it("shows the AI Insights switch with its note and turns it on", async () => {
+    const spy = jest.spyOn(mutations, "updateSettings");
+    try {
+      await renderSettings("ios");
+
+      const insights = screen.getByRole("switch", { name: "AI Insights" });
+      expect(insights.props.value).toBe(false);
+      expect(screen.getByText("Sends your spending data to Anthropic to write suggestions.")).toBeTruthy();
+
+      await fireEvent(insights, "valueChange", true);
+
+      expect(spy).toHaveBeenCalledWith(expect.anything(), { insights_enabled: true });
+      await waitFor(() => expect(settingsRow().insights_enabled).toBe(1));
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("shows the AI Insights switch on when insights_enabled is on", async () => {
+    mockDb.prepare("UPDATE user_settings SET insights_enabled = 1").run();
+    await renderSettings("web");
+
+    expect(screen.getByRole("switch", { name: "AI Insights" }).props.value).toBe(true);
   });
 
   it("turns Budget Mode on", async () => {

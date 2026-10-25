@@ -153,7 +153,7 @@ async function errorCode(res: Response): Promise<string | undefined> {
 
 // SQLite stores these as 0/1, but the server schema wants JSON booleans.
 const booleanColumns: Partial<Record<string, readonly string[]>> = {
-  user_settings: ["budget_mode", "carry_over", "hide_future", "show_note"],
+  user_settings: ["budget_mode", "carry_over", "hide_future", "show_note", "insights_enabled"],
 };
 
 function toUploadOp(entry: CrudEntry): UploadOp {

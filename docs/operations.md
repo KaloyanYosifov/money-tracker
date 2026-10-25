@@ -47,7 +47,7 @@ The secrets are in `k8s/money-tracker/secrets/money-tracker-secrets.yaml`, encry
 scripts/sops-edit.sh k8s/money-tracker/secrets/money-tracker-secrets.yaml
 ```
 
-Keep a copy of `JWT_PRIVATE_KEY_PEM` and `TOTP_ENC_KEY` in the password manager. Update the copy each time you change a value.
+Keep a copy of `JWT_PRIVATE_KEY_PEM`, `TOTP_ENC_KEY` and `CLAUDE_CODE_OAUTH_TOKEN` in the password manager. Update the copy each time you change a value.
 
 ### Rotate the JWT key
 
@@ -86,6 +86,28 @@ There is no re-encryption command. If the key leaks, do these steps:
 2. Run `/mtapi admin reset-totp --email <email>` for each user.
 3. Send each user the new invite URL. The user sets up TOTP again.
 4. Update the copy in the password manager.
+
+### Rotate the Claude token
+
+The gateway `money-tracker-ai` uses a Claude OAuth token. The token is valid for one year. The alert `ClaudeTokenExpiresSoon` starts 20 days before the expiry date.
+
+1. On a Mac, run `claude setup-token`. The command prints a new token that is valid for one year.
+2. Open the secrets file with `scripts/sops-edit.sh k8s/money-tracker/secrets/money-tracker-secrets.yaml`. Put the token in `CLAUDE_CODE_OAUTH_TOKEN` in the Secret `money-tracker-api`.
+3. Apply the secret and restart the gateway:
+
+   ```sh
+   ./deploy.sh money-tracker upgrade
+   kubectl -n money-tracker rollout restart deploy/money-tracker-ai
+   kubectl -n money-tracker rollout status deploy/money-tracker-ai
+   ```
+
+4. In `k8s/prometheus/alerts.yaml`, change the expiry in `ClaudeTokenExpiresSoon` to the new date, one year after today. Get the Unix seconds with `date -u -d <YYYY-MM-DD> +%s`. Then deploy prometheus:
+
+   ```sh
+   ./deploy.sh prometheus upgrade
+   ```
+
+5. Put a copy of the token in the password manager.
 
 ## Backups
 
@@ -251,7 +273,7 @@ If a run fails, download the `maestro-artifacts` artifact from the run. It has t
 
 ## Release
 
-The workflow `.github/workflows/release.yml` starts when you push a tag that starts with `v`. It builds `kyosifov/money-tracker-api`, `kyosifov/money-tracker-powersync` and `kyosifov/money-tracker-web` for `linux/amd64` and `linux/arm64`, and pushes them to Docker Hub. The image tag is the git tag. The workflow needs the repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`.
+The workflow `.github/workflows/release.yml` starts when you push a tag that starts with `v`. It builds `kyosifov/money-tracker-api`, `kyosifov/money-tracker-powersync`, `kyosifov/money-tracker-web` and `kyosifov/money-tracker-ai` for `linux/amd64` and `linux/arm64`, and pushes them to Docker Hub. The image tag is the git tag. The workflow needs the repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`.
 
 Do the steps in this order:
 
@@ -262,8 +284,8 @@ Do the steps in this order:
    git push origin v0.2.0
    ```
 
-2. Wait until the "Release" workflow passes. Make sure that the three images with the new tag are on Docker Hub.
-3. In `home-infrastructure`, change the image tags in `k8s/money-tracker/api.yaml`, `k8s/money-tracker/powersync.yaml` and `k8s/money-tracker/web.yaml` to the new tag.
+2. Wait until the "Release" workflow passes. Make sure that the four images with the new tag are on Docker Hub.
+3. In `home-infrastructure`, change the image tags in `k8s/money-tracker/api.yaml`, `k8s/money-tracker/powersync.yaml`, `k8s/money-tracker/web.yaml`, `k8s/money-tracker/ai.yaml` and `k8s/money-tracker/insights-cronjob.yaml` to the new tag.
 4. From the root of `home-infrastructure`, run:
 
    ```sh
@@ -280,6 +302,18 @@ Do the steps in this order:
    When the build is on TestFlight, install it on the iPhone or iPad from the TestFlight app.
 
 The `production` profile in `app/eas.json` sets `EXPO_PUBLIC_API_URL=https://money.kyosifov.com` and `EXPO_PUBLIC_POWERSYNC_URL=https://money-sync.kyosifov.com`. The `development` profile builds for the iOS simulator. The `preview` profile builds for internal distribution to registered devices.
+
+### AI Insights job
+
+The CronJob `money-tracker-insights` runs each day at 06:00. It writes the AI Insights cards for each user who turned on AI Insights. It sends the data of the user to the gateway `money-tracker-ai`, and the gateway calls Claude. If a run fails, the alert `InsightsJobFailed` sends a Signal message. If the Claude token is not valid, the run fails and you get the same alert. Before the token expires, `ClaudeTokenExpiresSoon` sends a Signal message. See [Rotate the Claude token](#rotate-the-claude-token).
+
+To start a run manually:
+
+```sh
+kubectl -n money-tracker create job --from=cronjob/money-tracker-insights money-tracker-insights-manual
+```
+
+Delete the job `money-tracker-insights-manual` when it is complete. A second job with the same name cannot start while the first one exists.
 
 ## Edge proxy
 

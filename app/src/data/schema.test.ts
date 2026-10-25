@@ -11,6 +11,8 @@ const tableForFile: Record<string, string> = {
   account: "accounts",
   budget: "budgets",
   category: "categories",
+  insight: "insights",
+  insight_question: "insight_questions",
   recurring_rule: "recurring_rules",
   transaction: "transactions",
   user_settings: "user_settings",

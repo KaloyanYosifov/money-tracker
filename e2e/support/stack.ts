@@ -88,6 +88,9 @@ export async function waitForStack(timeoutMs = 60_000): Promise<void> {
 }
 
 const USER_TABLES = [
+  "insights",
+  "insight_questions",
+  "insight_memory",
   "transactions",
   "recurring_rules",
   "budgets",

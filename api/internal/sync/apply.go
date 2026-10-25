@@ -116,6 +116,14 @@ func applyOp(ctx context.Context, tx pgx.Tx, userID, table string, cols []string
 	if table == "user_settings" && op.Op != schema.UploadOpOpPATCH {
 		return reject("not_allowed", "user_settings accepts only PATCH"), nil
 	}
+	// The server writes insights and answers questions. A client can only
+	// accept or dismiss a card and ask a new question.
+	if table == "insights" && op.Op != schema.UploadOpOpPATCH {
+		return reject("not_allowed", "insights accepts only PATCH"), nil
+	}
+	if table == "insight_questions" && op.Op != schema.UploadOpOpPUT {
+		return reject("not_allowed", "insight_questions accepts only PUT"), nil
+	}
 	if op.Op == schema.UploadOpOpDELETE {
 		return applyDelete(ctx, tx, userID, table, op.ID)
 	}
@@ -154,6 +162,26 @@ func applyOp(ctx context.Context, tx pgx.Tx, userID, table string, cols []string
 			return reject("forbidden", "user_id does not match the logged in user"), nil
 		}
 		delete(data, "user_id")
+	}
+
+	if r := checkInsightWrite(table, data); r != nil {
+		return *r, nil
+	}
+	// A question sends the user's data to the AI gateway, so only a user who
+	// turned AI Insights on can ask one. A repeated upload of a stored
+	// question is not a new question, so it skips this check.
+	if table == "insight_questions" {
+		var enabled bool
+		err := tx.QueryRow(ctx,
+			`SELECT COALESCE((SELECT insights_enabled FROM user_settings WHERE user_id = $1), false)
+			     OR EXISTS (SELECT 1 FROM insight_questions WHERE user_id = $1 AND id = $2)`,
+			userID, op.ID).Scan(&enabled)
+		if err != nil {
+			return Result{}, fmt.Errorf("check insights enabled: %w", err)
+		}
+		if !enabled {
+			return reject("not_allowed", "AI Insights is turned off"), nil
+		}
 	}
 
 	if table == "transactions" || table == "recurring_rules" {
@@ -200,10 +228,44 @@ func applyOp(ctx context.Context, tx pgx.Tx, userID, table string, cols []string
 		// keeps the stored row, so that it does not undo an edit from
 		// another device. An import sets external_id, and a second import
 		// updates the rows of the first one, so its PUT writes the row.
-		keep := table == "transactions" && data["source"] == "recurring" && data["external_id"] == nil
+		// A question that exists keeps its stored row, so that a repeated
+		// upload does not reset an answer to pending.
+		keep := (table == "transactions" && data["source"] == "recurring" && data["external_id"] == nil) ||
+			table == "insight_questions"
 		return put(ctx, tx, userID, table, op.ID, set, payload, keep)
 	}
 	return patch(ctx, tx, userID, table, op.ID, set, payload)
+}
+
+// checkInsightWrite limits the fields a client can write on insights and
+// insight_questions. data has no id, user_id or timestamps at this point. It
+// returns nil if the write is allowed or the table is another one.
+func checkInsightWrite(table string, data map[string]any) *Result {
+	var allowed []string
+	switch table {
+	case "insights":
+		allowed = []string{"status"}
+	case "insight_questions":
+		allowed = []string{"category_id", "question", "status"}
+	default:
+		return nil
+	}
+	for k := range data {
+		if !slices.Contains(allowed, k) {
+			r := reject("not_allowed", fmt.Sprintf("%s does not accept field %q", table, k))
+			return &r
+		}
+	}
+	status, _ := data["status"].(string)
+	if table == "insights" && status != "accepted" && status != "dismissed" {
+		r := reject("invalid_record", "an insight status can change only to accepted or dismissed")
+		return &r
+	}
+	if table == "insight_questions" && status != "pending" {
+		r := reject("not_allowed", "a new question must have status pending")
+		return &r
+	}
+	return nil
 }
 
 func tombstoned(ctx context.Context, tx pgx.Tx, table, id string) (bool, error) {

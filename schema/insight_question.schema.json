@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "insight_question.schema.json",
+  "title": "InsightQuestion",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "user_id", "category_id", "question", "status"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "user_id": { "type": "string", "format": "uuid" },
+    "category_id": { "type": "string", "format": "uuid" },
+    "question": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "answer": { "type": ["string", "null"], "maxLength": 2000 },
+    "action": {
+      "type": ["object", "null"],
+      "description": "The suggested record of the answer. The API checks its shape."
+    },
+    "status": { "type": "string", "enum": ["pending", "answered", "failed"] },
+    "error": { "type": ["string", "null"], "maxLength": 200 },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true,
+      "description": "Set by the server."
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true,
+      "description": "Set by the server."
+    },
+    "answered_at": { "type": ["string", "null"], "format": "date-time" }
+  }
+}

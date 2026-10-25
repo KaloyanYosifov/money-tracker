@@ -521,3 +521,118 @@ func TestApplyRecurringOccurrencePut(t *testing.T) {
 		t.Errorf("imported occurrence amount after second PUT = %d, want 2000", got)
 	}
 }
+
+func TestApplyInsightsTablesAreServerOwned(t *testing.T) {
+	ctx := context.Background()
+	pool := testutil.StartPostgres(t)
+	a := seedUser(t, pool, "a@example.com")
+	b := seedUser(t, pool, "b@example.com")
+
+	insight := newID(t, pool)
+	_, err := pool.Exec(ctx,
+		`INSERT INTO insights (id, user_id, kind, title, body, fingerprint, status)
+		 VALUES ($1, $2, 'tip', 'Cook more', 'You eat out a lot.', 'tip:eating-out', 'open')`, insight, a.userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	insightStatus := func() string {
+		t.Helper()
+		var s string
+		if err := pool.QueryRow(ctx, `SELECT status FROM insights WHERE id = $1`, insight).Scan(&s); err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+
+	t.Run("insights_put_not_allowed", func(t *testing.T) {
+		wantStatus(t, apply(t, pool, a.userID, put("insights", newID(t, pool), data(t,
+			`{"user_id":%q,"kind":"tip","title":"T","body":"B","fingerprint":"f","status":"open"}`, a.userID))), sync.Rejected, "not_allowed")
+	})
+	t.Run("insights_delete_not_allowed", func(t *testing.T) {
+		wantStatus(t, apply(t, pool, a.userID, del("insights", insight)), sync.Rejected, "not_allowed")
+	})
+	t.Run("insights_patch_title_not_allowed", func(t *testing.T) {
+		wantStatus(t, apply(t, pool, a.userID, patch("insights", insight, data(t, `{"title":"Changed"}`))), sync.Rejected, "not_allowed")
+	})
+	t.Run("insights_patch_status_and_title_not_allowed", func(t *testing.T) {
+		wantStatus(t, apply(t, pool, a.userID, patch("insights", insight, data(t,
+			`{"status":"dismissed","title":"Changed"}`))), sync.Rejected, "not_allowed")
+	})
+	t.Run("insights_patch_status_open_invalid", func(t *testing.T) {
+		wantStatus(t, apply(t, pool, a.userID, patch("insights", insight, data(t, `{"status":"open"}`))), sync.Rejected, "invalid_record")
+	})
+	t.Run("insights_patch_other_user_forbidden", func(t *testing.T) {
+		wantStatus(t, apply(t, pool, a.userID, patch("insights", insight, data(t,
+			`{"user_id":%q,"status":"dismissed"}`, b.userID))), sync.Rejected, "forbidden")
+		wantStatus(t, apply(t, pool, b.userID, patch("insights", insight, data(t, `{"status":"dismissed"}`))), sync.Rejected, "forbidden")
+		if got := insightStatus(); got != "open" {
+			t.Fatalf("status = %q, want open", got)
+		}
+	})
+	t.Run("insights_patch_status_applies", func(t *testing.T) {
+		wantStatus(t, apply(t, pool, a.userID, patch("insights", insight, data(t,
+			`{"user_id":%q,"status":"dismissed"}`, a.userID))), sync.Applied, "")
+		if got := insightStatus(); got != "dismissed" {
+			t.Fatalf("status = %q, want dismissed", got)
+		}
+	})
+
+	question := func(f fixture, status, extra string) schema.UploadOpData {
+		return data(t, `{"user_id":%q,"category_id":%q,"question":"Why so much?","status":%q%s}`,
+			f.userID, f.expenseCatID, status, extra)
+	}
+	t.Run("questions_put_opted_out_not_allowed", func(t *testing.T) {
+		wantStatus(t, apply(t, pool, a.userID, put("insight_questions", newID(t, pool), question(a, "pending", ""))), sync.Rejected, "not_allowed")
+	})
+	if _, err := pool.Exec(ctx, `UPDATE user_settings SET insights_enabled = true WHERE user_id IN ($1, $2)`, a.userID, b.userID); err != nil {
+		t.Fatal(err)
+	}
+	t.Run("questions_put_pending_applies", func(t *testing.T) {
+		id := newID(t, pool)
+		wantStatus(t, apply(t, pool, a.userID, put("insight_questions", id, question(a, "pending", ""))), sync.Applied, "")
+		if n := rowCount(t, pool, `SELECT count(*) FROM insight_questions WHERE id = $1 AND status = 'pending'`, id); n != 1 {
+			t.Fatalf("pending questions = %d, want 1", n)
+		}
+	})
+	t.Run("questions_put_answered_not_allowed", func(t *testing.T) {
+		wantStatus(t, apply(t, pool, a.userID, put("insight_questions", newID(t, pool), question(a, "answered", ""))), sync.Rejected, "not_allowed")
+	})
+	t.Run("questions_put_answer_not_allowed", func(t *testing.T) {
+		wantStatus(t, apply(t, pool, a.userID, put("insight_questions", newID(t, pool),
+			question(a, "pending", `,"answer":"Because."`))), sync.Rejected, "not_allowed")
+	})
+	t.Run("questions_put_unknown_category", func(t *testing.T) {
+		d := data(t, `{"user_id":%q,"category_id":%q,"question":"Why so much?","status":"pending"}`, a.userID, b.expenseCatID)
+		wantStatus(t, apply(t, pool, a.userID, put("insight_questions", newID(t, pool), d)), sync.Rejected, "invalid_reference")
+	})
+	t.Run("questions_put_other_user_forbidden", func(t *testing.T) {
+		wantStatus(t, apply(t, pool, a.userID, put("insight_questions", newID(t, pool), question(b, "pending", ""))), sync.Rejected, "forbidden")
+	})
+	t.Run("questions_patch_and_delete_not_allowed", func(t *testing.T) {
+		id := newID(t, pool)
+		wantStatus(t, apply(t, pool, a.userID, put("insight_questions", id, question(a, "pending", ""))), sync.Applied, "")
+		wantStatus(t, apply(t, pool, a.userID, patch("insight_questions", id, data(t, `{"status":"pending"}`))), sync.Rejected, "not_allowed")
+		wantStatus(t, apply(t, pool, a.userID, del("insight_questions", id)), sync.Rejected, "not_allowed")
+	})
+	t.Run("questions_put_again_keeps_answer", func(t *testing.T) {
+		id := newID(t, pool)
+		wantStatus(t, apply(t, pool, a.userID, put("insight_questions", id, question(a, "pending", ""))), sync.Applied, "")
+		if _, err := pool.Exec(ctx, `UPDATE insight_questions SET status = 'answered', answer = 'Because.' WHERE id = $1`, id); err != nil {
+			t.Fatal(err)
+		}
+		wantStatus(t, apply(t, pool, a.userID, put("insight_questions", id, question(a, "pending", ""))), sync.Applied, "")
+		if n := rowCount(t, pool, `SELECT count(*) FROM insight_questions WHERE id = $1 AND status = 'answered'`, id); n != 1 {
+			t.Fatalf("answered questions after a second PUT = %d, want 1", n)
+		}
+		wantStatus(t, apply(t, pool, b.userID, put("insight_questions", id, question(b, "pending", ""))), sync.Rejected, "forbidden")
+	})
+	t.Run("questions_put_again_after_opt_out_applies", func(t *testing.T) {
+		id := newID(t, pool)
+		wantStatus(t, apply(t, pool, a.userID, put("insight_questions", id, question(a, "pending", ""))), sync.Applied, "")
+		if _, err := pool.Exec(ctx, `UPDATE user_settings SET insights_enabled = false WHERE user_id = $1`, a.userID); err != nil {
+			t.Fatal(err)
+		}
+		wantStatus(t, apply(t, pool, a.userID, put("insight_questions", id, question(a, "pending", ""))), sync.Applied, "")
+		wantStatus(t, apply(t, pool, a.userID, put("insight_questions", newID(t, pool), question(a, "pending", ""))), sync.Rejected, "not_allowed")
+	})
+}

@@ -13,7 +13,7 @@ import { useLayoutMode } from "../../src/hooks/useLayoutMode";
 import { useShortcuts, type QuickAddType } from "../../src/hooks/useShortcuts";
 import { PeriodProvider } from "../../src/ui/nav/PeriodContext";
 import { Sidebar, SidebarPage } from "../../src/ui/nav/Sidebar";
-import { PAGES, PhoneHeader, TabBar } from "../../src/ui/nav/TabBar";
+import { pagesFor, PhoneHeader, TabBar } from "../../src/ui/nav/TabBar";
 import { reportsReplacesPage } from "../../src/ui/screens/Reports";
 import { colors, resolveTheme } from "../../src/ui/theme";
 
@@ -34,6 +34,9 @@ export default function MainLayout() {
   const focused = useIsFocused();
   const { data } = useQuery<UserSettings>("SELECT * FROM user_settings LIMIT 1");
   const settings = data[0];
+  // SQLite keeps the boolean as 0 or 1. A page that is not in the list has no screen, so its tab is hidden.
+  const insightsEnabled = Boolean(settings?.insights_enabled);
+  const pages = useMemo(() => pagesFor(insightsEnabled), [insightsEnabled]);
 
   const theme = colors[resolveTheme(settings?.theme ?? "system", scheme ?? "light")];
   const weekStart = settings?.week_start_day;
@@ -54,7 +57,7 @@ export default function MainLayout() {
     focused
       ? {
           page: (page) => {
-            const target = PAGES[page - 1];
+            const target = pages[page - 1];
             if (target) router.navigate(`/${target.name}` as Href);
           },
           newTransaction: quickAdd,
@@ -110,7 +113,7 @@ export default function MainLayout() {
           return <View style={[styles.fill, sides]}>{children}</View>;
         }}
       >
-        {PAGES.map((page) => (
+        {pages.map((page) => (
           <Tabs.Screen key={page.name} name={page.name} options={{ title: page.title }} />
         ))}
       </Tabs>

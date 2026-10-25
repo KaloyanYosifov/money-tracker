@@ -87,7 +87,38 @@ const user_settings = new Table({
   theme: column.text,
   summary_font: column.text,
   icon_style: column.text,
+  insights_enabled: column.integer,
 });
+
+// The server writes these two. The app only changes a card status and inserts
+// a pending question. action holds the JSON text of the suggested record.
+const insights = new Table({
+  user_id: column.text,
+  kind: column.text,
+  title: column.text,
+  body: column.text,
+  fingerprint: column.text,
+  status: column.text,
+  action: column.text,
+  created_at: column.text,
+  updated_at: column.text,
+});
+
+const insight_questions = new Table(
+  {
+    user_id: column.text,
+    category_id: column.text,
+    question: column.text,
+    answer: column.text,
+    action: column.text,
+    status: column.text,
+    error: column.text,
+    created_at: column.text,
+    updated_at: column.text,
+    answered_at: column.text,
+  },
+  { indexes: { by_category: ["category_id"] } },
+);
 
 const device_prefs = new Table(
   {
@@ -117,6 +148,8 @@ export const AppSchema = new Schema({
   recurring_rules,
   budgets,
   user_settings,
+  insights,
+  insight_questions,
   device_prefs,
   sync_problems,
 });

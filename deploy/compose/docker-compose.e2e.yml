@@ -9,6 +9,11 @@ services:
       # The e2e suites log in with TOTP.
       DISABLE_TOTP: "false"
 
+  ai:
+    environment:
+      # Canned answers, so the e2e stack needs no Claude token.
+      AI_FAKE: "1"
+
   toxiproxy:
     ports: !override
       - "28474:8474"

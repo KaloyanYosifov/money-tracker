@@ -18,12 +18,14 @@ var ErrUnknownTable = errors.New("unknown table")
 
 // tableSchemas maps each synced table to its schema file.
 var tableSchemas = map[string]string{
-	"accounts":        "account.schema.json",
-	"categories":      "category.schema.json",
-	"transactions":    "transaction.schema.json",
-	"recurring_rules": "recurring_rule.schema.json",
-	"budgets":         "budget.schema.json",
-	"user_settings":   "user_settings.schema.json",
+	"accounts":          "account.schema.json",
+	"categories":        "category.schema.json",
+	"transactions":      "transaction.schema.json",
+	"recurring_rules":   "recurring_rule.schema.json",
+	"budgets":           "budget.schema.json",
+	"user_settings":     "user_settings.schema.json",
+	"insights":          "insight.schema.json",
+	"insight_questions": "insight_question.schema.json",
 }
 
 const uploadSchema = "upload.schema.json"

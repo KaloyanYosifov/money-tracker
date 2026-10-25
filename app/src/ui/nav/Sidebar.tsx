@@ -65,7 +65,8 @@ export function Sidebar({ state, emitter, navigateToTab, onQuickAdd, onSettings,
         </View>
 
         <View accessibilityRole="tablist" style={styles.nav}>
-          {PAGES.map((page, index) => {
+          {/* Only the pages with a route, so the shortcut numbers have no gap for a hidden page. */}
+          {PAGES.filter((page) => state.routes.some((r) => r.name === page.name)).map((page, index) => {
             const route = state.routes.find((r) => r.name === page.name);
             if (!route) return null;
             const focused = route.key === focusedKey;
@@ -89,7 +90,9 @@ export function Sidebar({ state, emitter, navigateToTab, onQuickAdd, onSettings,
                 <Text allowFontScaling style={[styles.itemText, { color: theme.ink }, focused && styles.itemTextOn]}>
                   {page.title}
                 </Text>
-                <Text style={[styles.key, { backgroundColor: focused ? theme.paper : theme.hover, color: theme.accent }]}>{index + 1}</Text>
+                {index < 5 ? (
+                  <Text style={[styles.key, { backgroundColor: focused ? theme.paper : theme.hover, color: theme.accent }]}>{index + 1}</Text>
+                ) : null}
               </Pressable>
             );
           })}

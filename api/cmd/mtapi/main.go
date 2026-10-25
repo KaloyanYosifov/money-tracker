@@ -8,15 +8,23 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 
+	"github.com/KaloyanYosifov/money-tracker/api/internal/aiclient"
 	"github.com/KaloyanYosifov/money-tracker/api/internal/config"
 	"github.com/KaloyanYosifov/money-tracker/api/internal/db"
 	"github.com/KaloyanYosifov/money-tracker/api/internal/httpserver"
+	"github.com/KaloyanYosifov/money-tracker/api/internal/insights"
 )
 
-const usage = "usage: mtapi <serve|migrate|admin>"
+// questionPollInterval is how often the worker looks for pending insight
+// questions.
+const questionPollInterval = 5 * time.Second
+
+const usage = "usage: mtapi <serve|migrate|admin|insights>"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -33,6 +41,8 @@ func main() {
 		err = migrate()
 	case "admin":
 		err = admin(os.Args[2:], os.Stdout)
+	case "insights":
+		err = insightsCmd(os.Args[2:], logger)
 	default:
 		fmt.Fprintln(os.Stderr, usage)
 		os.Exit(2)
@@ -71,6 +81,20 @@ func serve(logger *slog.Logger) error {
 	defer pool.Close()
 	srv := httpserver.New(cfg, logger, pool)
 
+	// The worker must stop before pool.Close, so the shutdown path waits for
+	// it explicitly. Without AI_BASE_URL the API serves with no worker.
+	var workers sync.WaitGroup
+	if aiURL := strings.TrimSpace(os.Getenv("AI_BASE_URL")); aiURL != "" {
+		// The worker logs through the default logger.
+		slog.SetDefault(logger)
+		workers.Go(func() {
+			insights.RunWorker(ctx, pool, aiclient.New(aiURL, nil), questionPollInterval)
+		})
+		logger.Info("insights question worker started")
+	} else {
+		logger.Info("AI_BASE_URL is not set: the insights question worker is off")
+	}
+
 	errCh := make(chan error, 1)
 	go func() {
 		logger.Info("listening", "addr", srv.Addr)
@@ -79,13 +103,17 @@ func serve(logger *slog.Logger) error {
 
 	select {
 	case err := <-errCh:
+		stop()
+		workers.Wait()
 		return err
 	case <-ctx.Done():
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
+	err = srv.Shutdown(shutdownCtx)
+	workers.Wait()
+	if err != nil {
 		return err
 	}
 	if err := <-errCh; !errors.Is(err, http.ErrServerClosed) {

@@ -193,6 +193,14 @@ export function Settings({
               onChange={(hide_future) => set({ hide_future })}
               theme={theme}
             />
+            <SwitchRow
+              testID="insights-switch"
+              label="AI Insights"
+              note="Sends your spending data to Anthropic to write suggestions."
+              value={Boolean(settings.insights_enabled)}
+              onChange={(insights_enabled) => set({ insights_enabled })}
+              theme={theme}
+            />
           </GroupedSection>
         ) : null}
 
@@ -388,6 +396,7 @@ function ScreenHeader({ title, onBack, theme }: { title: string; onBack: () => v
 
 function SwitchRow({
   label,
+  note,
   value,
   onChange,
   disabled,
@@ -396,6 +405,8 @@ function SwitchRow({
 }: {
   testID?: string;
   label: string;
+  /** A muted line under the label. */
+  note?: string;
   value: boolean;
   onChange: (value: boolean) => void;
   disabled?: boolean;
@@ -403,9 +414,20 @@ function SwitchRow({
 }) {
   return (
     <View style={[styles.row, { backgroundColor: theme.row, borderBottomColor: theme.line }]}>
-      <Text allowFontScaling style={[styles.label, styles.labelText, { color: theme.settingsBlue }]}>
-        {label}
-      </Text>
+      {note ? (
+        <View style={styles.label}>
+          <Text allowFontScaling style={[styles.labelText, { color: theme.settingsBlue }]}>
+            {label}
+          </Text>
+          <Text allowFontScaling style={[styles.subText, { color: theme.accent }]}>
+            {note}
+          </Text>
+        </View>
+      ) : (
+        <Text allowFontScaling style={[styles.label, styles.labelText, { color: theme.settingsBlue }]}>
+          {label}
+        </Text>
+      )}
       <ThemedSwitch
         testID={testID}
         accessibilityRole="switch"

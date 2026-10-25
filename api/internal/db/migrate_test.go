@@ -11,9 +11,9 @@ import (
 	"github.com/KaloyanYosifov/money-tracker/api/internal/testutil"
 )
 
-var syncedTables = []string{"accounts", "budgets", "categories", "recurring_rules", "transactions", "user_settings"}
+var syncedTables = []string{"accounts", "budgets", "categories", "insight_questions", "insights", "recurring_rules", "transactions", "user_settings"}
 
-var privateTables = []string{"users", "invites", "recovery_codes", "refresh_tokens", "deleted_records"}
+var privateTables = []string{"users", "invites", "recovery_codes", "refresh_tokens", "deleted_records", "insight_memory"}
 
 func TestMigrationsCreateSchema(t *testing.T) {
 	pool := testutil.StartPostgres(t)

@@ -1,0 +1,43 @@
+# Turns on AI Insights, opens its tab and asks a question about Groceries. The user is logged in
+# (login.yaml). The e2e stack runs the AI gateway with AI_FAKE=1, so the API worker writes a fixed
+# answer, and it syncs down. e2e/ios/run.ts then checks that the question is answered on the server.
+appId: com.kyosifov.moneytracker
+name: AI Insights question
+---
+- tapOn:
+    id: menu
+- scrollUntilVisible:
+    element:
+      id: insights-switch
+      enabled: true
+    direction: DOWN
+- tapOn:
+    id: insights-switch
+- tapOn:
+    id: back
+- extendedWaitUntil:
+    visible:
+      id: tab-insights
+    timeout: 10000
+- tapOn:
+    id: tab-insights
+- extendedWaitUntil:
+    visible:
+      text: No suggestions yet.
+    timeout: 10000
+- tapOn:
+    id: ask-category
+- tapOn:
+    id: ask-category-Groceries
+- tapOn:
+    id: ask-question
+- inputText: E2E question about groceries
+# No keyboard shows when the simulator uses the Mac keyboard, so this step may do nothing.
+- hideKeyboard:
+    optional: true
+- tapOn:
+    text: Ask
+- extendedWaitUntil:
+    visible:
+      text: This answer comes from the fake AI gateway.
+    timeout: 60000

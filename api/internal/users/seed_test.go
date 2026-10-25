@@ -51,25 +51,25 @@ func TestSeedDefaults(t *testing.T) {
 	seed(t, pool, userID, "EUR")
 
 	var (
-		currency, timePeriod, theme, summaryFont, iconStyle string
-		weekStart, monthStart, yearStart                    int
-		budgetMode, carryOver, hideFuture, showNote         bool
+		currency, timePeriod, theme, summaryFont, iconStyle   string
+		weekStart, monthStart, yearStart                      int
+		budgetMode, carryOver, hideFuture, showNote, insights bool
 	)
 	err = pool.QueryRow(ctx,
 		`SELECT currency_code, time_period, week_start_day, month_start_day, year_start_month,
-		        budget_mode, carry_over, hide_future, show_note, theme, summary_font, icon_style
+		        budget_mode, carry_over, hide_future, show_note, theme, summary_font, icon_style, insights_enabled
 		 FROM user_settings WHERE user_id = $1`, userID).
 		Scan(&currency, &timePeriod, &weekStart, &monthStart, &yearStart,
-			&budgetMode, &carryOver, &hideFuture, &showNote, &theme, &summaryFont, &iconStyle)
+			&budgetMode, &carryOver, &hideFuture, &showNote, &theme, &summaryFont, &iconStyle, &insights)
 	if err != nil {
 		t.Fatalf("read user_settings: %v", err)
 	}
 	if currency != "EUR" || timePeriod != "monthly" || weekStart != 1 || monthStart != 1 || yearStart != 1 ||
 		budgetMode || !carryOver || hideFuture || !showNote ||
-		theme != "system" || summaryFont != "mono" || iconStyle != "filled" {
-		t.Fatalf("user_settings defaults are wrong: %v %v %v %v %v %v %v %v %v %v %v %v",
+		theme != "system" || summaryFont != "mono" || iconStyle != "filled" || insights {
+		t.Fatalf("user_settings defaults are wrong: %v %v %v %v %v %v %v %v %v %v %v %v %v",
 			currency, timePeriod, weekStart, monthStart, yearStart,
-			budgetMode, carryOver, hideFuture, showNote, theme, summaryFont, iconStyle)
+			budgetMode, carryOver, hideFuture, showNote, theme, summaryFont, iconStyle, insights)
 	}
 
 	rows, err := pool.Query(ctx,

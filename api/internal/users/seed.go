@@ -45,9 +45,9 @@ func SeedDefaults(ctx context.Context, tx pgx.Tx, userID, currency string) error
 	tag, err := tx.Exec(ctx,
 		`INSERT INTO user_settings
 		   (id, user_id, currency_code, time_period, week_start_day, month_start_day, year_start_month,
-		    budget_mode, carry_over, hide_future, show_note, theme, summary_font, icon_style)
+		    budget_mode, carry_over, hide_future, show_note, theme, summary_font, icon_style, insights_enabled)
 		 VALUES (gen_random_uuid(), $1, $2, 'monthly', 1, 1, 1,
-		         false, true, false, true, 'system', 'mono', 'filled')
+		         false, true, false, true, 'system', 'mono', 'filled', false)
 		 ON CONFLICT (user_id) DO NOTHING`, userID, currency)
 	if err != nil {
 		return fmt.Errorf("insert user settings: %w", err)

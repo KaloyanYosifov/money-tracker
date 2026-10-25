@@ -7,7 +7,7 @@
   "required": [
     "id", "user_id", "currency_code", "time_period", "week_start_day", "month_start_day",
     "year_start_month", "budget_mode", "carry_over", "hide_future", "show_note",
-    "theme", "summary_font", "icon_style"
+    "theme", "summary_font", "icon_style", "insights_enabled"
   ],
   "properties": {
     "id": { "type": "string", "format": "uuid" },
@@ -28,6 +28,7 @@
     "show_note": { "type": "boolean" },
     "theme": { "type": "string", "enum": ["light", "dark", "system"] },
     "summary_font": { "type": "string", "enum": ["mono", "system"] },
-    "icon_style": { "type": "string", "enum": ["filled", "outline"] }
+    "icon_style": { "type": "string", "enum": ["filled", "outline"] },
+    "insights_enabled": { "type": "boolean" }
   }
 }

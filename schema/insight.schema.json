@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "insight.schema.json",
+  "title": "Insight",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "user_id", "kind", "title", "body", "fingerprint", "status"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "user_id": { "type": "string", "format": "uuid" },
+    "kind": { "type": "string", "enum": ["tip", "budget", "recurring_rule"] },
+    "title": { "type": "string", "maxLength": 80 },
+    "body": { "type": "string", "maxLength": 500 },
+    "fingerprint": { "type": "string", "maxLength": 200 },
+    "status": { "type": "string", "enum": ["open", "accepted", "dismissed"] },
+    "action": {
+      "type": ["object", "null"],
+      "description": "The suggested record of a budget or recurring_rule card. The API checks its shape for each kind."
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true,
+      "description": "Set by the server."
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true,
+      "description": "Set by the server."
+    }
+  }
+}

@@ -17,12 +17,14 @@ var ErrUnknownTable = schema.ErrUnknownTable
 // tables maps each synced table to its column names. The names come from the
 // json tags of the generated Go types, so SQL uses only these names.
 var tables = map[string][]string{
-	"accounts":        columnsOf(schema.Account{}),
-	"categories":      columnsOf(schema.Category{}),
-	"transactions":    columnsOf(schema.Transaction{}),
-	"recurring_rules": columnsOf(schema.RecurringRule{}),
-	"budgets":         columnsOf(schema.Budget{}),
-	"user_settings":   columnsOf(schema.UserSettings{}),
+	"accounts":          columnsOf(schema.Account{}),
+	"categories":        columnsOf(schema.Category{}),
+	"transactions":      columnsOf(schema.Transaction{}),
+	"recurring_rules":   columnsOf(schema.RecurringRule{}),
+	"budgets":           columnsOf(schema.Budget{}),
+	"user_settings":     columnsOf(schema.UserSettings{}),
+	"insights":          columnsOf(schema.Insight{}),
+	"insight_questions": columnsOf(schema.InsightQuestion{}),
 }
 
 // readOnly lists the fields that the client cannot write. The server sets

@@ -3,7 +3,7 @@ import Svg, { Circle, G, Path, Rect } from "react-native-svg";
 
 import { colors } from "../theme";
 
-export type TabIconName = "tag" | "notepad" | "cabinet" | "people" | "pie" | "gear";
+export type TabIconName = "tag" | "notepad" | "cabinet" | "people" | "pie" | "sparkle" | "gear";
 
 type Props = {
   name: TabIconName;
@@ -55,6 +55,12 @@ const outline: Record<TabIconName, (p: DrawProps) => ReactElement> = {
       <Path d="M24 11v14l12 7" />
     </G>
   ),
+  sparkle: ({ color }) => (
+    <G fill="none" stroke={color} strokeWidth={1.6} strokeLinejoin="round">
+      <Path d="M24 7c1.4 8.6 4.4 11.6 13 13-8.6 1.4-11.6 4.4-13 13-1.4-8.6-4.4-11.6-13-13 8.6-1.4 11.6-4.4 13-13Z" />
+      <Path d="M37 30c.6 3.4 1.6 4.4 5 5-3.4.6-4.4 1.6-5 5-.6-3.4-1.6-4.4-5-5 3.4-.6 4.4-1.6 5-5Z" />
+    </G>
+  ),
   gear: ({ color }) => (
     <G fill="none" stroke={color} strokeWidth={1.6}>
       <Circle cx={24} cy={24} r={6} />
@@ -98,6 +104,12 @@ const filled: Record<TabIconName, (p: DrawProps) => ReactElement> = {
     <G>
       <Circle cx={24} cy={25} r={14.8} fill={color} />
       <Path d="M24 11v14l12 7" fill="none" stroke={background} strokeWidth={1.6} strokeLinejoin="round" />
+    </G>
+  ),
+  sparkle: ({ color }) => (
+    <G fill={color}>
+      <Path d="M24 7c1.4 8.6 4.4 11.6 13 13-8.6 1.4-11.6 4.4-13 13-1.4-8.6-4.4-11.6-13-13 8.6-1.4 11.6-4.4 13-13Z" />
+      <Path d="M37 30c.6 3.4 1.6 4.4 5 5-3.4.6-4.4 1.6-5 5-.6-3.4-1.6-4.4-5-5 3.4-.6 4.4-1.6 5-5Z" />
     </G>
   ),
   gear: ({ color, background }) => (

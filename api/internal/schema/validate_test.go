@@ -26,7 +26,11 @@ var fullRecords = map[string]string{
 	"budgets": `{"id":"` + recID + `","user_id":"` + userID + `","category_id":null,"period":"monthly","amount_minor":50000}`,
 	"user_settings": `{"id":"` + recID + `","user_id":"` + userID + `","currency_code":"EUR","time_period":"monthly","week_start_day":1,` +
 		`"month_start_day":1,"year_start_month":1,"budget_mode":false,"carry_over":true,"hide_future":false,"show_note":true,` +
-		`"theme":"system","summary_font":"mono","icon_style":"filled"}`,
+		`"theme":"system","summary_font":"mono","icon_style":"filled","insights_enabled":false}`,
+	"insights": `{"id":"` + recID + `","user_id":"` + userID + `","kind":"budget","title":"Cap food","body":"You spend more on food.",` +
+		`"fingerprint":"budget:food","status":"open","action":{"category_id":"` + otherID + `","amount_minor":30000}}`,
+	"insight_questions": `{"id":"` + recID + `","user_id":"` + userID + `","category_id":"` + otherID + `","question":"Why so high?",` +
+		`"answer":null,"action":null,"status":"pending","error":null,"answered_at":null}`,
 }
 
 func decode(t *testing.T, s string) any {

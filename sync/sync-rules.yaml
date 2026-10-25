@@ -9,3 +9,5 @@ bucket_definitions:
       - SELECT * FROM recurring_rules WHERE user_id = bucket.user_id
       - SELECT * FROM budgets WHERE user_id = bucket.user_id
       - SELECT * FROM user_settings WHERE user_id = bucket.user_id
+      - SELECT * FROM insights WHERE user_id = bucket.user_id
+      - SELECT * FROM insight_questions WHERE user_id = bucket.user_id
