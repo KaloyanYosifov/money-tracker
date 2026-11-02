@@ -58,11 +58,17 @@ export function formatAmount(
   options: { signed?: boolean } = {},
 ): string {
   const digits = minorUnits(currency);
-  return new Intl.NumberFormat(locale, {
+  const text = new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
     signDisplay: options.signed ? "exceptZero" : "auto",
   }).format(minor / 10 ** digits);
+  return options.signed ? withPlus(text, minor > 0) : text;
+}
+
+/** Adds "+" to a formatted positive number. Hermes on iOS ignores the signDisplay option of Intl.NumberFormat. */
+export function withPlus(text: string, positive: boolean): string {
+  return positive && !text.includes("+") ? `+${text}` : text;
 }
 
 /** Minor units as text for an amount field, with the locale's decimal separator: 1499 EUR as "14.99" or "14,99". */

@@ -503,6 +503,43 @@ describe("AccountForm", () => {
     expect(screen.getByRole("button", { name: "Save" }).props.accessibilityState?.disabled).toBe(true);
   });
 
+  it("saves the Exclude from net worth switch", async () => {
+    const spy = jest.spyOn(mutations, "saveAccount");
+    try {
+      const onClose = jest.fn();
+      await render(<AccountForm id={null} platform="ios" onClose={onClose} />);
+
+      const toggle = screen.getByRole("switch", { name: "Exclude from net worth" });
+      expect(toggle.props.value).toBe(false);
+      expect(
+        screen.getByText("Use this for money that you moved to a broker. The Portfolio tab already counts it as holdings."),
+      ).toBeTruthy();
+
+      await fireEvent.changeText(screen.getByPlaceholderText("Name"), "Broker");
+      await fireEvent(toggle, "valueChange", true);
+      await fireEvent.press(screen.getByRole("button", { name: "Save" }));
+
+      expect(spy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ exclude_from_net_worth: true }));
+      expect(row("accounts", (await spy.mock.results[0].value).id)).toMatchObject({ exclude_from_net_worth: 1 });
+      expect(onClose).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("opens an account with the net worth flag with the switch on, and turns it off", async () => {
+    mockDb.prepare("UPDATE accounts SET exclude_from_net_worth = 1 WHERE id = 'wallet'").run();
+    await render(<AccountForm id="wallet" platform="ios" onClose={jest.fn()} />);
+
+    const toggle = screen.getByRole("switch", { name: "Exclude from net worth" });
+    expect(toggle.props.value).toBe(true);
+
+    await fireEvent(toggle, "valueChange", false);
+    await fireEvent.press(screen.getByRole("button", { name: "Save" }));
+
+    expect(row("accounts", "wallet")).toMatchObject({ exclude_from_net_worth: 0 });
+  });
+
   it("shows the rejected data of a sync problem, and a save removes the problem", async () => {
     loadFixture(mockDb, {
       sync_problems: [

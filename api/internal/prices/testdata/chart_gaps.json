@@ -1,0 +1,22 @@
+{
+  "chart": {
+    "result": [
+      {
+        "meta": {
+          "currency": "USD",
+          "symbol": "ACME",
+          "fullExchangeName": "NasdaqGS",
+          "instrumentType": "EQUITY",
+          "regularMarketTime": 1761940800,
+          "regularMarketPrice": 50,
+          "shortName": "Acme Corp"
+        },
+        "timestamp": [1761658200, 1761744600, 1761831000],
+        "indicators": {
+          "quote": [{"close": [48, null, 49.5]}]
+        }
+      }
+    ],
+    "error": null
+  }
+}

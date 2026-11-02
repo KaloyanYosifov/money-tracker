@@ -636,3 +636,77 @@ func TestApplyInsightsTablesAreServerOwned(t *testing.T) {
 		wantStatus(t, apply(t, pool, a.userID, put("insight_questions", newID(t, pool), question(a, "pending", ""))), sync.Rejected, "not_allowed")
 	})
 }
+
+func TestApplyTrades(t *testing.T) {
+	ctx := context.Background()
+	pool := testutil.StartPostgres(t)
+	a := seedUser(t, pool, "a@example.com")
+
+	instrument := func(symbol string, link bool) string {
+		t.Helper()
+		var id string
+		err := pool.QueryRow(ctx,
+			`INSERT INTO instruments (symbol, name, exchange, kind, quote_currency)
+			 VALUES ($1, 'Test Corp', 'TEST', 'stock', 'USD') RETURNING id::text`, symbol).Scan(&id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if link {
+			if _, err := pool.Exec(ctx, `INSERT INTO user_instruments (user_id, instrument_id) VALUES ($1, $2)`, a.userID, id); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return id
+	}
+	linked := instrument("ZZTEST1", true)
+	unlinked := instrument("ZZTEST2", false)
+
+	trade := func(instrumentID, quantity, price, fee string) schema.UploadOpData {
+		return data(t, `{"user_id":%q,"instrument_id":%q,"side":"buy","date":"2026-03-14",
+			"quantity":%q,"price":%q,"fee":%q,"note":null}`, a.userID, instrumentID, quantity, price, fee)
+	}
+	wantRejected := func(t *testing.T, res sync.Result, code, msg string) {
+		t.Helper()
+		wantStatus(t, res, sync.Rejected, code)
+		if msg != "" && res.Message != msg {
+			t.Fatalf("message = %q, want %q", res.Message, msg)
+		}
+	}
+
+	t.Run("put_linked_instrument_applies", func(t *testing.T) {
+		id := newID(t, pool)
+		wantStatus(t, apply(t, pool, a.userID, put("trades", id, trade(linked, "2.5", "101.25", "1.00"))), sync.Applied, "")
+		if n := rowCount(t, pool, `SELECT count(*) FROM trades WHERE id = $1 AND user_id = $2 AND quantity = '2.5'`, id, a.userID); n != 1 {
+			t.Fatalf("trades = %d, want 1", n)
+		}
+	})
+	t.Run("put_unlinked_instrument_rejected", func(t *testing.T) {
+		wantRejected(t, apply(t, pool, a.userID, put("trades", newID(t, pool), trade(unlinked, "1", "10", "0"))), "invalid_reference", "")
+	})
+	for _, q := range []string{"0", "0.000"} {
+		t.Run("put_quantity_zero_"+q, func(t *testing.T) {
+			wantRejected(t, apply(t, pool, a.userID, put("trades", newID(t, pool), trade(linked, q, "10", "0"))),
+				"invalid_record", "quantity must be greater than 0")
+		})
+	}
+	t.Run("put_price_zero", func(t *testing.T) {
+		wantRejected(t, apply(t, pool, a.userID, put("trades", newID(t, pool), trade(linked, "1", "0.00", "0"))),
+			"invalid_record", "price must be greater than 0")
+	})
+	t.Run("patch_quantity_zero", func(t *testing.T) {
+		id := newID(t, pool)
+		wantStatus(t, apply(t, pool, a.userID, put("trades", id, trade(linked, "1", "10", "0"))), sync.Applied, "")
+		wantRejected(t, apply(t, pool, a.userID, patch("trades", id, data(t, `{"quantity":"0.0"}`))),
+			"invalid_record", "quantity must be greater than 0")
+	})
+	t.Run("put_fee_zero_applies", func(t *testing.T) {
+		wantStatus(t, apply(t, pool, a.userID, put("trades", newID(t, pool), trade(linked, "0.001", "10", "0"))), sync.Applied, "")
+	})
+	t.Run("put_server_table_rejected", func(t *testing.T) {
+		d := data(t, `{"symbol":"ZZTEST3","name":"Test","exchange":"TEST","kind":"stock","quote_currency":"USD"}`)
+		wantStatus(t, apply(t, pool, a.userID, put("instruments", newID(t, pool), d)), sync.Rejected, "invalid_record")
+		if n := rowCount(t, pool, `SELECT count(*) FROM instruments WHERE symbol = 'ZZTEST3'`); n != 0 {
+			t.Fatalf("instruments = %d, want 0", n)
+		}
+	})
+}

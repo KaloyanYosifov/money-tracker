@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/KaloyanYosifov/money-tracker/api/internal/config"
@@ -35,6 +36,18 @@ func TestHealthz(t *testing.T) {
 	}
 	if rec.Body.String() != "ok" {
 		t.Fatalf("body = %q, want ok", rec.Body.String())
+	}
+}
+
+func TestMetrics(t *testing.T) {
+	rec := httptest.NewRecorder()
+	newTestHandler(t).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	want := `mtapi_yahoo_requests_total{endpoint="chart",result="contract_broken"} 0`
+	if !strings.Contains(rec.Body.String(), want) {
+		t.Errorf("body =\n%s\nwant it to contain %s", rec.Body.String(), want)
 	}
 }
 
@@ -86,6 +99,20 @@ func TestCORS(t *testing.T) {
 	for name := range rec.Header() {
 		if len(name) > len("Access-Control-") && name[:len("Access-Control-")] == "Access-Control-" {
 			t.Errorf("other origin got CORS header %s", name)
+		}
+	}
+}
+
+func TestInstrumentRoutesNeedToken(t *testing.T) {
+	h := newTestHandler(t)
+	for _, req := range []*http.Request{
+		httptest.NewRequest(http.MethodGet, "/api/instruments/search?q=acme", nil),
+		httptest.NewRequest(http.MethodPost, "/api/instruments", bytes.NewReader([]byte(`{"symbol":"ACME"}`))),
+	} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s %s: status = %d, want 401", req.Method, req.URL.Path, rec.Code)
 		}
 	}
 }

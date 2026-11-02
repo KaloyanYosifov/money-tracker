@@ -1,0 +1,64 @@
+# Adds the asset ACME and buys 10 at 80 with a fee of 1. The user is logged in (login.yaml).
+# The e2e stack runs the price worker with PRICES_FAKE=1: the close is 100 USD and the EURUSD
+# rate is 1.25, so the holding is worth €800.00. e2e/ios/run.ts then checks the trade on the server.
+appId: com.kyosifov.moneytracker
+name: Portfolio asset and trade
+---
+- tapOn:
+    id: tab-portfolio
+- extendedWaitUntil:
+    visible:
+      text: No assets yet
+    timeout: 10000
+- tapOn:
+    text: Add asset
+    index: 0
+- extendedWaitUntil:
+    visible:
+      text: Name or ticker
+    timeout: 10000
+# The search field has the focus.
+- inputText: acme
+- extendedWaitUntil:
+    visible:
+      text: "ACME Test Corp, ACME.*"
+    timeout: 10000
+- tapOn:
+    text: "ACME Test Corp, ACME.*"
+# The form shows its fields when the new asset has synced to this device.
+- extendedWaitUntil:
+    visible:
+      id: trade-quantity
+    timeout: 60000
+- tapOn:
+    id: trade-date
+- waitForAnimationToEnd
+- tapOn:
+    text: Yesterday
+- tapOn:
+    id: trade-quantity
+- inputText: "10"
+- tapOn:
+    id: trade-price
+# The price field can show the close of the date.
+- eraseText: 20
+- inputText: "80"
+- tapOn:
+    id: trade-fee
+- inputText: "1"
+# Save is in the header, above the keyboard. hideKeyboard is not used: on iOS it taps or
+# swipes the form, and that can open a sheet over Save.
+- tapOn:
+    id: trade-save
+- extendedWaitUntil:
+    notVisible:
+      id: trade-save
+    timeout: 10000
+- extendedWaitUntil:
+    visible:
+      text: "ACME Test Corp, €800.00"
+    timeout: 60000
+- runFlow:
+    file: subflows/check-sync-state.yaml
+    env:
+      STATE: Synced.* · 0 pending

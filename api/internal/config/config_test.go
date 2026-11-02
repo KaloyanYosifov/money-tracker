@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 var requiredVars = []string{
@@ -174,5 +175,65 @@ func TestLoadDisableTOTP(t *testing.T) {
 		if cfg.TOTPDisabled != c.want {
 			t.Errorf("%s %s: TOTPDisabled = %v, want %v", c.publicURL, c.value, cfg.TOTPDisabled, c.want)
 		}
+	}
+}
+
+func TestLoadPricesDefaults(t *testing.T) {
+	env, _, _ := validEnv(t)
+	cfg, err := Load(envFunc(env))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.PricesEnabled || cfg.PricesFake {
+		t.Errorf("PricesEnabled = %v, PricesFake = %v, want true, false", cfg.PricesEnabled, cfg.PricesFake)
+	}
+	if cfg.PricesSourceURL != "https://query1.finance.yahoo.com" {
+		t.Errorf("PricesSourceURL = %q", cfg.PricesSourceURL)
+	}
+	if cfg.PricesInterval != 5*time.Minute {
+		t.Errorf("PricesInterval = %v, want 5m", cfg.PricesInterval)
+	}
+}
+
+func TestLoadPricesSettings(t *testing.T) {
+	env, _, _ := validEnv(t)
+	env["PRICES_ENABLED"] = "false"
+	env["PRICES_FAKE"] = "true"
+	env["PRICES_SOURCE_URL"] = "http://stub:9000"
+	env["PRICES_INTERVAL"] = "2s"
+	cfg, err := Load(envFunc(env))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.PricesEnabled || !cfg.PricesFake {
+		t.Errorf("PricesEnabled = %v, PricesFake = %v, want false, true", cfg.PricesEnabled, cfg.PricesFake)
+	}
+	if cfg.PricesSourceURL != "http://stub:9000" {
+		t.Errorf("PricesSourceURL = %q", cfg.PricesSourceURL)
+	}
+	if cfg.PricesInterval != 2*time.Second {
+		t.Errorf("PricesInterval = %v, want 2s", cfg.PricesInterval)
+	}
+}
+
+func TestLoadRejectsInvalidPrices(t *testing.T) {
+	cases := []struct{ name, value string }{
+		{"PRICES_ENABLED", "maybe"},
+		{"PRICES_FAKE", "maybe"},
+		{"PRICES_INTERVAL", "abc"},
+		{"PRICES_INTERVAL", "0s"},
+		{"PRICES_INTERVAL", "-1m"},
+		{"PRICES_SOURCE_URL", "not a url"},
+		{"PRICES_SOURCE_URL", "/no-host"},
+	}
+	for _, c := range cases {
+		t.Run(c.name+"="+c.value, func(t *testing.T) {
+			env, _, _ := validEnv(t)
+			env[c.name] = c.value
+			_, err := Load(envFunc(env))
+			if err == nil || !strings.Contains(err.Error(), c.name) {
+				t.Fatalf("err = %v, want an error that names %s", err, c.name)
+			}
+		})
 	}
 }

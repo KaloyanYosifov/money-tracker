@@ -5,14 +5,17 @@ import {
   archiveCategory,
   deleteAccount,
   deleteCategory,
+  deleteTrade,
   restoreAccount,
   restoreCategory,
   saveAccount,
   saveCategory,
   saveCategoryBudget,
   saveRecurringRule,
+  saveTrade,
   saveTransaction,
   updateSettings,
+  type TradeInput,
   type TransactionInput,
 } from "./mutations";
 
@@ -353,6 +356,21 @@ describe("accounts", () => {
     expect(updateStatements(spy)).toEqual(["UPDATE accounts SET color = ? WHERE id = ?"]);
   });
 
+  it("stores exclude_from_net_worth as 1", async () => {
+    const result = await saveAccount(db, { name: "Broker", color: "#0000ff", exclude_from_net_worth: true });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(row("accounts", result.id)).toMatchObject({ exclude_from_net_worth: 1 });
+  });
+
+  it("keeps exclude_from_net_worth on an edit without the field", async () => {
+    await saveAccount(db, { id: "bank", name: "Bank", color: "#000000", exclude_from_net_worth: true });
+    await saveAccount(db, { id: "bank", name: "Bank", color: "#ff0000" });
+
+    expect(row("accounts", "bank")).toMatchObject({ color: "#ff0000", exclude_from_net_worth: 1 });
+  });
+
   it("archives an account", async () => {
     await archiveAccount(db, "bank");
 
@@ -610,5 +628,146 @@ describe("updateSettings", () => {
     await updateSettings(db, { carry_over: false });
 
     expect(updateStatements(spy)).toEqual(["UPDATE user_settings SET carry_over = ? WHERE id = ?"]);
+  });
+});
+
+describe("saveTrade", () => {
+  const buy: TradeInput = {
+    instrument_id: "acme",
+    side: "buy",
+    date: "2026-03-10",
+    quantity: " 1,5 ",
+    price: "80.25",
+    fee: "0,5",
+    note: "First lot",
+  };
+
+  beforeEach(() => {
+    loadFixture(sqlite, {
+      instruments: [{ id: "acme", symbol: "ACME", name: "Acme Corp", exchange: "TEST", kind: "stock", quote_currency: "USD" }],
+      trades: [
+        {
+          id: "tr1",
+          user_id: "u1",
+          instrument_id: "acme",
+          side: "buy",
+          date: "2026-02-01",
+          quantity: "12",
+          price: "70",
+          fee: "0",
+        },
+      ],
+    });
+  });
+
+  function tradeCount() {
+    return sqlite.prepare("SELECT COUNT(*) AS n FROM trades").get();
+  }
+
+  it("inserts a buy with the user of the settings and normalized decimals", async () => {
+    const result = await saveTrade(db, buy);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(row("trades", result.id)).toMatchObject({
+      user_id: "u1",
+      instrument_id: "acme",
+      side: "buy",
+      date: "2026-03-10",
+      quantity: "1.5",
+      price: "80.25",
+      fee: "0.5",
+      note: "First lot",
+    });
+  });
+
+  it("keeps the id on an edit and changes the fields", async () => {
+    const result = await saveTrade(db, { ...buy, id: "tr1", quantity: "20", note: null });
+
+    expect(result).toEqual({ ok: true, id: "tr1" });
+    expect(row("trades", "tr1")).toMatchObject({ quantity: "20", price: "80.25", date: "2026-03-10", note: null });
+    expect(tradeCount()).toEqual({ n: 1 });
+  });
+
+  it("saves an empty fee as 0", async () => {
+    const result = await saveTrade(db, { ...buy, fee: "" });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(row("trades", result.id)).toMatchObject({ fee: "0" });
+  });
+
+  it.each([
+    [{ quantity: "" }, "quantity", "invalid"],
+    [{ quantity: "0" }, "quantity", "invalid"],
+    [{ quantity: "0.000" }, "quantity", "invalid"],
+    [{ quantity: "1.1234567890123" }, "quantity", "invalid"],
+    [{ price: "abc" }, "price", "invalid"],
+    [{ price: "-5" }, "price", "invalid"],
+    [{ fee: "x" }, "fee", "invalid"],
+    [{ date: "2026-02-30" }, "date", "invalid"],
+    [{ note: "x".repeat(201) }, "note", "too_long"],
+    [{ instrument_id: "missing" }, "instrument_id", "invalid_reference"],
+  ])("rejects %j with %s %s", async (change, field, code) => {
+    const result = await saveTrade(db, { ...buy, ...change });
+
+    expect(result).toEqual({ ok: false, errors: [{ field, code }] });
+    expect(tradeCount()).toEqual({ n: 1 });
+  });
+
+  it("rejects a sell of more than is held, with the held quantity", async () => {
+    const result = await saveTrade(db, { ...buy, side: "sell", quantity: "15" });
+
+    expect(result).toEqual({ ok: false, errors: [{ field: "quantity", code: "over_held", held: "12" }] });
+    expect(tradeCount()).toEqual({ n: 1 });
+  });
+
+  it("rejects a lowered buy that leaves a later sell too large, with that sell", async () => {
+    loadFixture(sqlite, {
+      trades: [{ id: "tr2", user_id: "u1", instrument_id: "acme", side: "sell", date: "2026-04-01", quantity: "10", price: "90", fee: "0" }],
+    });
+
+    const result = await saveTrade(db, { ...buy, id: "tr1", date: "2026-02-01", quantity: "6" });
+
+    expect(result).toEqual({
+      ok: false,
+      errors: [{ field: "quantity", code: "over_held", held: "6", sell: { id: "tr2", date: "2026-04-01", quantity: "10" } }],
+    });
+    expect(row("trades", "tr1")).toMatchObject({ quantity: "12" });
+  });
+
+  it("saves a sell of all that is held", async () => {
+    const result = await saveTrade(db, { ...buy, side: "sell", quantity: "12" });
+
+    expect(result.ok).toBe(true);
+    expect(tradeCount()).toEqual({ n: 2 });
+  });
+});
+
+describe("deleteTrade", () => {
+  it("removes the row", async () => {
+    loadFixture(sqlite, {
+      trades: [{ id: "tr1", user_id: "u1", instrument_id: "acme", side: "buy", date: "2026-02-01", quantity: "1", price: "1", fee: "0" }],
+    });
+
+    expect(await deleteTrade(db, "tr1")).toEqual({ ok: true, id: "tr1" });
+
+    expect(row("trades", "tr1")).toBeUndefined();
+  });
+
+  it("refuses to delete a buy that a later sell needs", async () => {
+    loadFixture(sqlite, {
+      trades: [
+        { id: "tr1", user_id: "u1", instrument_id: "acme", side: "buy", date: "2026-02-01", quantity: "5", price: "1", fee: "0" },
+        { id: "tr2", user_id: "u1", instrument_id: "acme", side: "sell", date: "2026-03-01", quantity: "3", price: "1", fee: "0" },
+      ],
+    });
+
+    expect(await deleteTrade(db, "tr1")).toEqual({
+      ok: false,
+      errors: [{ field: "quantity", code: "over_held", held: "0", sell: { id: "tr2", date: "2026-03-01", quantity: "3" } }],
+    });
+    expect(row("trades", "tr1")).toBeDefined();
   });
 });

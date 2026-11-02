@@ -10,6 +10,7 @@ import type { Account } from "../../generated/schema";
 import { useShortcuts } from "../../hooks/useShortcuts";
 import { isHovered } from "../components/interaction";
 import { PaperBar } from "../components/PaperBar";
+import { ThemedSwitch } from "../components/ThemedSwitch";
 import { useBottomInset } from "../nav/bottomInset";
 import { Texture } from "../Texture";
 import { paperTint, type ThemeColors } from "../theme";
@@ -28,6 +29,9 @@ import {
   useScreenSettings,
   type ScreenPlatform,
 } from "./manage";
+
+export const NET_WORTH_HINT =
+  "Use this for money that you moved to a broker. The Portfolio tab already counts it as holdings.";
 
 export const ACCOUNTS_HINT =
   "You can use accounts to split expenses, for example per bank card, or keep a separate 'Savings' account.";
@@ -163,6 +167,7 @@ function AccountFormBody({
   const [balanceText, setBalanceText] = useState(
     existing?.opening_balance_minor ? amountInputText(existing.opening_balance_minor, currency) : "",
   );
+  const [excludeFromNetWorth, setExcludeFromNetWorth] = useState(Boolean(existing?.exclude_from_net_worth));
   const [nameTouched, setNameTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -176,6 +181,7 @@ function AccountFormBody({
     color,
     sort_order: existing?.sort_order,
     opening_balance_minor: openingBalance ?? undefined,
+    exclude_from_net_worth: excludeFromNetWorth,
   };
   const errors = validateAccount(input);
   const nameError = errors.find((e) => e.field === "name");
@@ -279,6 +285,23 @@ function AccountFormBody({
         <FormField label="Colour" theme={theme}>
           <ColorPalette value={color} onChange={setColor} theme={theme} />
         </FormField>
+        <View style={[styles.switchRow, { backgroundColor: theme.row, borderBottomColor: theme.line }]}>
+          <View style={styles.switchLabel}>
+            <Text allowFontScaling style={[styles.switchTitle, { color: theme.ink }]}>
+              Exclude from net worth
+            </Text>
+            <Text allowFontScaling style={[styles.switchHint, { color: theme.accent }]}>
+              {NET_WORTH_HINT}
+            </Text>
+          </View>
+          <ThemedSwitch
+            accessibilityRole="switch"
+            accessibilityLabel="Exclude from net worth"
+            value={excludeFromNetWorth}
+            onValueChange={setExcludeFromNetWorth}
+            theme={theme}
+          />
+        </View>
         {existing && existing.archived_at ? (
           <FormAction
             label="Restore"
@@ -355,6 +378,25 @@ const styles = StyleSheet.create({
   addText: {
     fontSize: 32,
     fontWeight: "200",
+  },
+  switchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    minHeight: 48,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  switchLabel: {
+    flex: 1,
+  },
+  switchTitle: {
+    fontSize: 16,
+  },
+  switchHint: {
+    fontSize: 13,
+    marginTop: 2,
   },
   footer: {
     paddingTop: 12,

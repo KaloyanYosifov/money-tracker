@@ -10,6 +10,7 @@ const accounts = new Table({
   sort_order: column.integer,
   opening_balance_minor: column.integer,
   exclude_from_carry_over: column.integer,
+  exclude_from_net_worth: column.integer,
   archived_at: column.text,
 });
 
@@ -120,6 +121,44 @@ const insight_questions = new Table(
   { indexes: { by_category: ["category_id"] } },
 );
 
+// Quantities, prices, fees and closes are decimal strings. Keep them as text.
+const trades = new Table(
+  {
+    user_id: column.text,
+    instrument_id: column.text,
+    side: column.text,
+    date: column.text,
+    quantity: column.text,
+    price: column.text,
+    fee: column.text,
+    note: column.text,
+    created_at: column.text,
+    updated_at: column.text,
+  },
+  { indexes: { by_instrument: ["instrument_id", "date"] } },
+);
+
+// The server writes instruments and their prices. The app only reads them.
+const instruments = new Table({
+  symbol: column.text,
+  name: column.text,
+  exchange: column.text,
+  kind: column.text,
+  quote_currency: column.text,
+  last_fetched_at: column.text,
+  failed_at: column.text,
+});
+
+const instrument_prices = new Table(
+  {
+    instrument_id: column.text,
+    date: column.text,
+    close: column.text,
+    as_of: column.text,
+  },
+  { indexes: { by_instrument_date: ["instrument_id", "date"] } },
+);
+
 const device_prefs = new Table(
   {
     key: column.text,
@@ -150,6 +189,9 @@ export const AppSchema = new Schema({
   user_settings,
   insights,
   insight_questions,
+  trades,
+  instruments,
+  instrument_prices,
   device_prefs,
   sync_problems,
 });

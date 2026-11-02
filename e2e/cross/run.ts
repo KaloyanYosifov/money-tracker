@@ -14,7 +14,8 @@ import { chromium } from "@playwright/test";
 import { runMaestroFlow } from "../support/maestro.ts";
 import { resetData, waitForStack } from "../support/stack.ts";
 import { resetProxies } from "../support/toxiproxy.ts";
-import { logIn, newAppContext, newUser, nextCode, waitForSynced } from "../web/fixtures.ts";
+import { maestroLoginEnv } from "../support/totp.ts";
+import { lastUsedStep, logIn, markStepUsed, newAppContext, newUser, waitForSynced } from "../web/fixtures.ts";
 import { scenarios, type CrossContext } from "./scenarios.ts";
 
 const APP_DIR = fileURLToPath(new URL("../../app/", import.meta.url));
@@ -81,8 +82,10 @@ async function main(): Promise<void> {
   resetData();
 
   const user = await newUser();
-  // nextCode never gives the same TOTP step twice, so the two logins do not trip the replay check.
-  maestro(phone, "login.yaml", { EMAIL: user.email, PASSWORD: user.password, TOTP_CODE: await nextCode(user.totpSecret, 15_000) });
+  // The steps of both logins are marked as used, so they do not trip the replay check.
+  const totp = await maestroLoginEnv(user.totpSecret, lastUsedStep(user.totpSecret));
+  maestro(phone, "login.yaml", { EMAIL: user.email, PASSWORD: user.password, ...totp });
+  markStepUsed(user.totpSecret, Date.now() + 30_000);
 
   const browser = await chromium.launch();
   try {

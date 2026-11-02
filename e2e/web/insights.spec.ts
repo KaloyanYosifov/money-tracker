@@ -27,9 +27,13 @@ test("turn on AI Insights, ask about a category and accept a budget card", async
 
   // The on-demand path: the API worker sends the question to the fake gateway, and the answer syncs down.
   await page.getByTestId("ask-category").click();
-  await page.getByRole("radiogroup", { name: "Category" }).getByRole("radio", { name: "Groceries", exact: true }).click();
+  const categorySheet = page.getByRole("radiogroup", { name: "Category" });
+  await categorySheet.getByRole("radio", { name: "Groceries", exact: true }).click();
+  // WebKit can lose text that is typed while the sheet still closes.
+  await expect(categorySheet).toBeHidden();
   const question = page.getByLabel("Question", { exact: true });
   await question.fill("How much do I spend on groceries?");
+  await expect(question).toHaveValue("How much do I spend on groceries?");
   await page.getByRole("button", { name: "Ask", exact: true }).click();
   await expect(question).toHaveValue("");
   await expect(page.getByText("How much do I spend on groceries?")).toBeVisible();

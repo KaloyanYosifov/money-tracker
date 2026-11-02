@@ -1,4 +1,4 @@
-import type { Category, RecurringRule, Transaction } from "../generated/schema";
+import type { Category, RecurringRule, Trade, Transaction } from "../generated/schema";
 import { MAX_AMOUNT_MINOR } from "./money";
 
 // The same rules as the JSON Schemas and the API apply rules. Mutations and
@@ -13,13 +13,18 @@ export type ValidationCode =
   | "invalid_category_type"
   | "invalid_transfer"
   | "invalid_reference"
-  | "in_use";
+  | "in_use"
+  | "over_held";
 
 export interface FieldError {
   field: string;
   code: ValidationCode;
   /** Text for the user, for errors that the code alone does not explain (for example a duplicate name). */
   message?: string;
+  /** For over_held: the quantity held just before the sell that is too large. */
+  held?: string;
+  /** For over_held: the other sell that the change makes too large. */
+  sell?: { id: string; date: string; quantity: string };
 }
 
 export const DUPLICATE_CATEGORY_MESSAGE = "A category with this name exists.";
@@ -65,6 +70,19 @@ export interface AccountInput {
   color: string;
   sort_order?: number;
   opening_balance_minor?: number | null;
+  exclude_from_net_worth?: boolean;
+}
+
+/** Decimal fields are the text of the form. validateTrade checks them after normalizeDecimal. */
+export interface TradeInput {
+  id?: string;
+  instrument_id: string;
+  side: Trade["side"];
+  date: string;
+  quantity: string;
+  price: string;
+  fee: string;
+  note?: string | null;
 }
 
 const transactionTypes: readonly string[] = ["expense", "income", "transfer"];
@@ -164,5 +182,29 @@ export function validateAccount(input: AccountInput): FieldError[] {
     if (!Number.isInteger(balance)) errors.push({ field: "opening_balance_minor", code: "invalid" });
     else if (Math.abs(balance) > MAX_AMOUNT_MINOR) errors.push({ field: "opening_balance_minor", code: "out_of_range" });
   }
+  return errors;
+}
+
+const decimalPattern = /^\d{1,12}(\.\d{1,12})?$/;
+
+/** Trims the text and accepts "," as the decimal separator. */
+export function normalizeDecimal(text: string): string {
+  return text.trim().replace(",", ".");
+}
+
+function checkDecimal(errors: FieldError[], field: string, value: string, positive: boolean) {
+  if (!decimalPattern.test(value) || (positive && !/[1-9]/.test(value))) errors.push({ field, code: "invalid" });
+}
+
+/** Checks a trade with normalized decimals. An empty fee is "0". */
+export function validateTrade(input: TradeInput): FieldError[] {
+  const errors: FieldError[] = [];
+  if (!input.instrument_id) errors.push({ field: "instrument_id", code: "required" });
+  if (input.side !== "buy" && input.side !== "sell") errors.push({ field: "side", code: "invalid" });
+  if (!isDate(input.date)) errors.push({ field: "date", code: "invalid" });
+  checkDecimal(errors, "quantity", input.quantity, true);
+  checkDecimal(errors, "price", input.price, true);
+  checkDecimal(errors, "fee", input.fee, false);
+  checkText(errors, "note", input.note, 0, 200);
   return errors;
 }

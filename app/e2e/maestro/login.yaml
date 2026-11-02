@@ -1,5 +1,6 @@
 # Logs in with password and TOTP from a clean install.
-# Env: EMAIL, PASSWORD, TOTP_CODE. e2e/ios/run.ts makes the code right before the flow starts.
+# Env: EMAIL, PASSWORD, TOTP_SECRET and MIN_STEP (see scripts/totp.js). The flow makes the code
+# right before it types it.
 appId: com.kyosifov.moneytracker
 name: Log in with password and TOTP
 ---
@@ -32,7 +33,8 @@ name: Log in with password and TOTP
 - tapOn:
     id: totp-code
     optional: true
-- inputText: ${TOTP_CODE}
+- runScript: scripts/totp.js
+- inputText: ${output.totp}
 - extendedWaitUntil:
     visible:
       id: tab-spending

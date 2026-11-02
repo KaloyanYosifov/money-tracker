@@ -16,8 +16,8 @@ export interface Page {
 }
 
 /**
- * The pages in shortcut order. Keys 1 to 5 open the first five, so AI
- * Insights, the sixth, has no key and Reports keeps key 5.
+ * The pages in shortcut order. Keys 1 to 5 open the first five, so Portfolio
+ * and AI Insights have no key and Reports keeps key 5.
  */
 export const PAGES: readonly Page[] = [
   { name: "spending", title: "Spending", icon: "tag", usesPeriod: true },
@@ -25,6 +25,7 @@ export const PAGES: readonly Page[] = [
   { name: "categories", title: "Categories", icon: "cabinet", usesPeriod: false },
   { name: "accounts", title: "Accounts", icon: "people", usesPeriod: false },
   { name: "reports", title: "Reports", icon: "pie", usesPeriod: true },
+  { name: "portfolio", title: "Portfolio", icon: "chart", usesPeriod: false },
   { name: "insights", title: "AI Insights", icon: "sparkle", usesPeriod: false },
 ];
 

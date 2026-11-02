@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "instrument_price.schema.json",
+  "title": "InstrumentPrice",
+  "description": "Written by the server. Synced to the app, never uploaded.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "instrument_id", "date", "close", "as_of"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "instrument_id": { "type": "string", "format": "uuid" },
+    "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "close": { "type": "string", "pattern": "^\\d{1,12}(\\.\\d{1,12})?$" },
+    "as_of": { "type": "string", "format": "date-time" }
+  }
+}

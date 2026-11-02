@@ -167,6 +167,13 @@ func applyOp(ctx context.Context, tx pgx.Tx, userID, table string, cols []string
 	if r := checkInsightWrite(table, data); r != nil {
 		return *r, nil
 	}
+	if table == "trades" {
+		for _, field := range []string{"quantity", "price"} {
+			if s, ok := data[field].(string); ok && strings.Trim(s, "0.") == "" {
+				return reject("invalid_record", field+" must be greater than 0"), nil
+			}
+		}
+	}
 	// A question sends the user's data to the AI gateway, so only a user who
 	// turned AI Insights on can ask one. A repeated upload of a stored
 	// question is not a new question, so it skips this check.

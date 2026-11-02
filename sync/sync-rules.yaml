@@ -1,4 +1,5 @@
-# PowerSync sync rules. Each user gets one bucket with only their own rows.
+# PowerSync sync rules. Each user gets one bucket with only their own rows,
+# plus one bucket for each instrument or FX pair that the user added.
 bucket_definitions:
   user_data:
     parameters: SELECT request.user_id() AS user_id
@@ -11,3 +12,9 @@ bucket_definitions:
       - SELECT * FROM user_settings WHERE user_id = bucket.user_id
       - SELECT * FROM insights WHERE user_id = bucket.user_id
       - SELECT * FROM insight_questions WHERE user_id = bucket.user_id
+      - SELECT * FROM trades WHERE user_id = bucket.user_id
+  instrument_data:
+    parameters: SELECT instrument_id FROM user_instruments WHERE user_id = request.user_id()
+    data:
+      - SELECT id, symbol, name, exchange, kind, quote_currency, last_fetched_at, failed_at FROM instruments WHERE id = bucket.instrument_id
+      - SELECT id, instrument_id, date, close, as_of FROM instrument_prices WHERE instrument_id = bucket.instrument_id

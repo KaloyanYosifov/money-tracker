@@ -146,6 +146,24 @@ export function carryOver(start: string, accountIds: string[] | null, today: str
   };
 }
 
+function nextDay(date: string): string {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
+}
+
+/** The sum of all account balances up to and with today, without the accounts excluded from net worth. */
+export function accountsTotal(today: string): SqlQuery {
+  const before = nextDay(today);
+  return {
+    sql: `WITH ${balancesCte}
+      SELECT COALESCE(SUM(b.balance), 0) AS total
+      FROM balances b
+      JOIN accounts a ON a.id = b.account_id
+      WHERE a.exclude_from_net_worth IS NOT 1`,
+    parameters: [before, today, before, today],
+  };
+}
+
 export interface TransactionFilters {
   accountId?: string | null;
   categoryId?: string | null;
@@ -392,6 +410,10 @@ export function useShownCategoryTotals(range: Period, accountId: string | null, 
 
 export function useCarryOver(start: string, accountIds: string[] | null) {
   return useRows<CarryOver>(carryOver(start, accountIds, localToday()));
+}
+
+export function useAccountsTotal() {
+  return useFirstRow<{ total: number }>(accountsTotal(localToday()));
 }
 
 export function useTransactionList(

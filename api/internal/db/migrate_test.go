@@ -2,16 +2,20 @@ package db_test
 
 import (
 	"context"
+	"database/sql"
+	"os"
 	"slices"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
 
 	"github.com/KaloyanYosifov/money-tracker/api/internal/db"
 	"github.com/KaloyanYosifov/money-tracker/api/internal/testutil"
 )
 
-var syncedTables = []string{"accounts", "budgets", "categories", "insight_questions", "insights", "recurring_rules", "transactions", "user_settings"}
+var syncedTables = []string{"accounts", "budgets", "categories", "insight_questions", "insights", "instrument_prices", "instruments", "recurring_rules", "trades", "transactions", "user_instruments", "user_settings"}
 
 var privateTables = []string{"users", "invites", "recovery_codes", "refresh_tokens", "deleted_records", "insight_memory"}
 
@@ -93,4 +97,36 @@ func gooseRows(t *testing.T, pool *pgxpool.Pool) int {
 		t.Fatalf("count goose_db_version: %v", err)
 	}
 	return n
+}
+
+func TestPortfolioMigrationDownAndUp(t *testing.T) {
+	pool := testutil.StartPostgres(t)
+	ctx := context.Background()
+
+	conn, err := sql.Open("pgx", pool.Config().ConnString())
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer conn.Close()
+	provider, err := goose.NewProvider(goose.DialectPostgres, conn, os.DirFS("migrations"))
+	if err != nil {
+		t.Fatalf("create provider: %v", err)
+	}
+
+	if _, err := provider.DownTo(ctx, 7); err != nil {
+		t.Fatalf("migrate down to 7: %v", err)
+	}
+	for _, table := range []string{"trades", "user_instruments", "instrument_prices", "instruments"} {
+		var exists bool
+		if err := pool.QueryRow(ctx, "SELECT to_regclass('public.' || $1) IS NOT NULL", table).Scan(&exists); err != nil {
+			t.Fatalf("check table %s: %v", table, err)
+		}
+		if exists {
+			t.Errorf("table %s still exists after the down migration", table)
+		}
+	}
+
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatalf("migrate up again: %v", err)
+	}
 }

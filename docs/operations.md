@@ -320,3 +320,27 @@ Delete the job `money-tracker-insights-manual` when it is complete. A second job
 The API trusts `X-Real-IP` from the addresses in `TRUSTED_PROXY_CIDRS`. The web nginx sends this header to the API without a change. The login rate limit uses it to find the client.
 
 The edge proxy in front of the web pod must set `X-Real-IP` to the real client address and remove the value that the client sent. ingress-nginx does this by default. Do not set `use-forwarded-headers: true` on ingress-nginx, and do not put a different proxy in front of the web pod, unless that proxy also sets `X-Real-IP`. If a client can send its own `X-Real-IP`, it can avoid the login rate limit.
+
+## Prices
+
+The price worker runs in `mtapi serve`. It fetches the daily closes and the latest price of each instrument and FX pair from Yahoo Finance, at most once an hour for each instrument. These settings control it:
+
+| Variable | Default | Use |
+|---|---|---|
+| `PRICES_ENABLED` | `true` | Starts the worker. |
+| `PRICES_SOURCE_URL` | `https://query1.finance.yahoo.com` | The base URL of the Yahoo endpoints. |
+| `PRICES_INTERVAL` | `5m` | The time between two passes of the worker. |
+| `PRICES_FAKE` | `false` | Uses fixed prices and makes no network calls. Only for the e2e stack. |
+
+The API pod needs outbound HTTPS to `query1.finance.yahoo.com`. If you add an egress rule to the namespace, allow this host.
+
+Yahoo has no official API. If its endpoints change, the app shows "Price from ..." on all holdings, and the API log has `price fetch failed`. To fix it, write a new adapter behind the `PriceSource` interface in `api/internal/prices`.
+
+The Yahoo client checks each answer against a contract: valid JSON with the types that the app reads, `meta.symbol` and `meta.currency` in a chart, one close for each timestamp, at least one price, and `symbol` and `quoteType` in each search quote. Other fields can change. If an answer breaks the contract, the API logs `yahoo response breaks the contract` at error level and does not use the answer. A search quote without `symbol` or `quoteType` is a break too, but the API drops only that quote and returns the other matches. `GET /metrics` on the API port counts each Yahoo request in `mtapi_yahoo_requests_total{endpoint,result}`. The `YahooContractBroken` alert in home-infrastructure fires when the `contract_broken` count goes up.
+
+After 5 failures in a row, the worker tries an instrument only once a day. To fetch an instrument again at the next pass, reset its state:
+
+```sh
+kubectl -n money-tracker exec money-tracker-db-1 -c postgres -- psql -d money -c \
+  "UPDATE instruments SET last_attempt_at = NULL, failed_at = NULL, fail_count = 0 WHERE symbol = '<symbol>'"
+```

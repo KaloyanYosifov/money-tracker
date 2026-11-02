@@ -133,7 +133,7 @@ async function select(label: keyof typeof SELECT_FIELDS, name: string) {
 
 async function saveAndWait() {
   await act(async () => {
-    fireEvent.press(saveButton());
+    await fireEvent.press(saveButton());
   });
 }
 

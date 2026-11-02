@@ -25,6 +25,7 @@ var tables = map[string][]string{
 	"user_settings":     columnsOf(schema.UserSettings{}),
 	"insights":          columnsOf(schema.Insight{}),
 	"insight_questions": columnsOf(schema.InsightQuestion{}),
+	"trades":            columnsOf(schema.Trade{}),
 }
 
 // readOnly lists the fields that the client cannot write. The server sets

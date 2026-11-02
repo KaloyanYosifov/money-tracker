@@ -18,8 +18,13 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 // step that the suite used for each secret.
 const lastStep = new Map<string, number>();
 
-function markStepUsed(secret: string, at = Date.now()): void {
+export function markStepUsed(secret: string, at = Date.now()): void {
   lastStep.set(secret, Math.max(lastStep.get(secret) ?? -1, Math.floor(at / STEP_MS)));
+}
+
+/** The last TOTP step of the secret that the API already saw, or -1. */
+export function lastUsedStep(secret: string): number {
+  return lastStep.get(secret) ?? -1;
 }
 
 /** A TOTP code of a step that the API did not see yet, with at least minLeftMs (default 5 seconds) left. */
@@ -177,19 +182,17 @@ export async function addTransaction(page: Page, t: NewTransaction): Promise<voi
   await page.getByLabel("Amount", { exact: true }).fill(t.amount);
   const name = page.getByPlaceholder("Name", { exact: true });
   await name.fill(t.name);
-  if (t.category) {
-    await page.getByTestId("transaction-category").click();
-    await page.getByRole("radiogroup", { name: "Category" }).getByRole("radio", { name: t.category, exact: true }).click();
-  }
-  if (t.account) {
-    const group = t.type === "transfer" ? "From" : "Account";
-    await page.getByTestId("transaction-account").click();
-    await page.getByRole("radiogroup", { name: group }).getByRole("radio", { name: t.account, exact: true }).click();
-  }
-  if (t.toAccount) {
-    await page.getByTestId("transaction-to-account").click();
-    await page.getByRole("radiogroup", { name: "To" }).getByRole("radio", { name: t.toAccount, exact: true }).click();
-  }
+  // A browser can lose a key press that comes while a select sheet still closes, so each pick
+  // waits until its sheet is gone.
+  const pick = async (field: string, group: string, option: string) => {
+    await page.getByTestId(field).click();
+    const sheet = page.getByRole("radiogroup", { name: group });
+    await sheet.getByRole("radio", { name: option, exact: true }).click();
+    await expect(sheet).toBeHidden();
+  };
+  if (t.category) await pick("transaction-category", "Category", t.category);
+  if (t.account) await pick("transaction-account", t.type === "transfer" ? "From" : "Account", t.account);
+  if (t.toAccount) await pick("transaction-to-account", "To", t.toAccount);
   await name.press("Enter");
   await expect(title).toBeHidden();
 }

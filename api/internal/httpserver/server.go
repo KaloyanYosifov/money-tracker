@@ -11,6 +11,8 @@ import (
 
 	"github.com/KaloyanYosifov/money-tracker/api/internal/auth"
 	"github.com/KaloyanYosifov/money-tracker/api/internal/config"
+	"github.com/KaloyanYosifov/money-tracker/api/internal/metrics"
+	"github.com/KaloyanYosifov/money-tracker/api/internal/prices"
 	"github.com/KaloyanYosifov/money-tracker/api/internal/sync"
 )
 
@@ -24,6 +26,8 @@ func New(cfg *config.Config, logger *slog.Logger, pool *pgxpool.Pool) *http.Serv
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = w.Write([]byte("ok"))
 	})
+	// The web nginx proxies only /api/, so /metrics is reachable only in the cluster.
+	mux.Handle("GET /metrics", metrics.Handler())
 	authHandlers := auth.NewHandlers(auth.Deps{
 		Pool:         pool,
 		Tokens:       auth.NewTokens(cfg.JWTPrivateKey, cfg.JWTIssuer),
@@ -35,6 +39,15 @@ func New(cfg *config.Config, logger *slog.Logger, pool *pgxpool.Pool) *http.Serv
 	authHandlers.Register(mux)
 	mux.Handle("POST /api/sync/upload", authHandlers.RequireUser(sync.NewUploadHandler(pool, logger)))
 	mux.Handle("GET /api/import/existing", authHandlers.RequireUser(sync.NewExistingHandler(pool, logger)))
+
+	var priceSource prices.PriceSource = prices.NewYahoo(cfg.PricesSourceURL, nil)
+	if cfg.PricesFake {
+		priceSource = prices.NewFake()
+	}
+	instrumentLimiter := auth.NewIPLimiter()
+	mux.Handle("GET /api/instruments/search",
+		authHandlers.RequireUser(prices.NewSearchHandler(priceSource, instrumentLimiter, logger)))
+	mux.Handle("POST /api/instruments", authHandlers.RequireUser(prices.NewAddHandler(pool, priceSource, instrumentLimiter, logger)))
 
 	var handler http.Handler = mux
 	handler = limitBody(handler)

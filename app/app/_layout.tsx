@@ -130,6 +130,9 @@ function AuthGate({ db }: { db: AppDatabase }) {
                     <Stack.Screen name="transaction/[id]" options={{ presentation: FORM_PRESENTATION }} />
                     <Stack.Screen name="category/[id]" options={{ presentation: FORM_PRESENTATION }} />
                     <Stack.Screen name="account/[id]" options={{ presentation: FORM_PRESENTATION }} />
+                    <Stack.Screen name="instrument/[id]" options={{ presentation: PAGE_PRESENTATION }} />
+                    <Stack.Screen name="instrument/add" options={{ presentation: FORM_PRESENTATION }} />
+                    <Stack.Screen name="trade/[id]" options={{ presentation: FORM_PRESENTATION }} />
                     <Stack.Screen name="settings" options={{ presentation: PAGE_PRESENTATION }} />
                     <Stack.Screen name="sessions" options={{ presentation: PAGE_PRESENTATION }} />
                     <Stack.Screen name="sync-problems" options={{ presentation: PAGE_PRESENTATION }} />

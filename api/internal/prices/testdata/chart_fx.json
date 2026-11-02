@@ -1,0 +1,24 @@
+{
+  "chart": {
+    "result": [
+      {
+        "meta": {
+          "currency": "USD",
+          "symbol": "ZZZUSD=X",
+          "fullExchangeName": "CCY",
+          "instrumentType": "CURRENCY",
+          "gmtoffset": 3600,
+          "exchangeTimezoneName": "Europe/London",
+          "regularMarketTime": 1761175800,
+          "regularMarketPrice": 1.1625,
+          "shortName": "ZZZ/USD"
+        },
+        "timestamp": [1761087600, 1761174000, 1761523200],
+        "indicators": {
+          "quote": [{"close": [1.16, 1.161, 1.162]}]
+        }
+      }
+    ],
+    "error": null
+  }
+}

@@ -111,6 +111,20 @@ describe("uploadData", () => {
     ]);
   });
 
+  it("sends the account flags as JSON booleans", async () => {
+    const { db } = fakeDatabase([
+      entry(UpdateType.PUT, "accounts", "a1", { name: "Broker", exclude_from_net_worth: 1, exclude_from_carry_over: 0 }),
+    ]);
+    fetchMock.mockResolvedValueOnce(respond(200, { rejected: [] }));
+
+    await createConnector(deps()).uploadData(db);
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(init?.body as string).ops).toEqual([
+      { op: "PUT", table: "accounts", id: "a1", data: { name: "Broker", exclude_from_net_worth: true, exclude_from_carry_over: false } },
+    ]);
+  });
+
   it("writes one sync_problems row per rejected op, then completes", async () => {
     const { db, complete, tx } = fakeDatabase(crud);
     fetchMock.mockResolvedValueOnce(

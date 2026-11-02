@@ -20,6 +20,10 @@ type Account struct {
 	// "exclude_from_carry_over".
 	ExcludeFromCarryOver bool `json:"exclude_from_carry_over,omitempty,omitzero"`
 
+	// ExcludeFromNetWorth corresponds to the JSON schema field
+	// "exclude_from_net_worth".
+	ExcludeFromNetWorth bool `json:"exclude_from_net_worth,omitempty,omitzero"`
+
 	// ID corresponds to the JSON schema field "id".
 	ID string `json:"id"`
 
@@ -68,6 +72,9 @@ func (j *Account) UnmarshalJSON(value []byte) error {
 	}
 	if v, ok := raw["exclude_from_carry_over"]; !ok || v == nil {
 		plain.ExcludeFromCarryOver = false
+	}
+	if v, ok := raw["exclude_from_net_worth"]; !ok || v == nil {
+		plain.ExcludeFromNetWorth = false
 	}
 	if utf8.RuneCountInString(string(plain.Name)) < 1 {
 		return fmt.Errorf("field %s length: must be >= %d", "name", 1)
@@ -555,6 +562,169 @@ func (j *Insight) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
+// Written by the server. Synced to the app, never uploaded.
+type Instrument struct {
+	// Exchange corresponds to the JSON schema field "exchange".
+	Exchange string `json:"exchange"`
+
+	// FailedAt corresponds to the JSON schema field "failed_at".
+	FailedAt *time.Time `json:"failed_at,omitempty,omitzero"`
+
+	// ID corresponds to the JSON schema field "id".
+	ID string `json:"id"`
+
+	// Kind corresponds to the JSON schema field "kind".
+	Kind InstrumentKind `json:"kind"`
+
+	// LastFetchedAt corresponds to the JSON schema field "last_fetched_at".
+	LastFetchedAt *time.Time `json:"last_fetched_at,omitempty,omitzero"`
+
+	// Name corresponds to the JSON schema field "name".
+	Name string `json:"name"`
+
+	// QuoteCurrency corresponds to the JSON schema field "quote_currency".
+	QuoteCurrency string `json:"quote_currency"`
+
+	// Symbol corresponds to the JSON schema field "symbol".
+	Symbol string `json:"symbol"`
+}
+
+type InstrumentKind string
+
+const InstrumentKindCrypto InstrumentKind = "crypto"
+const InstrumentKindEtf InstrumentKind = "etf"
+const InstrumentKindFx InstrumentKind = "fx"
+const InstrumentKindStock InstrumentKind = "stock"
+
+var enumValues_InstrumentKind = []interface{}{
+	"stock",
+	"etf",
+	"crypto",
+	"fx",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *InstrumentKind) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_InstrumentKind {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_InstrumentKind, v)
+	}
+	*j = InstrumentKind(v)
+	return nil
+}
+
+// Written by the server. Synced to the app, never uploaded.
+type InstrumentPrice struct {
+	// AsOf corresponds to the JSON schema field "as_of".
+	AsOf time.Time `json:"as_of"`
+
+	// Close corresponds to the JSON schema field "close".
+	Close string `json:"close"`
+
+	// Date corresponds to the JSON schema field "date".
+	Date string `json:"date"`
+
+	// ID corresponds to the JSON schema field "id".
+	ID string `json:"id"`
+
+	// InstrumentID corresponds to the JSON schema field "instrument_id".
+	InstrumentID string `json:"instrument_id"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *InstrumentPrice) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["as_of"]; raw != nil && !ok {
+		return fmt.Errorf("field as_of in InstrumentPrice: required")
+	}
+	if _, ok := raw["close"]; raw != nil && !ok {
+		return fmt.Errorf("field close in InstrumentPrice: required")
+	}
+	if _, ok := raw["date"]; raw != nil && !ok {
+		return fmt.Errorf("field date in InstrumentPrice: required")
+	}
+	if _, ok := raw["id"]; raw != nil && !ok {
+		return fmt.Errorf("field id in InstrumentPrice: required")
+	}
+	if _, ok := raw["instrument_id"]; raw != nil && !ok {
+		return fmt.Errorf("field instrument_id in InstrumentPrice: required")
+	}
+	type Plain InstrumentPrice
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if matched, _ := regexp.MatchString(`^\d{1,12}(\.\d{1,12})?$`, string(plain.Close)); !matched {
+		return fmt.Errorf("field %s pattern match: must match %s", "Close", `^\d{1,12}(\.\d{1,12})?$`)
+	}
+	if matched, _ := regexp.MatchString(`^\d{4}-\d{2}-\d{2}$`, string(plain.Date)); !matched {
+		return fmt.Errorf("field %s pattern match: must match %s", "Date", `^\d{4}-\d{2}-\d{2}$`)
+	}
+	*j = InstrumentPrice(plain)
+	return nil
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *Instrument) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["exchange"]; raw != nil && !ok {
+		return fmt.Errorf("field exchange in Instrument: required")
+	}
+	if _, ok := raw["id"]; raw != nil && !ok {
+		return fmt.Errorf("field id in Instrument: required")
+	}
+	if _, ok := raw["kind"]; raw != nil && !ok {
+		return fmt.Errorf("field kind in Instrument: required")
+	}
+	if _, ok := raw["name"]; raw != nil && !ok {
+		return fmt.Errorf("field name in Instrument: required")
+	}
+	if _, ok := raw["quote_currency"]; raw != nil && !ok {
+		return fmt.Errorf("field quote_currency in Instrument: required")
+	}
+	if _, ok := raw["symbol"]; raw != nil && !ok {
+		return fmt.Errorf("field symbol in Instrument: required")
+	}
+	type Plain Instrument
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if utf8.RuneCountInString(string(plain.Exchange)) > 40 {
+		return fmt.Errorf("field %s length: must be <= %d", "exchange", 40)
+	}
+	if utf8.RuneCountInString(string(plain.Name)) > 120 {
+		return fmt.Errorf("field %s length: must be <= %d", "name", 120)
+	}
+	if matched, _ := regexp.MatchString(`^[A-Z]{3}$`, string(plain.QuoteCurrency)); !matched {
+		return fmt.Errorf("field %s pattern match: must match %s", "QuoteCurrency", `^[A-Z]{3}$`)
+	}
+	if utf8.RuneCountInString(string(plain.Symbol)) < 1 {
+		return fmt.Errorf("field %s length: must be >= %d", "symbol", 1)
+	}
+	if utf8.RuneCountInString(string(plain.Symbol)) > 20 {
+		return fmt.Errorf("field %s length: must be <= %d", "symbol", 20)
+	}
+	*j = Instrument(plain)
+	return nil
+}
+
 type RecurringRule struct {
 	// AccountID corresponds to the JSON schema field "account_id".
 	AccountID string `json:"account_id"`
@@ -727,6 +897,130 @@ func (j *RecurringRule) UnmarshalJSON(value []byte) error {
 		return fmt.Errorf("field %s pattern match: must match %s", "StartDate", `^\d{4}-\d{2}-\d{2}$`)
 	}
 	*j = RecurringRule(plain)
+	return nil
+}
+
+type Trade struct {
+	// Set by the server.
+	CreatedAt *time.Time `json:"created_at,omitempty,omitzero"`
+
+	// Date corresponds to the JSON schema field "date".
+	Date string `json:"date"`
+
+	// Fee corresponds to the JSON schema field "fee".
+	Fee string `json:"fee"`
+
+	// ID corresponds to the JSON schema field "id".
+	ID string `json:"id"`
+
+	// InstrumentID corresponds to the JSON schema field "instrument_id".
+	InstrumentID string `json:"instrument_id"`
+
+	// Note corresponds to the JSON schema field "note".
+	Note TradeNote `json:"note,omitempty,omitzero"`
+
+	// Price corresponds to the JSON schema field "price".
+	Price string `json:"price"`
+
+	// Quantity corresponds to the JSON schema field "quantity".
+	Quantity string `json:"quantity"`
+
+	// Side corresponds to the JSON schema field "side".
+	Side TradeSide `json:"side"`
+
+	// Set by the server.
+	UpdatedAt *time.Time `json:"updated_at,omitempty,omitzero"`
+
+	// UserID corresponds to the JSON schema field "user_id".
+	UserID string `json:"user_id"`
+}
+
+type TradeNote *string
+
+type TradeSide string
+
+const TradeSideBuy TradeSide = "buy"
+const TradeSideSell TradeSide = "sell"
+
+var enumValues_TradeSide = []interface{}{
+	"buy",
+	"sell",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *TradeSide) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_TradeSide {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_TradeSide, v)
+	}
+	*j = TradeSide(v)
+	return nil
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *Trade) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["date"]; raw != nil && !ok {
+		return fmt.Errorf("field date in Trade: required")
+	}
+	if _, ok := raw["fee"]; raw != nil && !ok {
+		return fmt.Errorf("field fee in Trade: required")
+	}
+	if _, ok := raw["id"]; raw != nil && !ok {
+		return fmt.Errorf("field id in Trade: required")
+	}
+	if _, ok := raw["instrument_id"]; raw != nil && !ok {
+		return fmt.Errorf("field instrument_id in Trade: required")
+	}
+	if _, ok := raw["price"]; raw != nil && !ok {
+		return fmt.Errorf("field price in Trade: required")
+	}
+	if _, ok := raw["quantity"]; raw != nil && !ok {
+		return fmt.Errorf("field quantity in Trade: required")
+	}
+	if _, ok := raw["side"]; raw != nil && !ok {
+		return fmt.Errorf("field side in Trade: required")
+	}
+	if _, ok := raw["user_id"]; raw != nil && !ok {
+		return fmt.Errorf("field user_id in Trade: required")
+	}
+	if _, ok := raw["created_at"]; raw != nil && ok {
+		return fmt.Errorf("field created_at in Trade: read only")
+	}
+	if _, ok := raw["updated_at"]; raw != nil && ok {
+		return fmt.Errorf("field updated_at in Trade: read only")
+	}
+	type Plain Trade
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if matched, _ := regexp.MatchString(`^\d{4}-\d{2}-\d{2}$`, string(plain.Date)); !matched {
+		return fmt.Errorf("field %s pattern match: must match %s", "Date", `^\d{4}-\d{2}-\d{2}$`)
+	}
+	if matched, _ := regexp.MatchString(`^\d{1,12}(\.\d{1,12})?$`, string(plain.Fee)); !matched {
+		return fmt.Errorf("field %s pattern match: must match %s", "Fee", `^\d{1,12}(\.\d{1,12})?$`)
+	}
+	if matched, _ := regexp.MatchString(`^\d{1,12}(\.\d{1,12})?$`, string(plain.Price)); !matched {
+		return fmt.Errorf("field %s pattern match: must match %s", "Price", `^\d{1,12}(\.\d{1,12})?$`)
+	}
+	if matched, _ := regexp.MatchString(`^\d{1,12}(\.\d{1,12})?$`, string(plain.Quantity)); !matched {
+		return fmt.Errorf("field %s pattern match: must match %s", "Quantity", `^\d{1,12}(\.\d{1,12})?$`)
+	}
+	*j = Trade(plain)
 	return nil
 }
 
@@ -980,6 +1274,7 @@ const UploadOpTableCategories UploadOpTable = "categories"
 const UploadOpTableInsightQuestions UploadOpTable = "insight_questions"
 const UploadOpTableInsights UploadOpTable = "insights"
 const UploadOpTableRecurringRules UploadOpTable = "recurring_rules"
+const UploadOpTableTrades UploadOpTable = "trades"
 const UploadOpTableTransactions UploadOpTable = "transactions"
 const UploadOpTableUserSettings UploadOpTable = "user_settings"
 
@@ -992,6 +1287,7 @@ var enumValues_UploadOpTable = []interface{}{
 	"user_settings",
 	"insights",
 	"insight_questions",
+	"trades",
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -1329,6 +1625,6 @@ func (j *UserSettings) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
-const SchemaVersion = 5
+const SchemaVersion = 6
 
 const MinSupportedSchemaVersion = 3

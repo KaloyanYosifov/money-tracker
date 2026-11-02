@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trade.schema.json",
+  "title": "Trade",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "user_id", "instrument_id", "side", "date", "quantity", "price", "fee"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "user_id": { "type": "string", "format": "uuid" },
+    "instrument_id": { "type": "string", "format": "uuid" },
+    "side": { "type": "string", "enum": ["buy", "sell"] },
+    "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "quantity": { "type": "string", "pattern": "^\\d{1,12}(\\.\\d{1,12})?$" },
+    "price": { "type": "string", "pattern": "^\\d{1,12}(\\.\\d{1,12})?$" },
+    "fee": { "type": "string", "pattern": "^\\d{1,12}(\\.\\d{1,12})?$" },
+    "note": { "type": ["string", "null"], "minLength": 0, "maxLength": 200 },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true,
+      "description": "Set by the server."
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true,
+      "description": "Set by the server."
+    }
+  }
+}

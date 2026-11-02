@@ -27,6 +27,7 @@ An offline-first money tracker for iPhone, iPad and the browser. The data syncs 
 | `make test` | Runs `test-api` and `test-app` |
 | `make stack-up` | Builds and starts the local stack with Docker Compose, and waits until it is healthy |
 | `DISABLE_TOTP=true make stack-up` | Starts the local stack with no TOTP step at login and invite setup. Only for manual tests: the e2e suites need TOTP, and the API refuses the flag unless `PUBLIC_URL` is a localhost URL |
+| `make stack-up-no-otp` | Runs the stack with `DISABLE_TOTP=true`, then runs `scripts/seed-dev-user.sh`. The script creates the admin user `dev@example.com` with the password `devpassword` if that user does not exist |
 | `make stack-down` | Stops the local stack and deletes its volumes |
 | `make invite` | Runs `scripts/invite-user.sh`: asks for the email, the currency (default `EUR`) and the role (`user` or `admin`, default `user`), then creates an invite in the local stack and prints the invite URL |
 | `make e2e-stack-up` | Starts the e2e stack: a second Compose project (`money-tracker-e2e`) with its own database, on the dev ports plus 10000 (API 28080, PowerSync 28081, web 28088). The e2e suites use only this stack and delete its data before they run, so the dev data stays |

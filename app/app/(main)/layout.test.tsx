@@ -3,6 +3,7 @@ import { act, renderRouter, screen } from "expo-router/testing-library";
 import { Text } from "react-native";
 
 import type { Shortcuts } from "../../src/hooks/useShortcuts";
+import { PAGES } from "../../src/ui/nav/TabBar";
 import MainLayout from "./_layout";
 
 // The last handlers that the layout passed to useShortcuts.
@@ -35,6 +36,7 @@ function renderApp(initialUrl: string) {
       "(main)/categories": () => <Text>Categories page</Text>,
       "(main)/accounts": () => <Text>Accounts page</Text>,
       "(main)/reports": () => <Text>Reports page</Text>,
+      "(main)/portfolio": () => <Text>Portfolio page</Text>,
       "(main)/insights": () => <Text>AI Insights page</Text>,
       settings: () => <Text>Settings page</Text>,
     },
@@ -72,18 +74,37 @@ describe("the AI Insights tab", () => {
     expect(screen.queryByTestId("tab-insights")).toBeNull();
   });
 
-  it("shows after Accounts, as the fifth iPhone tab, while the switch is on", async () => {
+  it("shows after Portfolio while the switch is on", async () => {
     mockSettings = [{ id: "s1", insights_enabled: 1 }];
     await renderApp("/spending");
     expect(await screen.findByText("Spending page")).toBeOnTheScreen();
     const tabs = screen.getAllByRole("tab").map((tab) => tab.props.testID);
-    expect(tabs).toEqual(["tab-spending", "tab-transactions", "tab-categories", "tab-accounts", "tab-insights"]);
+    expect(tabs).toEqual(["tab-spending", "tab-transactions", "tab-categories", "tab-accounts", "tab-portfolio", "tab-insights"]);
   });
 
   it("keeps keys 1 to 5 on the first five pages, so Reports stays on 5", async () => {
     mockSettings = [{ id: "s1", insights_enabled: 1 }];
     await renderApp("/spending");
     expect(await screen.findByText("Spending page")).toBeOnTheScreen();
+    await act(async () => mockShortcuts.page?.(5));
+    expect(await screen.findByText("Reports page")).toBeOnTheScreen();
+  });
+});
+
+describe("the Portfolio tab", () => {
+  it("is the page after Reports, so keys 1 to 5 do not change", async () => {
+    expect(PAGES.map((page) => page.name)).toEqual([
+      "spending",
+      "transactions",
+      "categories",
+      "accounts",
+      "reports",
+      "portfolio",
+      "insights",
+    ]);
+    await renderApp("/spending");
+    expect(await screen.findByText("Spending page")).toBeOnTheScreen();
+    expect(screen.getByTestId("tab-portfolio")).toBeOnTheScreen();
     await act(async () => mockShortcuts.page?.(5));
     expect(await screen.findByText("Reports page")).toBeOnTheScreen();
   });

@@ -10,7 +10,7 @@ import (
 
 func TestTableWhitelist(t *testing.T) {
 	want := map[string][]string{
-		"accounts":          {"id", "user_id", "name", "color", "sort_order", "opening_balance_minor", "exclude_from_carry_over", "archived_at"},
+		"accounts":          {"id", "user_id", "name", "color", "sort_order", "opening_balance_minor", "exclude_from_carry_over", "exclude_from_net_worth", "archived_at"},
 		"categories":        {"id", "user_id", "type", "name", "icon", "color", "sort_order", "archived_at"},
 		"transactions":      {"id", "user_id", "type", "amount_minor", "currency_code", "date", "name", "category_id", "account_id", "to_account_id", "note", "recurring_rule_id", "source", "import_batch_id", "external_id", "created_at", "updated_at"},
 		"recurring_rules":   {"id", "user_id", "type", "amount_minor", "name", "category_id", "account_id", "to_account_id", "note", "frequency", "start_date", "end_date", "generated_through"},
@@ -18,6 +18,7 @@ func TestTableWhitelist(t *testing.T) {
 		"user_settings":     {"id", "user_id", "currency_code", "time_period", "week_start_day", "month_start_day", "year_start_month", "budget_mode", "carry_over", "hide_future", "show_note", "theme", "summary_font", "icon_style", "insights_enabled"},
 		"insights":          {"id", "user_id", "kind", "title", "body", "fingerprint", "status", "action", "created_at", "updated_at"},
 		"insight_questions": {"id", "user_id", "category_id", "question", "answer", "action", "status", "error", "created_at", "updated_at", "answered_at"},
+		"trades":            {"id", "user_id", "instrument_id", "side", "date", "quantity", "price", "fee", "note", "created_at", "updated_at"},
 	}
 	if got := sync.TableNames(); len(got) != len(want) {
 		t.Errorf("TableNames() = %v, want %d tables", got, len(want))
@@ -33,7 +34,7 @@ func TestTableWhitelist(t *testing.T) {
 			t.Errorf("Columns(%q) = %v, want %v", name, g, w)
 		}
 	}
-	for _, name := range []string{"users", "refresh_tokens", "deleted_records", "accounts; DROP TABLE users", ""} {
+	for _, name := range []string{"users", "refresh_tokens", "deleted_records", "instruments", "instrument_prices", "user_instruments", "accounts; DROP TABLE users", ""} {
 		if _, err := sync.Columns(name); !errors.Is(err, sync.ErrUnknownTable) {
 			t.Errorf("Columns(%q) error = %v, want ErrUnknownTable", name, err)
 		}

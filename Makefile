@@ -34,6 +34,7 @@ stack-up: $(DEV_ENV)
 
 stack-up-no-otp: $(DEV_ENV)
 	DISABLE_TOTP=true docker compose -f $(COMPOSE_FILE) up -d --build --wait
+	./scripts/seed-dev-user.sh
 
 stack-down: $(DEV_ENV)
 	docker compose -f $(COMPOSE_FILE) down -v

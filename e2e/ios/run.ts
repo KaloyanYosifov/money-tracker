@@ -14,16 +14,13 @@ import { fileURLToPath } from "node:url";
 import { query } from "../support/db.ts";
 import { runMaestroFlow } from "../support/maestro.ts";
 import { API_URL, POWERSYNC_URL, psql, resetData, waitForStack } from "../support/stack.ts";
-import { codeAt, msLeftInStep } from "../support/totp.ts";
+import { maestroLoginEnv, stepAt } from "../support/totp.ts";
 import { goOffline, goOnline, resetProxies } from "../support/toxiproxy.ts";
 import { createUser, type TestUser } from "../support/users.ts";
 
 const APP_DIR = fileURLToPath(new URL("../../app/", import.meta.url));
 const FLOWS_DIR = fileURLToPath(new URL("../../app/e2e/maestro/", import.meta.url));
 const BUNDLE_ID = "com.kyosifov.moneytracker";
-const STEP_MS = 30_000;
-// login.yaml launches the app, logs in and waits for the TOTP screen before it types the code.
-const MIN_LEFT_MS = 15_000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -104,31 +101,21 @@ function maestro(sim: Simulator, flow: string, env: Record<string, string> = {})
 }
 
 // The API accepts each TOTP step only once per user. createUser uses the
-// current step, so the login waits for a later one.
+// current step, so the login uses a later one.
 const lastStep = new Map<string, number>();
-
-async function nextCode(secret: string): Promise<string> {
-  for (;;) {
-    const now = Date.now();
-    const step = Math.floor(now / STEP_MS);
-    if (step > (lastStep.get(secret) ?? -1) && msLeftInStep(now) >= MIN_LEFT_MS) {
-      lastStep.set(secret, step);
-      return codeAt(secret, now);
-    }
-    await sleep(msLeftInStep(now) + 50);
-  }
-}
 
 async function newUser(): Promise<TestUser> {
   const user = await createUser();
-  lastStep.set(user.totpSecret, Math.floor(Date.now() / STEP_MS));
+  lastStep.set(user.totpSecret, stepAt());
   return user;
 }
 
-/** Runs login.yaml for a new user, with a TOTP code made right before the flow starts. */
+/** Runs login.yaml for a new user. The flow makes the TOTP code right before it types it. */
 async function logIn(sim: Simulator): Promise<TestUser> {
   const user = await newUser();
-  maestro(sim, "login.yaml", { EMAIL: user.email, PASSWORD: user.password, TOTP_CODE: await nextCode(user.totpSecret) });
+  const totp = await maestroLoginEnv(user.totpSecret, lastStep.get(user.totpSecret) ?? -1);
+  maestro(sim, "login.yaml", { EMAIL: user.email, PASSWORD: user.password, ...totp });
+  lastStep.set(user.totpSecret, stepAt() + 1);
   return user;
 }
 
@@ -153,6 +140,10 @@ function transactionsNamed(userId: string, name: string): number {
 
 function transactionCount(userId: string): number {
   return Number(query("SELECT count(*) FROM transactions WHERE user_id = :'user_id';", { user_id: userId })[0][0]);
+}
+
+function tradeCount(userId: string): number {
+  return Number(query("SELECT count(*) FROM trades WHERE user_id = :'user_id';", { user_id: userId })[0][0]);
 }
 
 interface Bounds {
@@ -318,6 +309,12 @@ async function main(): Promise<void> {
     maestro(phone, "app-lock.yaml", { PHASE: "failed" });
     faceIdResult(phone, true);
     maestro(phone, "app-lock.yaml", { PHASE: "unlocked" });
+  }
+
+  {
+    const user = await logIn(phone);
+    maestro(phone, "portfolio.yaml");
+    await waitUntil("the trade synced", () => tradeCount(user.userId) === 1, 30_000);
   }
 
   {

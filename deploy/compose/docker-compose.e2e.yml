@@ -8,6 +8,9 @@ services:
     environment:
       # The e2e suites log in with TOTP.
       DISABLE_TOTP: "false"
+      # Fixed prices (100, FX rate 1.25), so the e2e stack makes no Yahoo calls.
+      PRICES_FAKE: "1"
+      PRICES_INTERVAL: "2s"
 
   ai:
     environment:

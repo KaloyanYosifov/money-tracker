@@ -1,0 +1,22 @@
+{
+  "chart": {
+    "result": [
+      {
+        "meta": {
+          "currency": "GBp",
+          "symbol": "ACME.L",
+          "fullExchangeName": "LSE",
+          "instrumentType": "EQUITY",
+          "regularMarketTime": 1761940800,
+          "regularMarketPrice": 2685,
+          "longName": "Acme Holdings plc"
+        },
+        "timestamp": [1761638400, 1761724800],
+        "indicators": {
+          "quote": [{"close": [2650.5, 5.5]}]
+        }
+      }
+    ],
+    "error": null
+  }
+}

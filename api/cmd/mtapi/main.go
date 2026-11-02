@@ -18,6 +18,7 @@ import (
 	"github.com/KaloyanYosifov/money-tracker/api/internal/db"
 	"github.com/KaloyanYosifov/money-tracker/api/internal/httpserver"
 	"github.com/KaloyanYosifov/money-tracker/api/internal/insights"
+	"github.com/KaloyanYosifov/money-tracker/api/internal/prices"
 )
 
 // questionPollInterval is how often the worker looks for pending insight
@@ -81,18 +82,29 @@ func serve(logger *slog.Logger) error {
 	defer pool.Close()
 	srv := httpserver.New(cfg, logger, pool)
 
-	// The worker must stop before pool.Close, so the shutdown path waits for
-	// it explicitly. Without AI_BASE_URL the API serves with no worker.
+	// The workers must stop before pool.Close, so the shutdown path waits for
+	// them explicitly. They log through the default logger.
+	slog.SetDefault(logger)
 	var workers sync.WaitGroup
 	if aiURL := strings.TrimSpace(os.Getenv("AI_BASE_URL")); aiURL != "" {
-		// The worker logs through the default logger.
-		slog.SetDefault(logger)
 		workers.Go(func() {
 			insights.RunWorker(ctx, pool, aiclient.New(aiURL, nil), questionPollInterval)
 		})
 		logger.Info("insights question worker started")
 	} else {
 		logger.Info("AI_BASE_URL is not set: the insights question worker is off")
+	}
+	if cfg.PricesEnabled {
+		var src prices.PriceSource = prices.NewYahoo(cfg.PricesSourceURL, nil)
+		if cfg.PricesFake {
+			src = prices.NewFake()
+		}
+		workers.Go(func() {
+			prices.RunWorker(ctx, pool, src, cfg.PricesInterval)
+		})
+		logger.Info("price worker started", "fake", cfg.PricesFake, "interval", cfg.PricesInterval.String())
+	} else {
+		logger.Info("PRICES_ENABLED is false: the price worker is off")
 	}
 
 	errCh := make(chan error, 1)

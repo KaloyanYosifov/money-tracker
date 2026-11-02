@@ -1,6 +1,7 @@
 import { createTestDatabase, loadFixture, type TestDatabase } from "../../test/sqlite";
 import type { PeriodSettings } from "../domain/period";
 import {
+  accountsTotal,
   budgetProgress,
   carryOver,
   cashFlowSeries,
@@ -267,6 +268,30 @@ describe("carryOver", () => {
     expect(all(db, carryOver(october.start, ["closed"], today))).toEqual([
       { account_id: "closed", account_name: "Closed", balance: 0 },
     ]);
+  });
+});
+
+describe("accountsTotal", () => {
+  it("sums the balances of all accounts up to and with today", () => {
+    expect(first(db, accountsTotal(today))).toEqual({ total: 264100 });
+  });
+
+  it("counts a row dated today", () => {
+    loadFixture(db, {
+      transactions: [tx({ type: "expense", amount_minor: 100, date: today, account_id: "wallet", category_id: "food" })],
+    });
+    expect(first(db, accountsTotal(today))).toEqual({ total: 264000 });
+  });
+
+  it("leaves out accounts that are excluded from net worth", () => {
+    db.prepare(`UPDATE accounts SET exclude_from_net_worth = 1 WHERE id = 'bank'`).run();
+    db.prepare(`UPDATE accounts SET exclude_from_net_worth = 0 WHERE id = 'wallet'`).run();
+    expect(first(db, accountsTotal(today))).toEqual({ total: 44100 });
+  });
+
+  it("adds the opening balances", () => {
+    db.prepare(`UPDATE accounts SET opening_balance_minor = 10000 WHERE id = 'empty'`).run();
+    expect(first(db, accountsTotal(today))).toEqual({ total: 274100 });
   });
 });
 

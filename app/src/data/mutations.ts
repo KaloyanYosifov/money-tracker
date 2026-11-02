@@ -1,23 +1,27 @@
 import type { Category, UserSettings } from "../generated/schema";
 import { newId } from "../domain/ids";
 import { MAX_AMOUNT_MINOR } from "../domain/money";
+import { deleteError, sellError, type Oversell, type Trade } from "../domain/portfolio";
 import {
   DUPLICATE_ACCOUNT_MESSAGE,
   DUPLICATE_CATEGORY_MESSAGE,
   nameKey,
+  normalizeDecimal,
   validateAccount,
   validateCategory,
   validateRecurringRule,
+  validateTrade,
   validateTransaction,
   type AccountInput,
   type CategoryInput,
   type FieldError,
   type RecurringRuleInput,
+  type TradeInput,
   type TransactionInput,
 } from "../domain/validation";
 import { generateDue } from "./recurringGenerator";
 
-export type { AccountInput, CategoryInput, FieldError, RecurringRuleInput, TransactionInput };
+export type { AccountInput, CategoryInput, FieldError, RecurringRuleInput, TradeInput, TransactionInput };
 
 // The part of the PowerSync database that the mutations use. The test helper
 // implements it over better-sqlite3.
@@ -218,10 +222,76 @@ export function saveAccount(db: MutationDb, input: AccountInput): Promise<SaveRe
     const values: Row = { name: input.name, color: input.color };
     if (input.sort_order !== undefined) values.sort_order = input.sort_order;
     if (input.opening_balance_minor !== undefined && input.opening_balance_minor !== null) values.opening_balance_minor = input.opening_balance_minor;
+    if (input.exclude_from_net_worth !== undefined) values.exclude_from_net_worth = input.exclude_from_net_worth ? 1 : 0;
     const id = await write(tx, "accounts", input.id, values, async () => ({
       user_id: (await currentSettings(tx)).user_id,
       sort_order: input.sort_order ?? (await nextSortOrder(tx, "accounts")),
     }));
+    return { ok: true, id };
+  });
+}
+
+/**
+ * Inserts a trade, or updates the changed columns when input.id exists. A sell
+ * must not take the held quantity below zero on any date.
+ */
+export function saveTrade(db: MutationDb, input: TradeInput): Promise<SaveResult> {
+  return db.writeTransaction(async (tx) => {
+    const fee = normalizeDecimal(input.fee);
+    const trade: TradeInput = {
+      ...input,
+      quantity: normalizeDecimal(input.quantity),
+      price: normalizeDecimal(input.price),
+      fee: fee === "" ? "0" : fee,
+    };
+    const errors = validateTrade(trade);
+    if (trade.instrument_id && !(await tx.getOptional("SELECT id FROM instruments WHERE id = ?", [trade.instrument_id]))) {
+      errors.push({ field: "instrument_id", code: "invalid_reference" });
+    }
+    if (errors.length > 0) return fail(errors);
+
+    const others = await tx.getAll<Trade>(
+      "SELECT id, side, date, quantity, price, fee FROM trades WHERE instrument_id = ?",
+      [trade.instrument_id],
+    );
+    const tradeId = trade.id ?? newId();
+    const candidate: Trade = { id: tradeId, side: trade.side, date: trade.date, quantity: trade.quantity, price: trade.price, fee: trade.fee };
+    const over = sellError(others, candidate);
+    if (over) return fail([overHeld(over, tradeId)]);
+
+    const values: Row = {
+      instrument_id: trade.instrument_id,
+      side: trade.side,
+      date: trade.date,
+      quantity: trade.quantity,
+      price: trade.price,
+      fee: trade.fee,
+      note: trade.note ?? null,
+    };
+    const id = await write(tx, "trades", tradeId, values, async () => ({
+      user_id: (await currentSettings(tx)).user_id,
+    }));
+    return { ok: true, id };
+  });
+}
+
+function overHeld(over: Oversell, changedId: string): FieldError {
+  const { sell } = over;
+  return sell.id === changedId
+    ? { field: "quantity", code: "over_held", held: over.held }
+    : { field: "quantity", code: "over_held", held: over.held, sell: { id: sell.id, date: sell.date, quantity: sell.quantity } };
+}
+
+/** Deletes a trade unless a later sell then sells more than is held. */
+export function deleteTrade(db: MutationDb, id: string): Promise<SaveResult> {
+  return db.writeTransaction(async (tx) => {
+    const trades = await tx.getAll<Trade>(
+      "SELECT id, side, date, quantity, price, fee FROM trades WHERE instrument_id = (SELECT instrument_id FROM trades WHERE id = ?)",
+      [id],
+    );
+    const over = deleteError(trades, id);
+    if (over) return fail([overHeld(over, id)]);
+    await tx.execute("DELETE FROM trades WHERE id = ?", [id]);
     return { ok: true, id };
   });
 }

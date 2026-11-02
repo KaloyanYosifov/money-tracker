@@ -70,6 +70,7 @@ const MESSAGES: Record<ValidationCode, string> = {
   invalid_transfer: "Not allowed for a transfer",
   invalid_reference: "No longer exists",
   in_use: "In use",
+  over_held: "More than you hold",
 };
 
 function message(error: FieldError, today: string): string {

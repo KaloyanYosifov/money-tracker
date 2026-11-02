@@ -1,0 +1,11 @@
+{
+  "explains": [],
+  "count": 4,
+  "quotes": [
+    {"exchange": "NMS", "shortname": "Acme Corp", "quoteType": "EQUITY", "symbol": "ACME", "longname": "Acme Corporation", "exchDisp": "NASDAQ", "typeDisp": "Equity"},
+    {"exchange": "GER", "shortname": "Acme World ETF", "quoteType": "ETF", "symbol": "ACWX.DE", "exchDisp": "XETRA", "typeDisp": "ETF"},
+    {"exchange": "CCC", "shortname": "AcmeCoin USD", "quoteType": "CRYPTOCURRENCY", "symbol": "ACM-USD", "exchDisp": "CCC", "typeDisp": "Cryptocurrency"},
+    {"exchange": "OPR", "shortname": "ACME Jan 2027 50 call", "quoteType": "OPTION", "symbol": "ACME270115C00050000", "exchDisp": "OPR", "typeDisp": "Option"}
+  ],
+  "news": []
+}

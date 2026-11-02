@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -26,6 +27,13 @@ type Config struct {
 	// TOTPDisabled skips the TOTP step at login and at invite setup. Only for
 	// local tests: Load refuses it unless PUBLIC_URL is a localhost URL.
 	TOTPDisabled bool
+
+	PricesEnabled bool
+	// PricesFake replaces Yahoo with a fake source. Only for the e2e stack.
+	PricesFake      bool
+	PricesSourceURL string
+	// PricesInterval is how often the worker checks for due instruments.
+	PricesInterval time.Duration
 }
 
 // Load reads the configuration through getenv (os.Getenv in production).
@@ -47,6 +55,10 @@ func Load(getenv func(string) string) (*Config, error) {
 		JWTIssuer:    required("JWT_ISSUER"),
 		CookieSecure: true,
 		CORSOrigins:  splitList(getenv("CORS_ORIGINS")),
+
+		PricesEnabled:   true,
+		PricesSourceURL: "https://query1.finance.yahoo.com",
+		PricesInterval:  5 * time.Minute,
 	}
 	if cfg.ListenAddr == "" {
 		cfg.ListenAddr = ":8080"
@@ -89,6 +101,36 @@ func Load(getenv func(string) string) (*Config, error) {
 			errs = append(errs, errors.New("DISABLE_TOTP: allowed only when PUBLIC_URL is a localhost URL"))
 		default:
 			cfg.TOTPDisabled = b
+		}
+	}
+
+	for name, dst := range map[string]*bool{"PRICES_ENABLED": &cfg.PricesEnabled, "PRICES_FAKE": &cfg.PricesFake} {
+		if v := strings.TrimSpace(getenv(name)); v != "" {
+			b, err := strconv.ParseBool(v)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("%s: %w", name, err))
+			}
+			*dst = b
+		}
+	}
+
+	if v := strings.TrimSpace(getenv("PRICES_SOURCE_URL")); v != "" {
+		u, err := url.Parse(v)
+		if err != nil || u.Scheme == "" || u.Host == "" {
+			errs = append(errs, errors.New("PRICES_SOURCE_URL: must be an absolute URL with a scheme and a host"))
+		}
+		cfg.PricesSourceURL = v
+	}
+
+	if v := strings.TrimSpace(getenv("PRICES_INTERVAL")); v != "" {
+		d, err := time.ParseDuration(v)
+		switch {
+		case err != nil:
+			errs = append(errs, fmt.Errorf("PRICES_INTERVAL: %w", err))
+		case d <= 0:
+			errs = append(errs, errors.New("PRICES_INTERVAL: must be greater than 0"))
+		default:
+			cfg.PricesInterval = d
 		}
 	}
 

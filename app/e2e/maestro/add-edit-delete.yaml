@@ -31,9 +31,8 @@ name: Add, edit and delete an expense
           id: transaction-name
       - eraseText: 20
       - inputText: E2E Latte
-      # No keyboard shows when the simulator uses the Mac keyboard, so this step may do nothing.
-      - hideKeyboard:
-          optional: true
+      # Save is in the header, above the keyboard. hideKeyboard is not used: on iOS it taps or
+      # swipes the form, and that can open the Category sheet over Save.
       - tapOn:
           id: transaction-save
       - extendedWaitUntil:

@@ -142,11 +142,12 @@ func TestUploadMalformed(t *testing.T) {
 	env := newUploadEnv(t, nil)
 	user := "0f0e1c39-6a43-4c39-9d5b-5f4f1f0a2a10"
 	for name, body := range map[string]string{
-		"not_json":   `{"schema_version":`,
-		"no_ops":     fmt.Sprintf(`{"schema_version":%d,"ops":[]}`, schema.SchemaVersion),
-		"bad_op":     fmt.Sprintf(`{"schema_version":%d,"ops":[{"op":"MERGE","table":"accounts","id":"0f0e1c39-6a43-4c39-9d5b-5f4f1f0a2a11"}]}`, schema.SchemaVersion),
-		"bad_table":  fmt.Sprintf(`{"schema_version":%d,"ops":[{"op":"DELETE","table":"users","id":"0f0e1c39-6a43-4c39-9d5b-5f4f1f0a2a11"}]}`, schema.SchemaVersion),
-		"no_version": `{"ops":[{"op":"DELETE","table":"accounts","id":"0f0e1c39-6a43-4c39-9d5b-5f4f1f0a2a11"}]}`,
+		"not_json":     `{"schema_version":`,
+		"no_ops":       fmt.Sprintf(`{"schema_version":%d,"ops":[]}`, schema.SchemaVersion),
+		"bad_op":       fmt.Sprintf(`{"schema_version":%d,"ops":[{"op":"MERGE","table":"accounts","id":"0f0e1c39-6a43-4c39-9d5b-5f4f1f0a2a11"}]}`, schema.SchemaVersion),
+		"bad_table":    fmt.Sprintf(`{"schema_version":%d,"ops":[{"op":"DELETE","table":"users","id":"0f0e1c39-6a43-4c39-9d5b-5f4f1f0a2a11"}]}`, schema.SchemaVersion),
+		"server_table": fmt.Sprintf(`{"schema_version":%d,"ops":[{"op":"PUT","table":"instruments","id":"0f0e1c39-6a43-4c39-9d5b-5f4f1f0a2a11","data":{}}]}`, schema.SchemaVersion),
+		"no_version":   `{"ops":[{"op":"DELETE","table":"accounts","id":"0f0e1c39-6a43-4c39-9d5b-5f4f1f0a2a11"}]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			wantError(t, env.post(t, user, body), http.StatusBadRequest, "invalid_request")

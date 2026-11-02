@@ -126,3 +126,33 @@ func TestValidateUpload(t *testing.T) {
 		t.Error("PUT without data accepted")
 	}
 }
+
+func TestValidateTrade(t *testing.T) {
+	v := newValidator(t)
+	head := `{"id":"` + recID + `","user_id":"` + userID + `","instrument_id":"` + otherID + `",`
+	valid := head + `"side":"buy","date":"2026-03-14","quantity":"0.00012345","price":"172.5","fee":"1","note":null}`
+	if err := v.ValidatePut("trades", decode(t, valid)); err != nil {
+		t.Errorf("valid trade rejected: %v", err)
+	}
+
+	bad := []struct{ name, data, field string }{
+		{"wrong side", `"side":"hold","date":"2026-03-14","quantity":"1","price":"172.5","fee":"1"}`, "side"},
+		{"number quantity", `"side":"buy","date":"2026-03-14","quantity":1.5,"price":"172.5","fee":"1"}`, "quantity"},
+		{"comma quantity", `"side":"buy","date":"2026-03-14","quantity":"1,5","price":"172.5","fee":"1"}`, "quantity"},
+		{"negative quantity", `"side":"buy","date":"2026-03-14","quantity":"-1","price":"172.5","fee":"1"}`, "quantity"},
+		{"13 fraction digits", `"side":"buy","date":"2026-03-14","quantity":"0.1234567890123","price":"172.5","fee":"1"}`, "quantity"},
+		{"missing fee", `"side":"buy","date":"2026-03-14","quantity":"1","price":"172.5"}`, "fee"},
+		{"extra currency_code", `"side":"buy","date":"2026-03-14","quantity":"1","price":"172.5","fee":"1","currency_code":"USD"}`, "currency_code"},
+	}
+	for _, tc := range bad {
+		t.Run(tc.name, func(t *testing.T) {
+			err := v.ValidatePut("trades", decode(t, head+tc.data))
+			if err == nil {
+				t.Fatal("invalid trade accepted")
+			}
+			if !strings.Contains(err.Error(), tc.field) {
+				t.Errorf("message %q does not name field %q", err, tc.field)
+			}
+		})
+	}
+}

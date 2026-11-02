@@ -34,3 +34,20 @@ export async function freshCode(secret: string): Promise<string> {
   }
   return codeAt(secret, Date.now());
 }
+
+/** The 30-second TOTP step at a time. */
+export function stepAt(timestamp = Date.now()): number {
+  return Math.floor(timestamp / (PERIOD_SECONDS * 1000));
+}
+
+/**
+ * The env of the Maestro login.yaml for a user whose steps up to lastUsed the API already saw.
+ * The flow types the code of the step after the current one (app/e2e/maestro/scripts/totp.js),
+ * so this waits while that step is already used. After the flow, mark stepAt() + 1 as used.
+ */
+export async function maestroLoginEnv(secret: string, lastUsed: number): Promise<Record<string, string>> {
+  while (stepAt() + 1 <= lastUsed) {
+    await new Promise((resolve) => setTimeout(resolve, msLeftInStep() + 50));
+  }
+  return { TOTP_SECRET: secret, MIN_STEP: String(lastUsed + 1) };
+}

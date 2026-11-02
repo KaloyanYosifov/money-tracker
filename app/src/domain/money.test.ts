@@ -74,6 +74,25 @@ describe("formatAmount", () => {
   it("adds a plus sign when signed", () => {
     expect(formatAmount(9243471, "EUR", "en-IE", { signed: true })).toBe("+€92,434.71");
   });
+
+  describe("when Intl ignores signDisplay, as Hermes on iOS does", () => {
+    const RealNumberFormat = Intl.NumberFormat;
+    beforeEach(() => {
+      jest.spyOn(Intl, "NumberFormat").mockImplementation(
+        (locale, options) => new RealNumberFormat(locale, { ...options, signDisplay: "auto" }),
+      );
+    });
+    afterEach(() => jest.restoreAllMocks());
+
+    it("still adds a plus sign to a positive signed amount", () => {
+      expect(formatAmount(9243471, "EUR", "en-IE", { signed: true })).toBe("+€92,434.71");
+    });
+
+    it("adds no plus sign to zero or a negative amount", () => {
+      expect(formatAmount(0, "EUR", "en-IE", { signed: true })).toBe("€0.00");
+      expect(formatAmount(-500, "EUR", "en-IE", { signed: true })).toBe("-€5.00");
+    });
+  });
 });
 
 describe("minorUnits", () => {

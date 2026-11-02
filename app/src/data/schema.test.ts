@@ -13,7 +13,10 @@ const tableForFile: Record<string, string> = {
   category: "categories",
   insight: "insights",
   insight_question: "insight_questions",
+  instrument: "instruments",
+  instrument_price: "instrument_prices",
   recurring_rule: "recurring_rules",
+  trade: "trades",
   transaction: "transactions",
   user_settings: "user_settings",
 };
@@ -81,5 +84,16 @@ describe("AppSchema", () => {
     const table = AppSchema.tables.find((t) => t.name === "transactions");
     const indexed = table?.indexes.flatMap((i) => i.columns.map((c) => c.name)).sort();
     expect(indexed).toEqual(["account_id", "category_id", "date"]);
+  });
+
+  it("has the portfolio tables and the net worth flag", () => {
+    const names = AppSchema.tables.map((t) => t.name);
+    expect(names).toEqual(expect.arrayContaining(["trades", "instruments", "instrument_prices"]));
+    expect(columnsOf("accounts").exclude_from_net_worth).toBe(ColumnType.INTEGER);
+  });
+
+  it.each(["trades", "instrument_prices"])("indexes %s on instrument_id and date", (name) => {
+    const table = AppSchema.tables.find((t) => t.name === name);
+    expect(table?.indexes.map((i) => i.columns.map((c) => c.name))).toEqual([["instrument_id", "date"]]);
   });
 });

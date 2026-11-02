@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "instrument.schema.json",
+  "title": "Instrument",
+  "description": "Written by the server. Synced to the app, never uploaded.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "symbol", "name", "exchange", "kind", "quote_currency"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "symbol": { "type": "string", "minLength": 1, "maxLength": 20 },
+    "name": { "type": "string", "maxLength": 120 },
+    "exchange": { "type": "string", "maxLength": 40 },
+    "kind": { "type": "string", "enum": ["stock", "etf", "crypto", "fx"] },
+    "quote_currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "last_fetched_at": { "type": ["string", "null"], "format": "date-time" },
+    "failed_at": { "type": ["string", "null"], "format": "date-time" }
+  }
+}
