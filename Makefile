@@ -4,8 +4,11 @@ E2E_COMPOSE := docker compose -f $(COMPOSE_FILE) -f deploy/compose/docker-compos
 # The iOS suites install a Release build. Other simulators than the dev ones keep the dev build.
 IOS_PHONE_SIMULATOR ?= iPhone 17e
 IOS_TABLET_SIMULATOR ?= iPad (A16)
+# The URLs for ios-device. The defaults are the production URLs from app/eas.json.
+IOS_API_URL ?= https://money.kyosifov.com
+IOS_POWERSYNC_URL ?= https://money-sync.kyosifov.com
 
-.PHONY: setup generate check-generated test-api test-app test stack-up stack-up-no-otp stack-down invite import e2e-stack-up e2e-stack-down e2e-web e2e-ios e2e-cross
+.PHONY: setup generate check-generated test-api test-app test stack-up stack-up-no-otp stack-down invite import ios-device e2e-stack-up e2e-stack-down e2e-web e2e-ios e2e-cross
 
 setup:
 	./scripts/setup-macos.sh
@@ -45,6 +48,11 @@ invite:
 # BACKUP is optional. Without it, the script asks for the path.
 import:
 	@node scripts/import-spending-tracker.ts $(BACKUP)
+
+# IOS_DEVICE is optional. Without it, Expo asks which device to use.
+ios-device:
+	cd app && EXPO_PUBLIC_API_URL="$(IOS_API_URL)" EXPO_PUBLIC_POWERSYNC_URL="$(IOS_POWERSYNC_URL)" \
+		npx expo run:ios --configuration Release --device $(if $(IOS_DEVICE),"$(IOS_DEVICE)")
 
 # The e2e stack has its own database. The suites delete its data, never the dev data.
 e2e-stack-up: $(DEV_ENV)

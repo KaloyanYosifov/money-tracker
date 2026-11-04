@@ -30,6 +30,7 @@ An offline-first money tracker for iPhone, iPad and the browser. The data syncs 
 | `make stack-up-no-otp` | Runs the stack with `DISABLE_TOTP=true`, then runs `scripts/seed-dev-user.sh`. The script creates the admin user `dev@example.com` with the password `devpassword` if that user does not exist |
 | `make stack-down` | Stops the local stack and deletes its volumes |
 | `make invite` | Runs `scripts/invite-user.sh`: asks for the email, the currency (default `EUR`) and the role (`user` or `admin`, default `user`), then creates an invite in the local stack and prints the invite URL |
+| `make ios-device` | Builds a Release of the iOS app and installs it on an iPhone that is connected by USB. It asks which device to use, or set `IOS_DEVICE=<name or UDID>`. The app uses the production URLs from `app/eas.json`. To change them, set `IOS_API_URL` and `IOS_POWERSYNC_URL`. One time setup: turn on Developer Mode on the iPhone, and select your team in Xcode under Signing & Capabilities of the MoneyTracker target |
 | `make e2e-stack-up` | Starts the e2e stack: a second Compose project (`money-tracker-e2e`) with its own database, on the dev ports plus 10000 (API 28080, PowerSync 28081, web 28088). The e2e suites use only this stack and delete its data before they run, so the dev data stays |
 | `make e2e-stack-down` | Stops the e2e stack and deletes its volumes |
 | `make e2e-web` | Runs the Playwright web suite (`npm --workspace e2e run test:web`) against the e2e stack |
