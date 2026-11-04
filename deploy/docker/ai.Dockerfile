@@ -2,7 +2,7 @@
 # Build context: the repository root.
 # Dependabot updates the image digests. The claude-cli-update workflow updates
 # CLAUDE_VERSION and the checksums.
-FROM --platform=$BUILDPLATFORM golang:1.26.10@sha256:672c944cfd07599b5f1bb179869270cdc94c6254e41db4d431259693cb286b82 AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.3@sha256:2920bb124f1a2e12a1d39f0cab756ae0068441ee1da7655dec7f5e374944095b AS build
 ARG TARGETOS
 ARG TARGETARCH
 WORKDIR /src/ai
