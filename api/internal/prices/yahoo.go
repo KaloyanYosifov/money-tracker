@@ -264,14 +264,15 @@ func (y *Yahoo) chart(ctx context.Context, symbol string, from time.Time) (Chart
 }
 
 func (y *Yahoo) get(ctx context.Context, path string, out any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, y.baseURL+path, nil)
+	// The host comes from PRICES_SOURCE_URL. Callers escape user input into path.
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, y.baseURL+path, nil) // #nosec G704
 	if err != nil {
 		return err
 	}
 	req.Header.Set("User-Agent", yahooUserAgent)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := y.http.Do(req)
+	resp, err := y.http.Do(req) // #nosec G704
 	if err != nil {
 		return err
 	}
