@@ -85,8 +85,8 @@ func NewHandlers(d Deps) *Handlers {
 // Register adds the routes to mux.
 func (h *Handlers) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/.well-known/jwks.json", h.jwks)
-	mux.HandleFunc("POST /api/auth/invite/accept", h.inviteAccept)
-	mux.HandleFunc("POST /api/auth/invite/confirm", h.inviteConfirm)
+	mux.HandleFunc("POST /api/auth/invite/accept", h.rateLimited(h.inviteAccept))
+	mux.HandleFunc("POST /api/auth/invite/confirm", h.rateLimited(h.inviteConfirm))
 	mux.HandleFunc("POST /api/auth/login", h.rateLimited(h.login))
 	mux.HandleFunc("POST /api/auth/login/totp", h.rateLimited(h.loginTOTP))
 	mux.HandleFunc("POST /api/auth/refresh", h.rateLimited(h.refreshToken))

@@ -681,7 +681,10 @@ func TestRateLimitedRoutes(t *testing.T) {
 			t.Fatalf("request %d was limited", i+1)
 		}
 	}
-	for _, path := range []string{"/api/auth/login", "/api/auth/login/totp", "/api/auth/refresh"} {
+	for _, path := range []string{
+		"/api/auth/login", "/api/auth/login/totp", "/api/auth/refresh",
+		"/api/auth/invite/accept", "/api/auth/invite/confirm",
+	} {
 		wantError(t, fromIP("192.0.2.1", path), http.StatusTooManyRequests, "rate_limited")
 	}
 	if rec := fromIP("192.0.2.2", "/api/auth/login"); rec.Code == http.StatusTooManyRequests {

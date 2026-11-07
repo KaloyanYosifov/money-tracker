@@ -25,6 +25,16 @@ var ErrPasswordTooShort = errors.New("password must have at least 8 characters")
 
 var b64 = base64.RawStdEncoding
 
+// argonSlots limits the Argon2 runs at the same time. Each run allocates
+// argonMemoryKiB, so many parallel logins can otherwise exhaust the pod memory.
+var argonSlots = make(chan struct{}, 4)
+
+func argonKey(password, salt []byte, time, memory uint32, threads uint8) []byte {
+	argonSlots <- struct{}{}
+	defer func() { <-argonSlots }()
+	return argon2.IDKey(password, salt, time, memory, threads, argonKeyLen)
+}
+
 // HashPassword returns an Argon2id hash in PHC string format.
 func HashPassword(password string) (string, error) {
 	if utf8.RuneCountInString(password) < minPasswordLen {
@@ -34,7 +44,7 @@ func HashPassword(password string) (string, error) {
 	if _, err := rand.Read(salt); err != nil {
 		return "", fmt.Errorf("read salt: %w", err)
 	}
-	key := argon2.IDKey([]byte(password), salt, argonTime, argonMemoryKiB, argonThreads, argonKeyLen)
+	key := argonKey([]byte(password), salt, argonTime, argonMemoryKiB, argonThreads)
 	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
 		argon2.Version, argonMemoryKiB, argonTime, argonThreads,
 		b64.EncodeToString(salt), b64.EncodeToString(key)), nil
@@ -67,6 +77,6 @@ func VerifyPassword(password, hash string) bool {
 	if err != nil || len(want) != argonKeyLen {
 		return false
 	}
-	got := argon2.IDKey([]byte(password), salt, time, memory, threads, argonKeyLen)
+	got := argonKey([]byte(password), salt, time, memory, threads)
 	return subtle.ConstantTimeCompare(got, want) == 1
 }

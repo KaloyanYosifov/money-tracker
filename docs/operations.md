@@ -319,7 +319,9 @@ Delete the job `money-tracker-insights-manual` when it is complete. A second job
 
 The API trusts `X-Real-IP` from the addresses in `TRUSTED_PROXY_CIDRS`. The web nginx sends this header to the API without a change. The login rate limit uses it to find the client.
 
-The edge proxy in front of the web pod must set `X-Real-IP` to the real client address and remove the value that the client sent. ingress-nginx does this by default. Do not set `use-forwarded-headers: true` on ingress-nginx, and do not put a different proxy in front of the web pod, unless that proxy also sets `X-Real-IP`. If a client can send its own `X-Real-IP`, it can avoid the login rate limit.
+The edge proxy in front of the web pod must set `X-Real-IP` to the real client address and remove the value that the client sent. If a client can send its own `X-Real-IP`, it can avoid the login rate limit. If the edge proxy sets the address of a proxy pod instead, all clients share one limit.
+
+Public traffic comes through the Cloudflare Tunnel (cloudflared pods) to NGINX Gateway Fabric. NGF sets `X-Real-IP` to `$remote_addr`. The `rewriteClientIP` setting in `k8s/nginx-gateway-fabric/values.yaml` of home-infrastructure makes `$remote_addr` the client address from the `X-Forwarded-For` that Cloudflare sets. It trusts the pod CIDR, so the router must not forward ports 80 and 443 to the nodes.
 
 ## Prices
 
