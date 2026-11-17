@@ -174,7 +174,7 @@ func askQuestion(ctx context.Context, tx pgx.Tx, client AIClient, q pendingQuest
 	if err != nil {
 		return err
 	}
-	if input.Summary, err = readMemory(ctx, tx, q.userID); err != nil {
+	if input.Summary, err = readMemory(ctx, tx, q.userID, SourceSpending); err != nil {
 		return err
 	}
 

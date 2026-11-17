@@ -176,7 +176,7 @@ function TradeFormBody({
   const over =
     errors.some((e) => e.field === "quantity" || e.field === "date")
       ? null
-      : sellError(detail.trades, { id: candidateId, side, date, quantity: input.quantity, price: "0", fee: "0" });
+      : sellError(detail.legs, { id: candidateId, side, date, quantity: input.quantity, price: "0", fee: "0" });
   const overError = serverErrors.find((e) => e.code === "over_held");
   const held = over?.held ?? overError?.held ?? null;
   const laterSell = over ? (over.sell.id === candidateId ? undefined : over.sell) : overError?.sell;
@@ -230,7 +230,7 @@ function TradeFormBody({
 
   async function remove() {
     if (!existing) return;
-    const blocked = deleteError(detail.trades, existing.id);
+    const blocked = deleteError(detail.legs, existing.id);
     if (blocked) {
       setDeleteBlocked(`You cannot delete this trade. ${laterSellText(blocked.sell, blocked.held)}`);
       return;

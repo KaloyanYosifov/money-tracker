@@ -301,11 +301,15 @@ Do the steps in this order:
 
    When the build is on TestFlight, install it on the iPhone or iPad from the TestFlight app.
 
+Migrations run only up. An older image tag does not undo them. Do not roll back a release with migration `00009_insight_source` to an older tag. The older `mtapi` saves `insight_memory` with `ON CONFLICT (user_id)`, which fails on the new primary key, and it mixes the portfolio cards with the spending cards. To undo the migration, restore a backup from before the upgrade. See [Backups](#backups).
+
 The `production` profile in `app/eas.json` sets `EXPO_PUBLIC_API_URL=https://money.kyosifov.com` and `EXPO_PUBLIC_POWERSYNC_URL=https://money-sync.kyosifov.com`. The `development` profile builds for the iOS simulator. The `preview` profile builds for internal distribution to registered devices.
 
 ### AI Insights job
 
 The CronJob `money-tracker-insights` runs each day at 06:00. It writes the AI Insights cards for each user who turned on AI Insights. It sends the data of the user to the gateway `money-tracker-ai`, and the gateway calls Claude. If a run fails, the alert `InsightsJobFailed` sends a Signal message. If the Claude token is not valid, the run fails and you get the same alert. Before the token expires, `ClaudeTokenExpiresSoon` sends a Signal message. See [Rotate the Claude token](#rotate-the-claude-token).
+
+On Mondays, the same job also writes the portfolio cards. It does this for each user who turned on AI Insights and has at least one trade on or before the day of the run.
 
 To start a run manually:
 
@@ -314,6 +318,15 @@ kubectl -n money-tracker create job --from=cronjob/money-tracker-insights money-
 ```
 
 Delete the job `money-tracker-insights-manual` when it is complete. A second job with the same name cannot start while the first one exists.
+
+To write only the portfolio cards, on any day:
+
+```sh
+kubectl -n money-tracker exec deploy/money-tracker-api -c api -- \
+  /mtapi insights run --portfolio
+```
+
+The command runs in the foreground and takes up to 5 minutes for each user. Each user is written in its own transaction. If the command stops, the users that are done keep their cards. Run the command again to do all users.
 
 ## Edge proxy
 

@@ -83,7 +83,7 @@ type InputCard struct {
 	Status      string `json:"status"`
 }
 
-// retention is how long the daily run keeps cards and questions.
+// retention is how long the daily and portfolio runs keep cards, and the daily run keeps questions.
 const retention = 60 * 24 * time.Hour
 
 // historyDays is how many days of transactions the daily run sends.
@@ -179,7 +179,7 @@ func readUserData(ctx context.Context, pool *pgxpool.Pool, userID, today string)
 
 	rows, err = pool.Query(ctx,
 		`SELECT kind, title, fingerprint, status FROM insights
-		 WHERE user_id = $1 ORDER BY created_at`, userID)
+		 WHERE user_id = $1 AND source = 'spending' ORDER BY created_at`, userID)
 	if err != nil {
 		return in, data, fmt.Errorf("read cards: %w", err)
 	}
@@ -188,19 +188,21 @@ func readUserData(ctx context.Context, pool *pgxpool.Pool, userID, today string)
 		return in, data, fmt.Errorf("read cards: %w", err)
 	}
 
-	if in.DismissedFingerprints, err = dismissedFingerprints(ctx, pool, userID); err != nil {
+	if in.DismissedFingerprints, err = dismissedFingerprints(ctx, pool, userID, SourceSpending); err != nil {
 		return in, data, err
 	}
-	if in.Summary, err = readMemory(ctx, pool, userID); err != nil {
+	if in.Summary, err = readMemory(ctx, pool, userID, SourceSpending); err != nil {
 		return in, data, err
 	}
 	return in, data, nil
 }
 
-// readMemory returns the saved summary of the user, or "" when there is none.
-func readMemory(ctx context.Context, db querier, userID string) (string, error) {
+// readMemory returns the saved summary of the user for source, or "" when
+// there is none.
+func readMemory(ctx context.Context, db querier, userID, source string) (string, error) {
 	var summary string
-	err := db.QueryRow(ctx, `SELECT summary FROM insight_memory WHERE user_id = $1`, userID).Scan(&summary)
+	err := db.QueryRow(ctx,
+		`SELECT summary FROM insight_memory WHERE user_id = $1 AND source = $2`, userID, source).Scan(&summary)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", nil
 	}
@@ -211,11 +213,11 @@ func readMemory(ctx context.Context, db querier, userID string) (string, error) 
 }
 
 // dismissedFingerprints returns the fingerprints of the user's dismissed
-// cards, so the gateway does not suggest them again.
-func dismissedFingerprints(ctx context.Context, pool *pgxpool.Pool, userID string) ([]string, error) {
+// cards of source, so the gateway does not suggest them again.
+func dismissedFingerprints(ctx context.Context, pool *pgxpool.Pool, userID, source string) ([]string, error) {
 	rows, err := pool.Query(ctx,
 		`SELECT DISTINCT fingerprint FROM insights
-		 WHERE user_id = $1 AND status = 'dismissed' ORDER BY fingerprint`, userID)
+		 WHERE user_id = $1 AND source = $2 AND status = 'dismissed' ORDER BY fingerprint`, userID, source)
 	if err != nil {
 		return nil, fmt.Errorf("read dismissed fingerprints: %w", err)
 	}
@@ -238,11 +240,12 @@ func tombstoneDelete(ctx context.Context, tx pgx.Tx, table, deleteSQL string, ar
 	return err
 }
 
-// replaceOpenCards deletes the user's open cards and inserts cards as open.
-// The caller has checked the cards.
-func replaceOpenCards(ctx context.Context, tx pgx.Tx, userID string, cards []Card) error {
+// replaceOpenCards deletes the user's open cards of source and inserts cards
+// as open with that source. The caller has checked the cards.
+func replaceOpenCards(ctx context.Context, tx pgx.Tx, userID, source string, cards []Card) error {
 	err := tombstoneDelete(ctx, tx, "insights",
-		`DELETE FROM insights WHERE user_id = $1 AND status = 'open' RETURNING id, user_id`, userID)
+		`DELETE FROM insights WHERE user_id = $1 AND source = $2 AND status = 'open' RETURNING id, user_id`,
+		userID, source)
 	if err != nil {
 		return fmt.Errorf("delete open cards: %w", err)
 	}
@@ -253,9 +256,9 @@ func replaceOpenCards(ctx context.Context, tx pgx.Tx, userID string, cards []Car
 			action = &s
 		}
 		_, err := tx.Exec(ctx,
-			`INSERT INTO insights (id, user_id, kind, title, body, fingerprint, status, action)
-			 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, 'open', $6::jsonb)`,
-			userID, c.Kind, c.Title, c.Body, c.Fingerprint, action)
+			`INSERT INTO insights (id, user_id, kind, title, body, fingerprint, status, action, source)
+			 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, 'open', $6::jsonb, $7)`,
+			userID, c.Kind, c.Title, c.Body, c.Fingerprint, action, source)
 		if err != nil {
 			return fmt.Errorf("insert card %q: %w", c.Fingerprint, err)
 		}
@@ -263,27 +266,34 @@ func replaceOpenCards(ctx context.Context, tx pgx.Tx, userID string, cards []Car
 	return nil
 }
 
-// saveMemory stores the new summary of the user.
-func saveMemory(ctx context.Context, tx pgx.Tx, userID, summary string) error {
+// saveMemory stores the new summary of the user for source.
+func saveMemory(ctx context.Context, tx pgx.Tx, userID, source, summary string) error {
 	_, err := tx.Exec(ctx,
-		`INSERT INTO insight_memory (user_id, summary, updated_at) VALUES ($1, $2, now())
-		 ON CONFLICT (user_id) DO UPDATE SET summary = excluded.summary, updated_at = excluded.updated_at`,
-		userID, summary)
+		`INSERT INTO insight_memory (user_id, source, summary, updated_at) VALUES ($1, $2, $3, now())
+		 ON CONFLICT (user_id, source) DO UPDATE SET summary = excluded.summary, updated_at = excluded.updated_at`,
+		userID, source, summary)
 	if err != nil {
 		return fmt.Errorf("save memory: %w", err)
 	}
 	return nil
 }
 
-// pruneOld deletes the user's cards and finished questions that were last
-// changed before before.
-func pruneOld(ctx context.Context, tx pgx.Tx, userID string, before time.Time) error {
+// pruneCards deletes the user's cards of source that were last changed
+// before before.
+func pruneCards(ctx context.Context, tx pgx.Tx, userID, source string, before time.Time) error {
 	err := tombstoneDelete(ctx, tx, "insights",
-		`DELETE FROM insights WHERE user_id = $1 AND updated_at < $2 RETURNING id, user_id`, userID, before)
+		`DELETE FROM insights WHERE user_id = $1 AND source = $2 AND updated_at < $3 RETURNING id, user_id`,
+		userID, source, before)
 	if err != nil {
 		return fmt.Errorf("prune cards: %w", err)
 	}
-	err = tombstoneDelete(ctx, tx, "insight_questions",
+	return nil
+}
+
+// pruneQuestions deletes the user's finished questions that were last changed
+// before before.
+func pruneQuestions(ctx context.Context, tx pgx.Tx, userID string, before time.Time) error {
+	err := tombstoneDelete(ctx, tx, "insight_questions",
 		`DELETE FROM insight_questions WHERE user_id = $1 AND status <> 'pending' AND updated_at < $2 RETURNING id, user_id`,
 		userID, before)
 	if err != nil {

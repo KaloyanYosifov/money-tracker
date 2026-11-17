@@ -27,6 +27,7 @@ var tableSchemas = map[string]string{
 	"insights":          "insight.schema.json",
 	"insight_questions": "insight_question.schema.json",
 	"trades":            "trade.schema.json",
+	"swaps":             "swap.schema.json",
 }
 
 const uploadSchema = "upload.schema.json"

@@ -8,11 +8,12 @@ An offline-first money tracker for iPhone, iPad and the browser. The data syncs 
 |---|---|
 | `app/` | Expo (React Native) app for iOS and the web |
 | `api/` | Go API: login, TOTP, JWT and JWKS, upload of changes to PostgreSQL |
+| `ai/` | Go AI gateway that calls the Claude Code CLI for AI Insights |
 | `schema/` | JSON Schemas for the synced records, and the code generator for TypeScript and Go types |
 | `sync/` | PowerSync sync rules |
 | `e2e/` | End-to-end tests: Playwright (web), Maestro (iOS) and cross-app scenarios |
 | `deploy/docker/` | Dockerfiles and the nginx config for the web image |
-| `deploy/compose/` | Local stack: PostgreSQL, PowerSync, API and Toxiproxy |
+| `deploy/compose/` | Local stack: PostgreSQL, PowerSync, the API, the AI gateway (Claude token in `ai.env`, see `ai.env.example`), Toxiproxy and the web app |
 | `docs/` | Plans and operations notes |
 
 ## Commands

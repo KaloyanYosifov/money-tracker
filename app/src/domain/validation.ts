@@ -14,7 +14,8 @@ export type ValidationCode =
   | "invalid_transfer"
   | "invalid_reference"
   | "in_use"
-  | "over_held";
+  | "over_held"
+  | "same_instrument";
 
 export interface FieldError {
   field: string;
@@ -82,6 +83,20 @@ export interface TradeInput {
   quantity: string;
   price: string;
   fee: string;
+  note?: string | null;
+}
+
+/** Decimal fields are the text of the form. validateSwap checks them after normalizeDecimal. */
+export interface SwapInput {
+  id?: string;
+  from_instrument_id: string;
+  to_instrument_id: string;
+  date: string;
+  from_quantity: string;
+  to_quantity: string;
+  fee: string;
+  value: string;
+  to_value: string;
   note?: string | null;
 }
 
@@ -204,6 +219,24 @@ export function validateTrade(input: TradeInput): FieldError[] {
   if (!isDate(input.date)) errors.push({ field: "date", code: "invalid" });
   checkDecimal(errors, "quantity", input.quantity, true);
   checkDecimal(errors, "price", input.price, true);
+  checkDecimal(errors, "fee", input.fee, false);
+  checkText(errors, "note", input.note, 0, 200);
+  return errors;
+}
+
+/** Checks a swap with normalized decimals. An empty fee is "0". */
+export function validateSwap(input: SwapInput): FieldError[] {
+  const errors: FieldError[] = [];
+  if (!input.from_instrument_id) errors.push({ field: "from_instrument_id", code: "required" });
+  if (!input.to_instrument_id) errors.push({ field: "to_instrument_id", code: "required" });
+  else if (input.to_instrument_id === input.from_instrument_id) {
+    errors.push({ field: "to_instrument_id", code: "same_instrument" });
+  }
+  if (!isDate(input.date)) errors.push({ field: "date", code: "invalid" });
+  checkDecimal(errors, "from_quantity", input.from_quantity, true);
+  checkDecimal(errors, "to_quantity", input.to_quantity, true);
+  checkDecimal(errors, "value", input.value, true);
+  checkDecimal(errors, "to_value", input.to_value, true);
   checkDecimal(errors, "fee", input.fee, false);
   checkText(errors, "note", input.note, 0, 200);
   return errors;

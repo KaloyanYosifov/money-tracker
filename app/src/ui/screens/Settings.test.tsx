@@ -219,7 +219,7 @@ describe("Settings", () => {
 
       const insights = screen.getByRole("switch", { name: "AI Insights" });
       expect(insights.props.value).toBe(false);
-      expect(screen.getByText("Sends your spending data to Anthropic to write suggestions.")).toBeTruthy();
+      expect(screen.getByText("Sends your spending and portfolio data to Anthropic to write suggestions.")).toBeTruthy();
 
       await fireEvent(insights, "valueChange", true);
 

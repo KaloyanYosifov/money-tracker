@@ -1,5 +1,19 @@
-import { toFixed } from "./decimal";
-import { deleteError, holding, rateOn, sellError, toApp, valueSeries, type Trade } from "./portfolio";
+import { readFileSync } from "fs";
+import { join } from "path";
+import { fromFixed, mul, toFixed } from "./decimal";
+import {
+  deleteError,
+  holding,
+  rateOn,
+  sellError,
+  swapLegs,
+  swapToValue,
+  toApp,
+  valueSeries,
+  type Close,
+  type SwapRecord,
+  type Trade,
+} from "./portfolio";
 
 function fixed(text: string): bigint {
   const value = toFixed(text);
@@ -160,6 +174,36 @@ describe("toApp", () => {
   });
 });
 
+describe("swapToValue", () => {
+  it("returns the value as it is for the same quote currency", () => {
+    expect(swapToValue("2300.5", "USD", "USD", "EUR", [], [], "2026-05-04")).toBe("2300.5");
+  });
+
+  it("uses a rate of 1 for the app currency", () => {
+    const toFx = [{ date: "2026-05-04", close: "1.25" }];
+    expect(swapToValue("2000", "EUR", "USD", "EUR", [], toFx, "2026-05-04")).toBe("2500");
+  });
+
+  it("multiplies by the to rate and divides by the from rate", () => {
+    const fromFx = [{ date: "2026-05-04", close: "0.8" }];
+    const toFx = [{ date: "2026-05-04", close: "1.1" }];
+    expect(swapToValue("2000", "GBP", "USD", "EUR", fromFx, toFx, "2026-05-04")).toBe("2750");
+  });
+
+  it("uses the latest earlier close", () => {
+    const toFx = [
+      { date: "2026-04-01", close: "1.25" },
+      { date: "2026-06-01", close: "2" },
+    ];
+    expect(swapToValue("2000", "EUR", "USD", "EUR", [], toFx, "2026-05-04")).toBe("2500");
+  });
+
+  it("returns null without a to rate on or before the date", () => {
+    const toFx = [{ date: "2026-06-01", close: "1.25" }];
+    expect(swapToValue("2000", "EUR", "USD", "EUR", [], toFx, "2026-05-04")).toBeNull();
+  });
+});
+
 describe("valueSeries", () => {
   it("sums open quantity times the close, converted with the rate on or before each date", () => {
     const usd = {
@@ -193,5 +237,60 @@ describe("valueSeries", () => {
       fxCloses: [],
     };
     expect(valueSeries([usd], ["2026-01-01"], "EUR")).toEqual([{ date: "2026-01-01", value: 0n }]);
+  });
+});
+
+type Vector = {
+  name: string;
+  quote_currency: string;
+  app_currency: string;
+  trades: Trade[];
+  closes: Close[];
+  fx_closes: Close[];
+  today: string;
+  on_date?: string;
+  expect: {
+    quantity: string;
+    cost: string;
+    fees: string;
+    realized: { date: string; amount: string }[];
+    rate: string | null;
+    value_app: string | null;
+    open_profit_app: string | null;
+  };
+};
+
+describe("shared vectors", () => {
+  const path = join(__dirname, "../../../testdata/portfolio-vectors.json");
+  const { cases } = JSON.parse(readFileSync(path, "utf8")) as { cases: Vector[] };
+  const text = (value: bigint | null) => (value === null ? null : fromFixed(value));
+
+  it.each(cases.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+    const result = holding(c.trades, c.on_date);
+    const rate = rateOn(c.fx_closes, c.today);
+    const last = [...c.closes].sort((a, b) => a.date.localeCompare(b.date)).at(-1);
+    const value = last ? mul(result.quantity, fixed(last.close)) : null;
+    const app = (amount: bigint | null) => (amount === null ? null : toApp(amount, c.quote_currency, c.app_currency, rate));
+
+    expect({
+      quantity: fromFixed(result.quantity),
+      cost: fromFixed(result.cost),
+      fees: fromFixed(result.fees),
+      realized: result.realized.map((r) => ({ date: r.date, amount: fromFixed(r.amount) })),
+      rate: text(rate),
+      value_app: text(app(value)),
+      open_profit_app: text(app(value === null ? null : value - result.cost)),
+    }).toEqual(c.expect);
+  });
+});
+
+type SwapVector = { name: string; swap: SwapRecord; expect: { sell: Trade; buy: Trade } };
+
+describe("shared swap vectors", () => {
+  const path = join(__dirname, "../../../testdata/portfolio-vectors.json");
+  const { swaps } = JSON.parse(readFileSync(path, "utf8")) as { swaps: SwapVector[] };
+
+  it.each(swaps.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+    expect(swapLegs(c.swap)).toEqual(c.expect);
   });
 });

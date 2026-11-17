@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomInt, randomUUID } from "node:crypto";
 import { fetchWithRetry } from "./http.ts";
 import { API_URL, compose } from "./stack.ts";
 import { freshCode } from "./totp.ts";
@@ -20,7 +20,12 @@ export interface CreateUserOptions {
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetchWithRetry(`${API_URL}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Client": "native" },
+    // The login rate limit is per IP. Each call gets its own IP, as the browser contexts do in fixtures.ts.
+    headers: {
+      "Content-Type": "application/json",
+      "X-Client": "native",
+      "X-Real-IP": `10.199.${randomInt(256)}.${randomInt(1, 255)}`,
+    },
     body: JSON.stringify(body),
   });
   if (!res.ok) {

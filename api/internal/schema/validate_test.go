@@ -156,3 +156,33 @@ func TestValidateTrade(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateSwap(t *testing.T) {
+	v := newValidator(t)
+	head := `{"id":"` + recID + `","user_id":"` + userID + `","from_instrument_id":"` + otherID + `","to_instrument_id":"` + recID + `","date":"2026-03-14",`
+	valid := head + `"from_quantity":"1","to_quantity":"2498","fee":"2","value":"2500","to_value":"2500","note":null}`
+	if err := v.ValidatePut("swaps", decode(t, valid)); err != nil {
+		t.Errorf("valid swap rejected: %v", err)
+	}
+
+	bad := []struct{ name, data, field string }{
+		{"number value", `"from_quantity":"1","to_quantity":"2498","fee":"2","value":2500,"to_value":"2500"}`, "value"},
+		{"comma from_quantity", `"from_quantity":"1,5","to_quantity":"2498","fee":"2","value":"2500","to_value":"2500"}`, "from_quantity"},
+		{"negative fee", `"from_quantity":"1","to_quantity":"2498","fee":"-1","value":"2500","to_value":"2500"}`, "fee"},
+		{"13 fraction digits", `"from_quantity":"1","to_quantity":"2498","fee":"2","value":"2500","to_value":"0.1234567890123"}`, "to_value"},
+		{"missing to_value", `"from_quantity":"1","to_quantity":"2498","fee":"2","value":"2500"}`, "to_value"},
+		{"long note", `"from_quantity":"1","to_quantity":"2498","fee":"2","value":"2500","to_value":"2500","note":"` + strings.Repeat("a", 201) + `"}`, "note"},
+		{"extra price", `"from_quantity":"1","to_quantity":"2498","fee":"2","value":"2500","to_value":"2500","price":"1"}`, "price"},
+	}
+	for _, tc := range bad {
+		t.Run(tc.name, func(t *testing.T) {
+			err := v.ValidatePut("swaps", decode(t, head+tc.data))
+			if err == nil {
+				t.Fatal("invalid swap accepted")
+			}
+			if !strings.Contains(err.Error(), tc.field) {
+				t.Errorf("message %q does not name field %q", err, tc.field)
+			}
+		})
+	}
+}

@@ -5,6 +5,7 @@ import {
   archiveCategory,
   deleteAccount,
   deleteCategory,
+  deleteSwap,
   deleteTrade,
   restoreAccount,
   restoreCategory,
@@ -12,9 +13,11 @@ import {
   saveCategory,
   saveCategoryBudget,
   saveRecurringRule,
+  saveSwap,
   saveTrade,
   saveTransaction,
   updateSettings,
+  type SwapInput,
   type TradeInput,
   type TransactionInput,
 } from "./mutations";
@@ -88,6 +91,36 @@ function row(table: string, id: string) {
 
 function updateStatements(spy: jest.SpyInstance): string[] {
   return spy.mock.calls.map(([sql]) => sql as string).filter((sql) => sql.startsWith("UPDATE"));
+}
+
+const storedSwap = {
+  id: "sw1",
+  user_id: "u1",
+  from_instrument_id: "zza",
+  to_instrument_id: "zzb",
+  date: "2026-02-01",
+  from_quantity: "1",
+  to_quantity: "2498",
+  fee: "2",
+  value: "2500",
+  to_value: "2500",
+};
+
+const laterSell = { id: "trB", user_id: "u1", instrument_id: "zzb", side: "sell", date: "2026-03-01", quantity: "500", price: "1", fee: "0" };
+
+// Three assets in USD and a buy of 1 ZZA-USD.
+function loadSwapAssets() {
+  loadFixture(sqlite, {
+    instruments: ["ZZA", "ZZB", "ZZC"].map((name) => ({
+      id: name.toLowerCase(),
+      symbol: `${name}-USD`,
+      name,
+      exchange: "TEST",
+      kind: "crypto",
+      quote_currency: "USD",
+    })),
+    trades: [{ id: "trA", user_id: "u1", instrument_id: "zza", side: "buy", date: "2026-01-05", quantity: "1", price: "2000", fee: "0" }],
+  });
 }
 
 describe("saveTransaction", () => {
@@ -743,6 +776,15 @@ describe("saveTrade", () => {
     expect(result.ok).toBe(true);
     expect(tradeCount()).toEqual({ n: 2 });
   });
+
+  it("counts the buy leg of a swap as held", async () => {
+    loadSwapAssets();
+    loadFixture(sqlite, { swaps: [storedSwap] });
+
+    const result = await saveTrade(db, { ...buy, instrument_id: "zzb", side: "sell", date: "2026-03-01", quantity: "500", price: "1" });
+
+    expect(result.ok).toBe(true);
+  });
 });
 
 describe("deleteTrade", () => {
@@ -769,5 +811,152 @@ describe("deleteTrade", () => {
       errors: [{ field: "quantity", code: "over_held", held: "0", sell: { id: "tr2", date: "2026-03-01", quantity: "3" } }],
     });
     expect(row("trades", "tr1")).toBeDefined();
+  });
+
+  it("refuses to delete a buy that a later swap sells", async () => {
+    loadSwapAssets();
+    loadFixture(sqlite, { swaps: [storedSwap] });
+
+    expect(await deleteTrade(db, "trA")).toEqual({
+      ok: false,
+      errors: [{ field: "quantity", code: "over_held", held: "0", sell: { id: "sw1", date: "2026-02-01", quantity: "1" } }],
+    });
+    expect(row("trades", "trA")).toBeDefined();
+  });
+});
+
+describe("saveSwap", () => {
+  const input: SwapInput = {
+    from_instrument_id: "zza",
+    to_instrument_id: "zzb",
+    date: "2026-02-01",
+    from_quantity: " 0,5 ",
+    to_quantity: "1249,5",
+    fee: "",
+    value: "1250",
+    to_value: "1250",
+    note: "Rebalance",
+  };
+  const edit: SwapInput = { ...input, id: "sw1", from_quantity: "1", to_quantity: "2498", fee: "2", value: "2500", to_value: "2500" };
+
+  beforeEach(() => loadSwapAssets());
+
+  function swapCount() {
+    return sqlite.prepare("SELECT COUNT(*) AS n FROM swaps").get();
+  }
+
+  it("inserts a swap with the user of the settings and normalized decimals", async () => {
+    const result = await saveSwap(db, input);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(row("swaps", result.id)).toMatchObject({
+      user_id: "u1",
+      from_instrument_id: "zza",
+      to_instrument_id: "zzb",
+      date: "2026-02-01",
+      from_quantity: "0.5",
+      to_quantity: "1249.5",
+      fee: "0",
+      value: "1250",
+      to_value: "1250",
+      note: "Rebalance",
+    });
+  });
+
+  it.each(["from_instrument_id", "to_instrument_id"])("rejects an unknown %s", async (field) => {
+    const result = await saveSwap(db, { ...input, [field]: "missing" });
+
+    expect(result).toEqual({ ok: false, errors: [{ field, code: "invalid_reference" }] });
+    expect(swapCount()).toEqual({ n: 0 });
+  });
+
+  it("returns the validation errors and writes nothing", async () => {
+    const result = await saveSwap(db, { ...input, to_instrument_id: "zza", from_quantity: "0" });
+
+    expect(result).toEqual({
+      ok: false,
+      errors: [
+        { field: "to_instrument_id", code: "same_instrument" },
+        { field: "from_quantity", code: "invalid" },
+      ],
+    });
+    expect(swapCount()).toEqual({ n: 0 });
+  });
+
+  it("rejects a swap of more than is held, with the held quantity", async () => {
+    const result = await saveSwap(db, { ...input, from_quantity: "2" });
+
+    expect(result).toEqual({ ok: false, errors: [{ field: "from_quantity", code: "over_held", held: "1" }] });
+    expect(swapCount()).toEqual({ n: 0 });
+  });
+
+  it("rejects a lowered quantity received that leaves a later sell too large", async () => {
+    loadFixture(sqlite, { swaps: [storedSwap], trades: [laterSell] });
+
+    const result = await saveSwap(db, { ...edit, to_quantity: "100" });
+
+    expect(result).toEqual({
+      ok: false,
+      errors: [{ field: "to_quantity", code: "over_held", held: "100", sell: { id: "trB", date: "2026-03-01", quantity: "500" } }],
+    });
+    expect(row("swaps", "sw1")).toMatchObject({ to_quantity: "2498" });
+  });
+
+  it("rejects a new 'to' asset when a later sell of the old one needs the swap", async () => {
+    loadFixture(sqlite, { swaps: [storedSwap], trades: [laterSell] });
+
+    const result = await saveSwap(db, { ...edit, to_instrument_id: "zzc" });
+
+    expect(result).toEqual({
+      ok: false,
+      errors: [{ field: "to_quantity", code: "over_held", held: "0", sell: { id: "trB", date: "2026-03-01", quantity: "500" } }],
+    });
+    expect(row("swaps", "sw1")).toMatchObject({ to_instrument_id: "zzb" });
+  });
+
+  it("puts a later sell of the 'from' asset that becomes too large on the quantity given", async () => {
+    loadFixture(sqlite, {
+      trades: [{ id: "trA2", user_id: "u1", instrument_id: "zza", side: "sell", date: "2026-03-01", quantity: "0.8", price: "2600", fee: "0" }],
+    });
+
+    const result = await saveSwap(db, input);
+
+    expect(result).toEqual({
+      ok: false,
+      errors: [{ field: "from_quantity", code: "over_held", held: "0.5", sell: { id: "trA2", date: "2026-03-01", quantity: "0.8" } }],
+    });
+    expect(swapCount()).toEqual({ n: 0 });
+  });
+
+  it("saves an edit that keeps the later sells covered", async () => {
+    loadFixture(sqlite, { swaps: [storedSwap], trades: [laterSell] });
+
+    expect(await saveSwap(db, { ...edit, to_quantity: "600" })).toEqual({ ok: true, id: "sw1" });
+    expect(row("swaps", "sw1")).toMatchObject({ to_quantity: "600" });
+    expect(swapCount()).toEqual({ n: 1 });
+  });
+});
+
+describe("deleteSwap", () => {
+  beforeEach(() => {
+    loadSwapAssets();
+    loadFixture(sqlite, { swaps: [storedSwap] });
+  });
+
+  it("refuses to delete a swap that a later sell needs", async () => {
+    loadFixture(sqlite, { trades: [laterSell] });
+
+    expect(await deleteSwap(db, "sw1")).toEqual({
+      ok: false,
+      errors: [{ field: "to_quantity", code: "over_held", held: "0", sell: { id: "trB", date: "2026-03-01", quantity: "500" } }],
+    });
+    expect(row("swaps", "sw1")).toBeDefined();
+  });
+
+  it("removes the row", async () => {
+    expect(await deleteSwap(db, "sw1")).toEqual({ ok: true, id: "sw1" });
+
+    expect(row("swaps", "sw1")).toBeUndefined();
   });
 });

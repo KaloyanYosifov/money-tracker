@@ -17,8 +17,8 @@ import (
 	"time"
 )
 
-// DefaultTimeout is the time limit of one call. The gateway gives Claude 90s
-// and can queue a request behind two runs.
+// DefaultTimeout is the time limit of one call. The gateway gives Claude up to
+// 3 minutes for a task, and a request can wait in its queue first.
 const DefaultTimeout = 5 * time.Minute
 
 // The gateway failures that a caller handles. Other failures are generic
@@ -81,6 +81,14 @@ func New(baseURL string, httpClient *http.Client) *Client {
 func (c *Client) DailyInsights(ctx context.Context, input any) (DailyInsightsResult, error) {
 	var out DailyInsightsResult
 	err := c.call(ctx, "daily_insights", input, &out)
+	return out, err
+}
+
+// PortfolioInsights runs the portfolio_insights task. input is sent as the
+// JSON body. The output has the same shape as the daily_insights output.
+func (c *Client) PortfolioInsights(ctx context.Context, input any) (DailyInsightsResult, error) {
+	var out DailyInsightsResult
+	err := c.call(ctx, "portfolio_insights", input, &out)
 	return out, err
 }
 

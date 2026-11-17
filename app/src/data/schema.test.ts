@@ -16,6 +16,7 @@ const tableForFile: Record<string, string> = {
   instrument: "instruments",
   instrument_price: "instrument_prices",
   recurring_rule: "recurring_rules",
+  swap: "swaps",
   trade: "trades",
   transaction: "transactions",
   user_settings: "user_settings",
@@ -90,6 +91,10 @@ describe("AppSchema", () => {
     const names = AppSchema.tables.map((t) => t.name);
     expect(names).toEqual(expect.arrayContaining(["trades", "instruments", "instrument_prices"]));
     expect(columnsOf("accounts").exclude_from_net_worth).toBe(ColumnType.INTEGER);
+  });
+
+  it("has the swaps table", () => {
+    expect(AppSchema.tables.map((t) => t.name)).toContain("swaps");
   });
 
   it.each(["trades", "instrument_prices"])("indexes %s on instrument_id and date", (name) => {

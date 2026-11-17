@@ -171,3 +171,16 @@ func decodeStrict(raw json.RawMessage, v any) error {
 	}
 	return nil
 }
+
+// checkFingerprint reports an error when fingerprint is dismissed or an
+// earlier card of the same answer has it. It adds fingerprint to used.
+func checkFingerprint(fingerprint string, dismissed []string, used map[string]bool) error {
+	if slices.Contains(dismissed, fingerprint) {
+		return fmt.Errorf("fingerprint %q is dismissed", fingerprint)
+	}
+	if used[fingerprint] {
+		return fmt.Errorf("fingerprint %q is used twice", fingerprint)
+	}
+	used[fingerprint] = true
+	return nil
+}

@@ -71,6 +71,7 @@ const MESSAGES: Record<ValidationCode, string> = {
   invalid_reference: "No longer exists",
   in_use: "In use",
   over_held: "More than you hold",
+  same_instrument: "Pick a different asset",
 };
 
 function message(error: FieldError, today: string): string {

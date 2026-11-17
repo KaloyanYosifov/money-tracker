@@ -13,6 +13,12 @@
     "body": { "type": "string", "maxLength": 500 },
     "fingerprint": { "type": "string", "maxLength": 200 },
     "status": { "type": "string", "enum": ["open", "accepted", "dismissed"] },
+    "source": {
+      "type": "string",
+      "enum": ["spending", "portfolio"],
+      "readOnly": true,
+      "description": "Set by the server. The run that wrote the card."
+    },
     "action": {
       "type": ["object", "null"],
       "description": "The suggested record of a budget or recurring_rule card. The API checks its shape for each kind."

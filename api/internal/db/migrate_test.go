@@ -15,7 +15,7 @@ import (
 	"github.com/KaloyanYosifov/money-tracker/api/internal/testutil"
 )
 
-var syncedTables = []string{"accounts", "budgets", "categories", "insight_questions", "insights", "instrument_prices", "instruments", "recurring_rules", "trades", "transactions", "user_instruments", "user_settings"}
+var syncedTables = []string{"accounts", "budgets", "categories", "insight_questions", "insights", "instrument_prices", "instruments", "recurring_rules", "swaps", "trades", "transactions", "user_instruments", "user_settings"}
 
 var privateTables = []string{"users", "invites", "recovery_codes", "refresh_tokens", "deleted_records", "insight_memory"}
 
@@ -116,7 +116,7 @@ func TestPortfolioMigrationDownAndUp(t *testing.T) {
 	if _, err := provider.DownTo(ctx, 7); err != nil {
 		t.Fatalf("migrate down to 7: %v", err)
 	}
-	for _, table := range []string{"trades", "user_instruments", "instrument_prices", "instruments"} {
+	for _, table := range []string{"swaps", "trades", "user_instruments", "instrument_prices", "instruments"} {
 		var exists bool
 		if err := pool.QueryRow(ctx, "SELECT to_regclass('public.' || $1) IS NOT NULL", table).Scan(&exists); err != nil {
 			t.Fatalf("check table %s: %v", table, err)
@@ -124,6 +124,87 @@ func TestPortfolioMigrationDownAndUp(t *testing.T) {
 		if exists {
 			t.Errorf("table %s still exists after the down migration", table)
 		}
+	}
+
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatalf("migrate up again: %v", err)
+	}
+}
+
+func TestInsightSourceMigrationDownWritesTombstones(t *testing.T) {
+	pool := testutil.StartPostgres(t)
+	ctx := context.Background()
+
+	conn, err := sql.Open("pgx", pool.Config().ConnString())
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer conn.Close()
+	provider, err := goose.NewProvider(goose.DialectPostgres, conn, os.DirFS("migrations"))
+	if err != nil {
+		t.Fatalf("create provider: %v", err)
+	}
+
+	const userID = "6f1c2a3b-4d5e-4f60-8a71-92b3c4d5e6f7"
+	const spendingID = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+	const portfolioID = "1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e"
+	_, err = pool.Exec(ctx,
+		`INSERT INTO insights (id, user_id, kind, title, body, fingerprint, status, source) VALUES
+		 ($1, $3, 'tip', 'Spending', 'Body', 'tip:spending', 'open', 'spending'),
+		 ($2, $3, 'tip', 'Portfolio', 'Body', 'portfolio:x', 'open', 'portfolio')`,
+		spendingID, portfolioID, userID)
+	if err != nil {
+		t.Fatalf("insert insights: %v", err)
+	}
+
+	_, err = pool.Exec(ctx,
+		`INSERT INTO insight_memory (user_id, source, summary) VALUES ($1, 'spending', 's'), ($1, 'portfolio', 'p')`, userID)
+	if err != nil {
+		t.Fatalf("insert memory: %v", err)
+	}
+
+	if _, err := provider.DownTo(ctx, 8); err != nil {
+		t.Fatalf("migrate down to 8: %v", err)
+	}
+	var ids []string
+	rows, err := pool.Query(ctx, "SELECT id::text FROM insights")
+	if err != nil {
+		t.Fatalf("read insights: %v", err)
+	}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			t.Fatalf("scan insight: %v", err)
+		}
+		ids = append(ids, id)
+	}
+	if !slices.Equal(ids, []string{spendingID}) {
+		t.Errorf("insights after down = %v, want only the spending card", ids)
+	}
+	var tombstones int
+	err = pool.QueryRow(ctx,
+		"SELECT count(*) FROM deleted_records WHERE table_name = 'insights' AND id = $1 AND user_id = $2",
+		portfolioID, userID).Scan(&tombstones)
+	if err != nil {
+		t.Fatalf("read tombstones: %v", err)
+	}
+	if tombstones != 1 {
+		t.Errorf("tombstones for the portfolio card = %d, want 1", tombstones)
+	}
+	var summaries []string
+	rows, err = pool.Query(ctx, "SELECT summary FROM insight_memory WHERE user_id = $1", userID)
+	if err != nil {
+		t.Fatalf("read memory: %v", err)
+	}
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			t.Fatalf("scan memory: %v", err)
+		}
+		summaries = append(summaries, s)
+	}
+	if !slices.Equal(summaries, []string{"s"}) {
+		t.Errorf("memory after down = %v, want only the spending summary", summaries)
 	}
 
 	if _, err := provider.Up(ctx); err != nil {

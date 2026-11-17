@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react-native";
 
 import type { InstrumentDetail, PortfolioHolding, TradeRow } from "../../data/portfolio";
 import { toFixed } from "../../domain/decimal";
+import type { Trade } from "../../domain/portfolio";
 import { TradeForm } from "./TradeForm";
 
 let mockDetail: InstrumentDetail | null = null;
@@ -39,7 +40,7 @@ const buys: TradeRow[] = [
   { id: "t2", instrument_id: "acme", side: "buy", date: "2026-09-02", quantity: "4", price: "189.2", fee: "1", note: "Top up" },
 ];
 
-function detail(trades: TradeRow[]): InstrumentDetail {
+function detail(trades: TradeRow[], legs: Trade[] = trades): InstrumentDetail {
   const holding = {
     instrumentId: "acme",
     symbol: "ACME",
@@ -57,6 +58,8 @@ function detail(trades: TradeRow[]): InstrumentDetail {
     instrument: { id: "acme", symbol: "ACME", name: "Acme Corp", exchange: "NASDAQ", kind: "stock", quote_currency: "USD" } as InstrumentDetail["instrument"],
     holding,
     trades,
+    swaps: [],
+    legs,
   };
 }
 
@@ -224,6 +227,18 @@ describe("TradeForm", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Delete" }));
     expect(mockDeleteTrade).toHaveBeenCalledWith(expect.anything(), "t2");
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("counts the swap legs in the held quantity of a sell", async () => {
+    const leg: Trade = { id: "sw1", side: "buy", date: "2026-09-01", quantity: "2498", price: "0", fee: "0", total: "2500" };
+    mockDetail = detail([], [leg]);
+    await renderNew();
+
+    await fireEvent.press(screen.getByRole("tab", { name: "Sell" }));
+    await fireEvent.changeText(screen.getByLabelText("Quantity"), "500");
+
+    expect(screen.queryByText(/You cannot sell/)).toBeNull();
+    expect(saveButton().props.accessibilityState).toEqual({ disabled: false });
   });
 
   it("shows no Delete button for a new trade", async () => {

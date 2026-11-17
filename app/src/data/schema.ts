@@ -91,8 +91,9 @@ const user_settings = new Table({
   insights_enabled: column.integer,
 });
 
-// The server writes these two. The app only changes a card status and inserts
-// a pending question. action holds the JSON text of the suggested record.
+// The server writes these two, including the source of a card. The app only
+// changes a card status and inserts a pending question. action holds the JSON
+// text of the suggested record.
 const insights = new Table({
   user_id: column.text,
   kind: column.text,
@@ -100,6 +101,7 @@ const insights = new Table({
   body: column.text,
   fingerprint: column.text,
   status: column.text,
+  source: column.text,
   action: column.text,
   created_at: column.text,
   updated_at: column.text,
@@ -136,6 +138,29 @@ const trades = new Table(
     updated_at: column.text,
   },
   { indexes: { by_instrument: ["instrument_id", "date"] } },
+);
+
+const swaps = new Table(
+  {
+    user_id: column.text,
+    from_instrument_id: column.text,
+    to_instrument_id: column.text,
+    date: column.text,
+    from_quantity: column.text,
+    to_quantity: column.text,
+    fee: column.text,
+    value: column.text,
+    to_value: column.text,
+    note: column.text,
+    created_at: column.text,
+    updated_at: column.text,
+  },
+  {
+    indexes: {
+      by_from: ["from_instrument_id", "date"],
+      by_to: ["to_instrument_id", "date"],
+    },
+  },
 );
 
 // The server writes instruments and their prices. The app only reads them.
@@ -190,6 +215,7 @@ export const AppSchema = new Schema({
   insights,
   insight_questions,
   trades,
+  swaps,
   instruments,
   instrument_prices,
   device_prefs,

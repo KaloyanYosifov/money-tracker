@@ -1,7 +1,7 @@
 import type { Category, UserSettings } from "../generated/schema";
 import { newId } from "../domain/ids";
 import { MAX_AMOUNT_MINOR } from "../domain/money";
-import { deleteError, sellError, type Oversell, type Trade } from "../domain/portfolio";
+import { deleteError, listError, sellError, swapLegs, type Oversell, type SwapRecord, type Trade } from "../domain/portfolio";
 import {
   DUPLICATE_ACCOUNT_MESSAGE,
   DUPLICATE_CATEGORY_MESSAGE,
@@ -10,18 +10,20 @@ import {
   validateAccount,
   validateCategory,
   validateRecurringRule,
+  validateSwap,
   validateTrade,
   validateTransaction,
   type AccountInput,
   type CategoryInput,
   type FieldError,
   type RecurringRuleInput,
+  type SwapInput,
   type TradeInput,
   type TransactionInput,
 } from "../domain/validation";
 import { generateDue } from "./recurringGenerator";
 
-export type { AccountInput, CategoryInput, FieldError, RecurringRuleInput, TradeInput, TransactionInput };
+export type { AccountInput, CategoryInput, FieldError, RecurringRuleInput, SwapInput, TradeInput, TransactionInput };
 
 // The part of the PowerSync database that the mutations use. The test helper
 // implements it over better-sqlite3.
@@ -250,10 +252,7 @@ export function saveTrade(db: MutationDb, input: TradeInput): Promise<SaveResult
     }
     if (errors.length > 0) return fail(errors);
 
-    const others = await tx.getAll<Trade>(
-      "SELECT id, side, date, quantity, price, fee FROM trades WHERE instrument_id = ?",
-      [trade.instrument_id],
-    );
+    const others = await legsFor(tx, trade.instrument_id);
     const tradeId = trade.id ?? newId();
     const candidate: Trade = { id: tradeId, side: trade.side, date: trade.date, quantity: trade.quantity, price: trade.price, fee: trade.fee };
     const over = sellError(others, candidate);
@@ -285,13 +284,116 @@ function overHeld(over: Oversell, changedId: string): FieldError {
 /** Deletes a trade unless a later sell then sells more than is held. */
 export function deleteTrade(db: MutationDb, id: string): Promise<SaveResult> {
   return db.writeTransaction(async (tx) => {
-    const trades = await tx.getAll<Trade>(
-      "SELECT id, side, date, quantity, price, fee FROM trades WHERE instrument_id = (SELECT instrument_id FROM trades WHERE id = ?)",
-      [id],
-    );
+    const stored = await tx.getOptional<{ instrument_id: string }>("SELECT instrument_id FROM trades WHERE id = ?", [id]);
+    const trades = stored ? await legsFor(tx, stored.instrument_id) : [];
     const over = deleteError(trades, id);
     if (over) return fail([overHeld(over, id)]);
     await tx.execute("DELETE FROM trades WHERE id = ?", [id]);
+    return { ok: true, id };
+  });
+}
+
+type StoredSwap = SwapRecord & { from_instrument_id: string; to_instrument_id: string };
+
+/** The trades of the instrument and the legs of the swaps from or to it. */
+async function legsFor(tx: SqlRunner, instrumentId: string): Promise<Trade[]> {
+  const trades = await tx.getAll<Trade>("SELECT id, side, date, quantity, price, fee FROM trades WHERE instrument_id = ?", [
+    instrumentId,
+  ]);
+  const swaps = await tx.getAll<StoredSwap>(
+    "SELECT id, from_instrument_id, to_instrument_id, date, from_quantity, to_quantity, fee, value, to_value FROM swaps WHERE ? IN (from_instrument_id, to_instrument_id)",
+    [instrumentId],
+  );
+  for (const swap of swaps) {
+    const legs = swapLegs(swap);
+    if (swap.from_instrument_id === instrumentId) trades.push(legs.sell);
+    if (swap.to_instrument_id === instrumentId) trades.push(legs.buy);
+  }
+  return trades;
+}
+
+function swapOverHeld(over: Oversell, swapId: string, onFromAsset: boolean): FieldError {
+  const { sell } = over;
+  if (sell.id === swapId) return { field: "from_quantity", code: "over_held", held: over.held };
+  return {
+    field: onFromAsset ? "from_quantity" : "to_quantity",
+    code: "over_held",
+    held: over.held,
+    sell: { id: sell.id, date: sell.date, quantity: sell.quantity },
+  };
+}
+
+/**
+ * Inserts a swap, or updates the changed columns when input.id exists. Its
+ * legs must not take the held quantity of the old or new assets below zero.
+ */
+export function saveSwap(db: MutationDb, input: SwapInput): Promise<SaveResult> {
+  return db.writeTransaction(async (tx) => {
+    const fee = normalizeDecimal(input.fee);
+    const swap: SwapInput = {
+      ...input,
+      from_quantity: normalizeDecimal(input.from_quantity),
+      to_quantity: normalizeDecimal(input.to_quantity),
+      value: normalizeDecimal(input.value),
+      to_value: normalizeDecimal(input.to_value),
+      fee: fee === "" ? "0" : fee,
+    };
+    const errors = validateSwap(swap);
+    for (const field of ["from_instrument_id", "to_instrument_id"] as const) {
+      const instrumentId = swap[field];
+      if (!instrumentId || errors.some((e) => e.field === field)) continue;
+      if (!(await tx.getOptional("SELECT id FROM instruments WHERE id = ?", [instrumentId]))) {
+        errors.push({ field, code: "invalid_reference" });
+      }
+    }
+    if (errors.length > 0) return fail(errors);
+
+    const swapId = swap.id ?? newId();
+    const old = swap.id
+      ? await tx.getOptional<StoredSwap>("SELECT from_instrument_id, to_instrument_id FROM swaps WHERE id = ?", [swap.id])
+      : null;
+    const legs = swapLegs({ ...swap, id: swapId });
+    const instruments = new Set([swap.from_instrument_id, swap.to_instrument_id]);
+    if (old) {
+      instruments.add(old.from_instrument_id);
+      instruments.add(old.to_instrument_id);
+    }
+    for (const instrumentId of instruments) {
+      const before = await legsFor(tx, instrumentId);
+      const after = before.filter((t) => t.id !== swapId);
+      if (instrumentId === swap.from_instrument_id) after.push(legs.sell);
+      if (instrumentId === swap.to_instrument_id) after.push(legs.buy);
+      const over = listError(before, after, swapId);
+      if (over) return fail([swapOverHeld(over, swapId, instrumentId === swap.from_instrument_id)]);
+    }
+
+    const values: Row = {
+      from_instrument_id: swap.from_instrument_id,
+      to_instrument_id: swap.to_instrument_id,
+      date: swap.date,
+      from_quantity: swap.from_quantity,
+      to_quantity: swap.to_quantity,
+      fee: swap.fee,
+      value: swap.value,
+      to_value: swap.to_value,
+      note: swap.note ?? null,
+    };
+    const id = await write(tx, "swaps", swapId, values, async () => ({
+      user_id: (await currentSettings(tx)).user_id,
+    }));
+    return { ok: true, id };
+  });
+}
+
+/** Deletes a swap unless a later sell then sells more than is held. */
+export function deleteSwap(db: MutationDb, id: string): Promise<SaveResult> {
+  return db.writeTransaction(async (tx) => {
+    const stored = await tx.getOptional<StoredSwap>("SELECT from_instrument_id, to_instrument_id FROM swaps WHERE id = ?", [id]);
+    for (const instrumentId of stored ? [stored.from_instrument_id, stored.to_instrument_id] : []) {
+      const over = deleteError(await legsFor(tx, instrumentId), id);
+      if (over) return fail([swapOverHeld(over, id, instrumentId === stored?.from_instrument_id)]);
+    }
+    await tx.execute("DELETE FROM swaps WHERE id = ?", [id]);
     return { ok: true, id };
   });
 }

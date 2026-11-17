@@ -1,5 +1,6 @@
 // Package insights holds the AI insight cards and question answers: their
-// types, the checks before a write, the daily run and the question worker.
+// types, the checks before a write, the daily run, the weekly portfolio run
+// and the question worker.
 package insights
 
 import "encoding/json"
@@ -15,7 +16,13 @@ const (
 	KindRecurringRule = "recurring_rule"
 )
 
-// Card is one suggestion from the daily run. Action is the raw JSON of a
+// Card sources. The run that wrote a card or a memory.
+const (
+	SourceSpending  = "spending"
+	SourcePortfolio = "portfolio"
+)
+
+// Card is one suggestion from the daily or the portfolio run. Action is the raw JSON of a
 // BudgetAction (kind budget), a RecurringAction (kind recurring_rule) or
 // nothing (kind tip). CheckCard decodes it strictly into the typed action.
 type Card struct {

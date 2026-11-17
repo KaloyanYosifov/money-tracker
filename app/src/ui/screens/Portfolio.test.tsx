@@ -17,8 +17,12 @@ jest.mock("../../data/queries", () => ({
   useAccountsTotal: () => ({ data: { total: 1824055 }, isLoading: false }),
 }));
 
+let mockInstruments: { id: string; symbol: string }[] = [];
 jest.mock("@powersync/react", () => ({
-  useQuery: () => ({ data: [{ id: "s1", currency_code: "EUR", theme: "light", summary_font: "mono" }], isLoading: false }),
+  useQuery: (sql: string) =>
+    sql.includes("FROM instruments")
+      ? { data: mockInstruments, isLoading: false }
+      : { data: [{ id: "s1", currency_code: "EUR", theme: "light", summary_font: "mono" }], isLoading: false },
 }));
 
 // The chart shows its points as text, so a test can read the series.
@@ -226,11 +230,21 @@ describe("InstrumentDetailScreen", () => {
       },
       holding: acme,
       trades,
+      swaps: [],
+      legs: trades,
     };
     const onOpenTrade = jest.fn();
     const onAddTrade = jest.fn();
     await render(
-      <InstrumentDetailScreen id="acme" locale="en-GB" onBack={jest.fn()} onAddTrade={onAddTrade} onOpenTrade={onOpenTrade} />,
+      <InstrumentDetailScreen
+        id="acme"
+        locale="en-GB"
+        onBack={jest.fn()}
+        onAddTrade={onAddTrade}
+        onOpenTrade={onOpenTrade}
+        onSwap={jest.fn()}
+        onOpenSwap={jest.fn()}
+      />,
     );
     return { onOpenTrade, onAddTrade };
   }
@@ -264,5 +278,100 @@ describe("InstrumentDetailScreen", () => {
     expect(onOpenTrade).toHaveBeenCalledWith("t2");
     await fireEvent.press(screen.getByRole("button", { name: "Add trade" }));
     expect(onAddTrade).toHaveBeenCalled();
+  });
+});
+
+describe("InstrumentDetailScreen with a swap", () => {
+  const swap = {
+    id: "sw1",
+    from_instrument_id: "zza",
+    to_instrument_id: "zzb",
+    date: "2026-02-01",
+    from_quantity: "1",
+    to_quantity: "2498",
+    fee: "2",
+    value: "2500",
+    to_value: "2500",
+    note: null,
+  };
+  const instrumentRow = (id: string, symbol: string) => ({
+    id,
+    symbol,
+    name: `${symbol} coin`,
+    exchange: "CCC",
+    kind: "crypto" as const,
+    quote_currency: "USD",
+    last_fetched_at: null,
+    failed_at: null,
+  });
+
+  async function renderAsset(id: "zza" | "zzb", shownSwap = swap) {
+    mockInstruments = [
+      { id: "zza", symbol: "ZZA-USD" },
+      { id: "zzb", symbol: "ZZB-USD" },
+    ];
+    const trades =
+      id === "zza"
+        ? [
+            { id: "t2", instrument_id: "zza", side: "buy" as const, date: "2026-03-01", quantity: "0.5", price: "2100", fee: "0", note: null },
+            { id: "t1", instrument_id: "zza", side: "buy" as const, date: "2026-01-05", quantity: "1", price: "2000", fee: "0", note: null },
+          ]
+        : [];
+    const symbol = id === "zza" ? "ZZA-USD" : "ZZB-USD";
+    mockDetail = {
+      instrument: instrumentRow(id, symbol),
+      holding: holdingOf({ instrumentId: id, symbol, name: `${symbol} coin`, kind: "crypto" }),
+      trades,
+      swaps: [shownSwap],
+      legs: trades,
+    };
+    const onSwap = jest.fn();
+    const onOpenSwap = jest.fn();
+    await render(
+      <InstrumentDetailScreen
+        id={id}
+        locale="en-GB"
+        onBack={jest.fn()}
+        onAddTrade={jest.fn()}
+        onOpenTrade={jest.fn()}
+        onSwap={onSwap}
+        onOpenSwap={onOpenSwap}
+      />,
+    );
+    return { onSwap, onOpenSwap };
+  }
+
+  it("has a Swap button", async () => {
+    const { onSwap } = await renderAsset("zza");
+
+    await fireEvent.press(screen.getByRole("button", { name: "Swap" }));
+    expect(onSwap).toHaveBeenCalled();
+  });
+
+  it("lists the swap with the trades, newest first, and opens it on tap", async () => {
+    const { onOpenSwap } = await renderAsset("zza");
+
+    const rows = screen.getAllByTestId(/^(trade|swap)-/);
+    expect(rows.map((r) => r.props.testID)).toEqual(["trade-t2", "swap-sw1", "trade-t1"]);
+    expect(rows[1].props.accessibilityLabel).toBe("Swapped 1 ZZA-USD to 2,498 ZZB-USD, 1 Feb 2026");
+    expect(within(rows[1]).getByText("1 Feb 2026")).toBeOnTheScreen();
+    expect(within(rows[1]).getByText("Swap")).toBeOnTheScreen();
+
+    await fireEvent.press(rows[1]);
+    expect(onOpenSwap).toHaveBeenCalledWith("sw1");
+  });
+
+  it("shows the swap quantities without a loss of digits", async () => {
+    await renderAsset("zzb", { ...swap, from_quantity: "123456789012.123456789012", to_quantity: "0.000000000001" });
+
+    expect(screen.getByTestId("swap-sw1").props.accessibilityLabel).toBe(
+      "Swapped 123,456,789,012.123456789012 ZZA-USD to 0.000000000001 ZZB-USD, 1 Feb 2026",
+    );
+  });
+
+  it("shows the swap on the asset that the swap bought", async () => {
+    await renderAsset("zzb");
+
+    expect(screen.getByTestId("swap-sw1").props.accessibilityLabel).toBe("Swapped 1 ZZA-USD to 2,498 ZZB-USD, 1 Feb 2026");
   });
 });

@@ -88,11 +88,33 @@ func addCard(t *testing.T, pool *pgxpool.Pool, u runUser, status, fingerprint st
 		u.userID, fingerprint, status, ageDays)
 }
 
+// addPortfolioCard inserts a portfolio card for u with the given status and
+// age in days.
+func addPortfolioCard(t *testing.T, pool *pgxpool.Pool, u runUser, status, fingerprint string, ageDays int) {
+	t.Helper()
+	execSQL(t, pool,
+		`INSERT INTO insights (id, user_id, kind, title, body, fingerprint, status, source, created_at, updated_at)
+		 VALUES (gen_random_uuid(), $1, 'tip', 'Old', 'Old card', $2, $3, 'portfolio',
+		         now() - make_interval(days => $4), now() - make_interval(days => $4))`,
+		u.userID, fingerprint, status, ageDays)
+}
+
+// addPortfolioMemory inserts the portfolio memory of u.
+func addPortfolioMemory(t *testing.T, pool *pgxpool.Pool, u runUser, summary string) {
+	t.Helper()
+	execSQL(t, pool,
+		`INSERT INTO insight_memory (user_id, source, summary, updated_at)
+		 VALUES ($1, 'portfolio', $2, '2026-01-01T00:00:00Z')`, u.userID, summary)
+}
+
 // fakeAI is the gateway for the tests. respond answers each daily call.
 type fakeAI struct {
 	mu      gosync.Mutex
 	inputs  []DailyInput
 	respond func(in DailyInput) (aiclient.DailyInsightsResult, error)
+
+	portfolioInputs  []PortfolioInput
+	respondPortfolio func(in PortfolioInput) (aiclient.DailyInsightsResult, error)
 }
 
 func (f *fakeAI) DailyInsights(_ context.Context, input any) (aiclient.DailyInsightsResult, error) {
@@ -108,6 +130,23 @@ func (f *fakeAI) DailyInsights(_ context.Context, input any) (aiclient.DailyInsi
 
 func (f *fakeAI) CategoryQuestion(context.Context, any) (aiclient.CategoryQuestionResult, error) {
 	return aiclient.CategoryQuestionResult{}, errors.New("not used in the run tests")
+}
+
+func (f *fakeAI) PortfolioInsights(_ context.Context, input any) (aiclient.DailyInsightsResult, error) {
+	in, ok := input.(PortfolioInput)
+	if !ok {
+		return aiclient.DailyInsightsResult{}, fmt.Errorf("input is %T, not PortfolioInput", input)
+	}
+	f.mu.Lock()
+	f.portfolioInputs = append(f.portfolioInputs, in)
+	f.mu.Unlock()
+	return f.respondPortfolio(in)
+}
+
+func (f *fakeAI) portfolioCalls() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.portfolioInputs)
 }
 
 func (f *fakeAI) calls() int {
@@ -327,6 +366,38 @@ func TestRun(t *testing.T) {
 		}
 	})
 
+	t.Run("drops dismissed and duplicate fingerprints", func(t *testing.T) {
+		u := seedRunUser(t, pool, "fingerprints@example.com", true)
+		addCard(t, pool, u, "dismissed", "tip:gone", 1)
+		fake := &fakeAI{respond: func(DailyInput) (aiclient.DailyInsightsResult, error) {
+			return aiclient.DailyInsightsResult{Cards: []aiclient.Card{
+				tipCard("tip:gone"),
+				tipCard("tip:twice"),
+				tipCard("tip:twice"),
+			}, Summary: "s"}, nil
+		}}
+		if err := Run(ctx, pool, fake, today); err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if got := openFingerprints(t, pool, u.userID); !slices.Equal(got, []string{"tip:twice"}) {
+			t.Errorf("open cards = %v", got)
+		}
+	})
+
+	t.Run("keeps the open cards when every card is dropped", func(t *testing.T) {
+		u := seedRunUser(t, pool, "all-dropped@example.com", true)
+		addCard(t, pool, u, "open", "tip:still", 1)
+		fake := &fakeAI{respond: func(DailyInput) (aiclient.DailyInsightsResult, error) {
+			return aiclient.DailyInsightsResult{Cards: []aiclient.Card{budgetCard("budget:unknown", "00000000-0000-4000-8000-000000000009", 100)}, Summary: "s"}, nil
+		}}
+		if err := Run(ctx, pool, fake, today); err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if got := openFingerprints(t, pool, u.userID); !slices.Equal(got, []string{"tip:still"}) {
+			t.Errorf("open cards = %v, want the old card", got)
+		}
+	})
+
 	t.Run("deletes cards and questions older than 60 days", func(t *testing.T) {
 		u := seedRunUser(t, pool, "prunes@example.com", true)
 		addCard(t, pool, u, "accepted", "tip:61", 61)
@@ -405,6 +476,61 @@ func TestRun(t *testing.T) {
 			t.Errorf("user B open cards = %v", got)
 		}
 	})
+}
+
+func TestRunKeepsPortfolioCards(t *testing.T) {
+	ctx := context.Background()
+	pool := testutil.StartPostgres(t)
+	today := time.Now().UTC().Format(time.DateOnly)
+
+	u := seedRunUser(t, pool, "keeps-portfolio@example.com", true)
+	addPortfolioCard(t, pool, u, "open", "portfolio:open", 1)
+	addPortfolioCard(t, pool, u, "dismissed", "portfolio:x", 1)
+	addPortfolioMemory(t, pool, u, "portfolio memory")
+	addPortfolioCard(t, pool, u, "accepted", "portfolio:61", 61)
+
+	fake := &fakeAI{respond: func(DailyInput) (aiclient.DailyInsightsResult, error) {
+		return aiclient.DailyInsightsResult{Cards: []aiclient.Card{tipCard("tip:new")}, Summary: "Spending summary."}, nil
+	}}
+	if err := Run(ctx, pool, fake, today); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if n := countRows(t, pool,
+		`SELECT count(*) FROM insights WHERE user_id = $1 AND fingerprint = 'portfolio:open' AND status = 'open' AND source = 'portfolio'`,
+		u.userID); n != 1 {
+		t.Errorf("open portfolio cards = %d, want 1", n)
+	}
+
+	if fake.calls() != 1 {
+		t.Fatalf("gateway calls = %d, want 1", fake.calls())
+	}
+	in := fake.inputs[0]
+	for _, c := range in.RecentCards {
+		if strings.HasPrefix(c.Fingerprint, "portfolio:") {
+			t.Errorf("recent cards hold the portfolio card %q", c.Fingerprint)
+		}
+	}
+	if slices.Contains(in.DismissedFingerprints, "portfolio:x") {
+		t.Errorf("dismissed fingerprints = %v, want no portfolio:x", in.DismissedFingerprints)
+	}
+	if in.Summary == "portfolio memory" {
+		t.Errorf("summary = %q, want not the portfolio memory", in.Summary)
+	}
+
+	var summary string
+	var updatedAt time.Time
+	if err := pool.QueryRow(ctx,
+		`SELECT summary, updated_at FROM insight_memory WHERE user_id = $1 AND source = 'portfolio'`,
+		u.userID).Scan(&summary, &updatedAt); err != nil {
+		t.Fatal(err)
+	}
+	if summary != "portfolio memory" || !updatedAt.Equal(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Errorf("portfolio memory = %q at %s, want it unchanged", summary, updatedAt)
+	}
+	if n := countRows(t, pool, `SELECT count(*) FROM insights WHERE user_id = $1 AND fingerprint = 'portfolio:61'`, u.userID); n != 1 {
+		t.Errorf("the spending run pruned a portfolio card")
+	}
 }
 
 func TestLimitSummary(t *testing.T) {

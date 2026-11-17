@@ -1,5 +1,21 @@
 import { asyncDatabase, createTestDatabase, loadFixture, type AsyncTestDatabase, type TestDatabase } from "../../test/sqlite";
-import { acceptBudgetCard, acceptRecurringCard, askQuestion, dismissCard, parseAction, type InsightCard } from "./insights";
+import {
+  acceptBudgetCard,
+  acceptRecurringCard,
+  askQuestion,
+  dismissCard,
+  parseAction,
+  useHasTrades,
+  useLastRunTime,
+  useOpenCards,
+  type InsightCard,
+} from "./insights";
+
+let mockDb: TestDatabase;
+
+jest.mock("@powersync/react", () => ({
+  useQuery: (sql: string, parameters: unknown[] = []) => ({ data: mockDb.prepare(sql).all(parameters), isLoading: false }),
+}));
 
 const fixture = {
   user_settings: [
@@ -68,6 +84,68 @@ beforeEach(() => {
   sqlite = createTestDatabase();
   loadFixture(sqlite, fixture);
   db = asyncDatabase(sqlite);
+  mockDb = sqlite;
+});
+
+function sourced(id: string, source: InsightCard["source"] | null, status = "open", createdAt = "2026-10-20T06:00:00Z") {
+  return { ...card(id, "tip", null), source, status, created_at: createdAt } as InsightCard;
+}
+
+describe("useOpenCards", () => {
+  beforeEach(() => {
+    load([
+      sourced("spend", "spending"),
+      sourced("legacy", null, "open", "2026-10-19T06:00:00Z"),
+      sourced("folio", "portfolio"),
+      sourced("folio-done", "portfolio", "dismissed"),
+    ]);
+  });
+
+  it("returns the open spending cards and the cards without a source", () => {
+    expect(useOpenCards("spending").data.map((c) => c.id)).toEqual(["spend", "legacy"]);
+  });
+
+  it("returns only the open portfolio cards", () => {
+    expect(useOpenCards("portfolio").data.map((c) => c.id)).toEqual(["folio"]);
+  });
+});
+
+describe("useLastRunTime", () => {
+  it("returns the newest created_at of the cards of one source", () => {
+    expect(useLastRunTime("portfolio")).toBeNull();
+
+    load([
+      { ...card("spend", "tip", null), source: "spending", created_at: "2026-10-27T06:00:00Z" },
+      { ...card("folio1", "tip", null), source: "portfolio", created_at: "2026-10-19T06:00:00Z" },
+      { ...card("folio2", "tip", null), source: "portfolio", status: "dismissed", created_at: "2026-10-26T06:00:00Z" },
+    ]);
+
+    expect(useLastRunTime("portfolio")).toBe("2026-10-26T06:00:00Z");
+    expect(useLastRunTime("spending")).toBe("2026-10-27T06:00:00Z");
+  });
+
+  it("counts a card without a source as a spending card", () => {
+    load([
+      sourced("spend", "spending", "open", "2026-10-20T06:00:00Z"),
+      sourced("legacy", null, "open", "2026-10-28T06:00:00Z"),
+    ]);
+
+    expect(useLastRunTime("spending")).toBe("2026-10-28T06:00:00Z");
+    expect(useLastRunTime("portfolio")).toBeNull();
+  });
+});
+
+describe("useHasTrades", () => {
+  it("is true only when a trade exists on or before today", () => {
+    expect(useHasTrades("2026-10-24")).toBe(false);
+
+    loadFixture(sqlite, {
+      trades: [{ id: "t1", user_id: "u1", instrument_id: "i1", side: "buy", date: "2026-10-01", quantity: "1", price: "10", fee: "0" }],
+    });
+
+    expect(useHasTrades("2026-10-24")).toBe(true);
+    expect(useHasTrades("2026-09-30")).toBe(false);
+  });
 });
 
 describe("parseAction", () => {

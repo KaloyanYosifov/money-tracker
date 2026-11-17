@@ -70,6 +70,16 @@ func addTrade(t *testing.T, pool *pgxpool.Pool, userID, instrumentID, date strin
 		 VALUES (gen_random_uuid(), $1, $2, 'buy', $3, '1', '10', '0')`, userID, instrumentID, date)
 }
 
+// addSwap links both instruments to the user and adds a swap between them.
+func addSwap(t *testing.T, pool *pgxpool.Pool, userID, fromID, toID, date string) {
+	t.Helper()
+	linkUser(t, pool, userID, fromID)
+	linkUser(t, pool, userID, toID)
+	execSQL(t, pool,
+		`INSERT INTO swaps (id, user_id, from_instrument_id, to_instrument_id, date, from_quantity, to_quantity, fee, value, to_value)
+		 VALUES (gen_random_uuid(), $1, $2, $3, $4, '1', '20', '0', '20', '20')`, userID, fromID, toID, date)
+}
+
 func countRows(t *testing.T, pool *pgxpool.Pool, sql string, args ...any) int {
 	t.Helper()
 	var n int
@@ -223,6 +233,36 @@ func TestHistoryStart(t *testing.T) {
 		addTrade(t, pool, bob, etf, "2025-06-30")
 		if got := start(t, "EURGBP=X"); got != "2025-06-30" {
 			t.Errorf("start = %s, want 2025-06-30", got)
+		}
+	})
+
+	t.Run("stock: a swap into the instrument is earlier than its trades", func(t *testing.T) {
+		id := addInstrument(t, pool, "ZZSW1", KindStock, "USD")
+		other := addInstrument(t, pool, "ZZSW1F", KindStock, "USD")
+		addTrade(t, pool, alice, id, "2026-05-01")
+		addSwap(t, pool, alice, other, id, "2026-02-10")
+		if got := start(t, "ZZSW1"); got != "2026-02-10" {
+			t.Errorf("start = %s, want 2026-02-10", got)
+		}
+	})
+
+	t.Run("stock: a swap out of the instrument with no trades", func(t *testing.T) {
+		id := addInstrument(t, pool, "ZZSW2", KindStock, "USD")
+		other := addInstrument(t, pool, "ZZSW2T", KindStock, "USD")
+		addSwap(t, pool, bob, id, other, "2026-01-20")
+		if got := start(t, "ZZSW2"); got != "2026-01-20" {
+			t.Errorf("start = %s, want 2026-01-20", got)
+		}
+	})
+
+	// CHF and not GBP: the GBP trades of the fx case above are earlier.
+	t.Run("fx: a swap counts for the quote currency of both instruments", func(t *testing.T) {
+		usd := addInstrument(t, pool, "ZZSW3U", KindStock, "USD")
+		chf := addInstrument(t, pool, "ZZSW3.SW", KindStock, "CHF")
+		addInstrument(t, pool, "EURCHF=X", KindFX, "CHF")
+		addSwap(t, pool, alice, usd, chf, "2025-09-01")
+		if got := start(t, "EURCHF=X"); got != "2025-09-01" {
+			t.Errorf("start = %s, want 2025-09-01", got)
 		}
 	})
 

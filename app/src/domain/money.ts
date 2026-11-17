@@ -7,7 +7,7 @@ export function minorUnits(currency: string): number {
     .maximumFractionDigits ?? 2;
 }
 
-function decimalSeparator(locale?: string): string {
+export function decimalSeparator(locale?: string): string {
   const format = new Intl.NumberFormat(locale);
   // Hermes on iOS has no NumberFormat.formatToParts. Without it, read the character between the 1s of "1.1".
   if (typeof format.formatToParts !== "function") {

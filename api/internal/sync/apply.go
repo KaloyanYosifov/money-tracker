@@ -112,6 +112,13 @@ func mapPgError(e *pgconn.PgError, op schema.UploadOpOp) (Result, bool) {
 	return Result{}, false
 }
 
+// positiveFields lists the decimal fields of each table that must be greater
+// than 0.
+var positiveFields = map[string][]string{
+	"trades": {"quantity", "price"},
+	"swaps":  {"from_quantity", "to_quantity", "value", "to_value"},
+}
+
 func applyOp(ctx context.Context, tx pgx.Tx, userID, table string, cols []string, op schema.UploadOp) (Result, error) {
 	if table == "user_settings" && op.Op != schema.UploadOpOpPATCH {
 		return reject("not_allowed", "user_settings accepts only PATCH"), nil
@@ -167,11 +174,9 @@ func applyOp(ctx context.Context, tx pgx.Tx, userID, table string, cols []string
 	if r := checkInsightWrite(table, data); r != nil {
 		return *r, nil
 	}
-	if table == "trades" {
-		for _, field := range []string{"quantity", "price"} {
-			if s, ok := data[field].(string); ok && strings.Trim(s, "0.") == "" {
-				return reject("invalid_record", field+" must be greater than 0"), nil
-			}
+	for _, field := range positiveFields[table] {
+		if s, ok := data[field].(string); ok && strings.Trim(s, "0.") == "" {
+			return reject("invalid_record", field+" must be greater than 0"), nil
 		}
 	}
 	// A question sends the user's data to the AI gateway, so only a user who

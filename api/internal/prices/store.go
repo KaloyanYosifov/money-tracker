@@ -35,18 +35,27 @@ const historyDays = 7
 const earliestHistory = "1970-01-01"
 
 // historyStartSQL gives the history start of the instruments row "i" for the
-// date parameter $today: the earliest trade date, but not later than $today
-// minus 7 days and not earlier than earliestHistory. For an FX pair it uses
-// the trades of all instruments with its quote currency.
+// date parameter $today: the earliest trade or swap date, but not later than
+// $today minus 7 days and not earlier than earliestHistory. A swap counts for
+// both of its instruments. For an FX pair it uses the trades and swaps of all
+// instruments with its quote currency.
 func historyStartSQL(today string) string {
 	return fmt.Sprintf(`GREATEST(DATE '%[3]s', LEAST(%[1]s::date - %[2]d, COALESCE(
 		CASE WHEN i.kind = 'fx' THEN
-			(SELECT min(t.date) FROM trades t JOIN instruments ti ON ti.id = t.instrument_id
+			(SELECT min(d.date) FROM %[4]s JOIN instruments ti ON ti.id = d.instrument_id
 			 WHERE ti.quote_currency = i.quote_currency AND ti.kind <> 'fx')
 		ELSE
-			(SELECT min(t.date) FROM trades t WHERE t.instrument_id = i.id)
-		END, %[1]s::date - %[2]d)))`, today, historyDays, earliestHistory)
+			(SELECT min(d.date) FROM %[4]s WHERE d.instrument_id = i.id)
+		END, %[1]s::date - %[2]d)))`, today, historyDays, earliestHistory, activityDates)
 }
+
+// activityDates is the date of each trade and of each swap side, with the
+// instrument of that trade or side.
+const activityDates = `(
+			SELECT date, instrument_id FROM trades
+			UNION ALL SELECT date, from_instrument_id FROM swaps
+			UNION ALL SELECT date, to_instrument_id FROM swaps
+		) d (date, instrument_id)`
 
 // LinkInstrument creates the instrument of chart if it does not exist, and
 // links it to the user.

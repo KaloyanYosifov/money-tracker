@@ -314,6 +314,9 @@ type Insight struct {
 	// Kind corresponds to the JSON schema field "kind".
 	Kind InsightKind `json:"kind"`
 
+	// Set by the server. The run that wrote the card.
+	Source *InsightSource `json:"source,omitempty,omitzero"`
+
 	// Status corresponds to the JSON schema field "status".
 	Status InsightStatus `json:"status"`
 
@@ -479,6 +482,36 @@ func (j *InsightQuestion) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
+type InsightSource string
+
+const InsightSourcePortfolio InsightSource = "portfolio"
+const InsightSourceSpending InsightSource = "spending"
+
+var enumValues_InsightSource = []interface{}{
+	"spending",
+	"portfolio",
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *InsightSource) UnmarshalJSON(value []byte) error {
+	var v string
+	if err := json.Unmarshal(value, &v); err != nil {
+		return err
+	}
+	var ok bool
+	for _, expected := range enumValues_InsightSource {
+		if reflect.DeepEqual(v, expected) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return fmt.Errorf("invalid value (expected one of %#v): %#v", enumValues_InsightSource, v)
+	}
+	*j = InsightSource(v)
+	return nil
+}
+
 type InsightStatus string
 
 const InsightStatusAccepted InsightStatus = "accepted"
@@ -540,6 +573,9 @@ func (j *Insight) UnmarshalJSON(value []byte) error {
 	}
 	if _, ok := raw["created_at"]; raw != nil && ok {
 		return fmt.Errorf("field created_at in Insight: read only")
+	}
+	if _, ok := raw["source"]; raw != nil && ok {
+		return fmt.Errorf("field source in Insight: read only")
 	}
 	if _, ok := raw["updated_at"]; raw != nil && ok {
 		return fmt.Errorf("field updated_at in Insight: read only")
@@ -897,6 +933,118 @@ func (j *RecurringRule) UnmarshalJSON(value []byte) error {
 		return fmt.Errorf("field %s pattern match: must match %s", "StartDate", `^\d{4}-\d{2}-\d{2}$`)
 	}
 	*j = RecurringRule(plain)
+	return nil
+}
+
+type Swap struct {
+	// Set by the server.
+	CreatedAt *time.Time `json:"created_at,omitempty,omitzero"`
+
+	// Date corresponds to the JSON schema field "date".
+	Date string `json:"date"`
+
+	// Fee corresponds to the JSON schema field "fee".
+	Fee string `json:"fee"`
+
+	// FromInstrumentID corresponds to the JSON schema field "from_instrument_id".
+	FromInstrumentID string `json:"from_instrument_id"`
+
+	// FromQuantity corresponds to the JSON schema field "from_quantity".
+	FromQuantity string `json:"from_quantity"`
+
+	// ID corresponds to the JSON schema field "id".
+	ID string `json:"id"`
+
+	// Note corresponds to the JSON schema field "note".
+	Note SwapNote `json:"note,omitempty,omitzero"`
+
+	// ToInstrumentID corresponds to the JSON schema field "to_instrument_id".
+	ToInstrumentID string `json:"to_instrument_id"`
+
+	// ToQuantity corresponds to the JSON schema field "to_quantity".
+	ToQuantity string `json:"to_quantity"`
+
+	// ToValue corresponds to the JSON schema field "to_value".
+	ToValue string `json:"to_value"`
+
+	// Set by the server.
+	UpdatedAt *time.Time `json:"updated_at,omitempty,omitzero"`
+
+	// UserID corresponds to the JSON schema field "user_id".
+	UserID string `json:"user_id"`
+
+	// Value corresponds to the JSON schema field "value".
+	Value string `json:"value"`
+}
+
+type SwapNote *string
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (j *Swap) UnmarshalJSON(value []byte) error {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(value, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["date"]; raw != nil && !ok {
+		return fmt.Errorf("field date in Swap: required")
+	}
+	if _, ok := raw["fee"]; raw != nil && !ok {
+		return fmt.Errorf("field fee in Swap: required")
+	}
+	if _, ok := raw["from_instrument_id"]; raw != nil && !ok {
+		return fmt.Errorf("field from_instrument_id in Swap: required")
+	}
+	if _, ok := raw["from_quantity"]; raw != nil && !ok {
+		return fmt.Errorf("field from_quantity in Swap: required")
+	}
+	if _, ok := raw["id"]; raw != nil && !ok {
+		return fmt.Errorf("field id in Swap: required")
+	}
+	if _, ok := raw["to_instrument_id"]; raw != nil && !ok {
+		return fmt.Errorf("field to_instrument_id in Swap: required")
+	}
+	if _, ok := raw["to_quantity"]; raw != nil && !ok {
+		return fmt.Errorf("field to_quantity in Swap: required")
+	}
+	if _, ok := raw["to_value"]; raw != nil && !ok {
+		return fmt.Errorf("field to_value in Swap: required")
+	}
+	if _, ok := raw["user_id"]; raw != nil && !ok {
+		return fmt.Errorf("field user_id in Swap: required")
+	}
+	if _, ok := raw["value"]; raw != nil && !ok {
+		return fmt.Errorf("field value in Swap: required")
+	}
+	if _, ok := raw["created_at"]; raw != nil && ok {
+		return fmt.Errorf("field created_at in Swap: read only")
+	}
+	if _, ok := raw["updated_at"]; raw != nil && ok {
+		return fmt.Errorf("field updated_at in Swap: read only")
+	}
+	type Plain Swap
+	var plain Plain
+	if err := json.Unmarshal(value, &plain); err != nil {
+		return err
+	}
+	if matched, _ := regexp.MatchString(`^\d{4}-\d{2}-\d{2}$`, string(plain.Date)); !matched {
+		return fmt.Errorf("field %s pattern match: must match %s", "Date", `^\d{4}-\d{2}-\d{2}$`)
+	}
+	if matched, _ := regexp.MatchString(`^\d{1,12}(\.\d{1,12})?$`, string(plain.Fee)); !matched {
+		return fmt.Errorf("field %s pattern match: must match %s", "Fee", `^\d{1,12}(\.\d{1,12})?$`)
+	}
+	if matched, _ := regexp.MatchString(`^\d{1,12}(\.\d{1,12})?$`, string(plain.FromQuantity)); !matched {
+		return fmt.Errorf("field %s pattern match: must match %s", "FromQuantity", `^\d{1,12}(\.\d{1,12})?$`)
+	}
+	if matched, _ := regexp.MatchString(`^\d{1,12}(\.\d{1,12})?$`, string(plain.ToQuantity)); !matched {
+		return fmt.Errorf("field %s pattern match: must match %s", "ToQuantity", `^\d{1,12}(\.\d{1,12})?$`)
+	}
+	if matched, _ := regexp.MatchString(`^\d{1,12}(\.\d{1,12})?$`, string(plain.ToValue)); !matched {
+		return fmt.Errorf("field %s pattern match: must match %s", "ToValue", `^\d{1,12}(\.\d{1,12})?$`)
+	}
+	if matched, _ := regexp.MatchString(`^\d{1,12}(\.\d{1,12})?$`, string(plain.Value)); !matched {
+		return fmt.Errorf("field %s pattern match: must match %s", "Value", `^\d{1,12}(\.\d{1,12})?$`)
+	}
+	*j = Swap(plain)
 	return nil
 }
 
@@ -1274,6 +1422,7 @@ const UploadOpTableCategories UploadOpTable = "categories"
 const UploadOpTableInsightQuestions UploadOpTable = "insight_questions"
 const UploadOpTableInsights UploadOpTable = "insights"
 const UploadOpTableRecurringRules UploadOpTable = "recurring_rules"
+const UploadOpTableSwaps UploadOpTable = "swaps"
 const UploadOpTableTrades UploadOpTable = "trades"
 const UploadOpTableTransactions UploadOpTable = "transactions"
 const UploadOpTableUserSettings UploadOpTable = "user_settings"
@@ -1288,6 +1437,7 @@ var enumValues_UploadOpTable = []interface{}{
 	"insights",
 	"insight_questions",
 	"trades",
+	"swaps",
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -1625,6 +1775,6 @@ func (j *UserSettings) UnmarshalJSON(value []byte) error {
 	return nil
 }
 
-const SchemaVersion = 6
+const SchemaVersion = 7
 
-const MinSupportedSchemaVersion = 3
+const MinSupportedSchemaVersion = 7

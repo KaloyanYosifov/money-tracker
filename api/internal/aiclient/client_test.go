@@ -62,6 +62,29 @@ func TestDailyInsightsReturnsParsedResult(t *testing.T) {
 	}
 }
 
+func TestPortfolioInsightsReturnsParsedResult(t *testing.T) {
+	c, req, body := gateway(t, http.StatusOK,
+		`{"cards":[{"kind":"tip","title":"T","body":"B","fingerprint":"fp","action":null}],"summary":"S"}`)
+
+	res, err := c.PortfolioInsights(context.Background(), input{Today: "2026-10-24"})
+	if err != nil {
+		t.Fatalf("PortfolioInsights: %v", err)
+	}
+	if req.Method != http.MethodPost || req.URL.Path != "/v1/tasks/portfolio_insights" {
+		t.Fatalf("request = %s %s", req.Method, req.URL.Path)
+	}
+	if string(*body) != `{"today":"2026-10-24"}` {
+		t.Fatalf("body = %s", *body)
+	}
+	if res.Summary != "S" || len(res.Cards) != 1 {
+		t.Fatalf("result = %+v", res)
+	}
+	card := res.Cards[0]
+	if card.Kind != "tip" || card.Title != "T" || card.Body != "B" || card.Fingerprint != "fp" {
+		t.Fatalf("card = %+v", card)
+	}
+}
+
 func TestCategoryQuestionReturnsParsedResult(t *testing.T) {
 	c, req, body := gateway(t, http.StatusOK, `{"answer":"Spend less.","action":null}`)
 

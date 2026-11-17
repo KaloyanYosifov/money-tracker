@@ -1,4 +1,4 @@
-import { div, fromFixed, mul, toFixed } from "./decimal";
+import { div, fromFixed, mul, SCALE, toFixed } from "./decimal";
 
 export type Trade = {
   id: string;
@@ -7,6 +7,8 @@ export type Trade = {
   quantity: string;
   price: string;
   fee: string;
+  /** The amount before the fee, used in place of quantity × price. */
+  total?: string;
 };
 
 export type Close = { date: string; close: string };
@@ -30,6 +32,10 @@ function value(text: string): bigint {
   return toFixed(text) ?? 0n;
 }
 
+function amount(t: Trade, quantity: bigint): bigint {
+  return t.total !== undefined ? value(t.total) : mul(quantity, value(t.price));
+}
+
 /** Sorts by date, then buys before sells on the same date, then id. */
 export function sortTrades(trades: Trade[]): Trade[] {
   return [...trades].sort(
@@ -51,7 +57,7 @@ export function holding(trades: Trade[], onDate?: string): Holding {
     const fee = value(t.fee);
     fees += fee;
     if (t.side === "buy") {
-      lots.push({ quantity, cost: mul(quantity, value(t.price)) + fee });
+      lots.push({ quantity, cost: amount(t, quantity) + fee });
       continue;
     }
     let rest = quantity;
@@ -70,7 +76,7 @@ export function holding(trades: Trade[], onDate?: string): Holding {
         rest = 0n;
       }
     }
-    realized.push({ date: t.date, amount: mul(quantity, value(t.price)) - fee - cost });
+    realized.push({ date: t.date, amount: amount(t, quantity) - fee - cost });
   }
   return {
     quantity: lots.reduce((sum, lot) => sum + lot.quantity, 0n),
@@ -102,19 +108,60 @@ function oversells(trades: Trade[]): Oversell[] {
  * The first sell that is too large after the change and was not too large before it.
  * The changed trade itself is always checked. Sells that were already too large do not block the change.
  */
-function changeError(before: Trade[], after: Trade[], changedId?: string): Oversell | null {
+export function listError(before: Trade[], after: Trade[], changedId?: string): Oversell | null {
   const old = new Set(oversells(before).map((o) => o.sell.id));
   return oversells(after).find((o) => o.sell.id === changedId || !old.has(o.sell.id)) ?? null;
 }
 
 /** Checks the trades with the candidate in place of its old version. */
 export function sellError(trades: Trade[], candidate: Trade): Oversell | null {
-  return changeError(trades, [...trades.filter((t) => t.id !== candidate.id), candidate], candidate.id);
+  return listError(trades, [...trades.filter((t) => t.id !== candidate.id), candidate], candidate.id);
 }
 
 /** Checks the trades without the trade id. */
 export function deleteError(trades: Trade[], id: string): Oversell | null {
-  return changeError(trades, trades.filter((t) => t.id !== id));
+  return listError(trades, trades.filter((t) => t.id !== id));
+}
+
+/** A swap row. fee is in units of the "to" asset, value and to_value in the quote currencies of the two sides. */
+export type SwapRecord = {
+  id: string;
+  date: string;
+  from_quantity: string;
+  to_quantity: string;
+  fee: string;
+  value: string;
+  to_value: string;
+};
+
+/** The virtual sell of the "from" asset and buy of the "to" asset. The buy leg takes the part of to_value that the fee is worth. */
+export function swapLegs(swap: SwapRecord): { sell: Trade; buy: Trade } {
+  const fee = value(swap.fee);
+  const toValue = value(swap.to_value);
+  const feePart = fee === 0n ? 0n : div(mul(fee, toValue), value(swap.to_quantity) + fee);
+  const leg = { id: swap.id, date: swap.date, price: "0" };
+  return {
+    sell: { ...leg, side: "sell", quantity: swap.from_quantity, fee: "0", total: swap.value },
+    buy: { ...leg, side: "buy", quantity: swap.to_quantity, fee: fromFixed(feePart), total: fromFixed(toValue - feePart) },
+  };
+}
+
+/** Converts value from the "from" quote currency to the "to" quote currency on date. Null if a rate is missing. */
+export function swapToValue(
+  value: string,
+  fromQuote: string,
+  toQuote: string,
+  appCurrency: string,
+  fromFx: Close[],
+  toFx: Close[],
+  date: string,
+): string | null {
+  if (fromQuote === toQuote) return value;
+  const amount = toFixed(value);
+  const rateFrom = fromQuote === appCurrency ? SCALE : rateOn(fromFx, date);
+  const rateTo = toQuote === appCurrency ? SCALE : rateOn(toFx, date);
+  if (amount === null || rateFrom === null || rateFrom === 0n || rateTo === null) return null;
+  return fromFixed(div(mul(amount, rateTo), rateFrom));
 }
 
 function sortCloses(closes: Close[]): Close[] {

@@ -80,3 +80,82 @@ test("add an asset, enter trades and see the value and the realized profit", asy
     .poll(() => query("SELECT count(*) FROM trades WHERE user_id = :'user_id';", { user_id: user.userId })[0][0])
     .toBe("3");
 });
+
+/** Adds an asset from the portfolio screen. Without a trade, the trade form that opens is closed. */
+async function addAsset(page: Page, search: string, name: RegExp): Promise<void> {
+  await page.getByRole("button", { name: "Add asset" }).filter({ visible: true }).click();
+  await page.getByLabel("Name or ticker", { exact: true }).fill(search);
+  await page.getByRole("button", { name }).click();
+}
+
+test("swap one asset to another and see both assets", async ({ page }) => {
+  const user = await newUser({ currency: "USD" });
+  await logIn(page, user);
+  await waitForSynced(page);
+
+  await page.getByRole("tab", { name: "Portfolio", exact: true }).filter({ visible: true }).click();
+  await expect(page).toHaveURL(/\/portfolio$/);
+
+  await addAsset(page, "zzswa", /^ZZSWA Test Corp, ZZSWA/);
+  await enterTrade(page, { day: 10, side: "Buy", quantity: "2", price: "100", fee: "0" });
+
+  await addAsset(page, "zzswb", /^ZZSWB Test Corp, ZZSWB/);
+  await expect(page.getByRole("heading", { name: "New trade" })).toBeVisible();
+  // The asset is on this device when the trade form shows its fields.
+  await expect(page.getByLabel("Quantity", { exact: true })).toBeVisible({ timeout: 60_000 });
+  await page.getByRole("button", { name: "Close" }).filter({ visible: true }).click();
+  await expect(page.getByRole("heading", { name: "New trade" })).toBeHidden();
+
+  await page.getByRole("button", { name: /^ZZSWA Test Corp, / }).click();
+  await page.getByRole("button", { name: "Swap", exact: true }).filter({ visible: true }).click();
+  const title = page.getByRole("heading", { name: "New swap" });
+  await expect(title).toBeVisible();
+  await page.getByTestId("swap-to").click();
+  await page.getByTestId("swap-to-option-ZZSWB").click();
+  const given = page.getByLabel("Quantity given", { exact: true });
+  const received = page.getByLabel("Quantity received", { exact: true });
+  const fee = page.getByLabel("Fee (ZZSWB)", { exact: true });
+  const value = page.getByLabel("Value (USD)", { exact: true });
+  await given.fill("1");
+  await received.fill("2498");
+  await fee.fill("2");
+  await value.fill("2500");
+  await expect(given).toHaveValue("1");
+  await expect(received).toHaveValue("2498");
+  await expect(fee).toHaveValue("2");
+  await expect(value).toHaveValue("2500");
+  await page.getByTestId("swap-save").click();
+  await expect(title).toBeHidden();
+
+  const swapRow = page.getByRole("button", { name: /^Swapped 1 ZZSWA to 2,498 ZZSWB, / });
+  const quantity = page.getByTestId("stat-Open quantity").filter({ visible: true });
+  await expect(quantity.getByText("1", { exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(swapRow).toBeVisible();
+
+  await page.getByRole("button", { name: "Back" }).filter({ visible: true }).click();
+  await page.getByRole("button", { name: /^ZZSWB Test Corp, / }).click();
+  await expect(quantity.getByText("2498", { exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId("stat-Cost of open lots (FIFO)").filter({ visible: true })).toContainText("2,500.00");
+  await expect(swapRow).toBeVisible();
+
+  await waitForSynced(page);
+  await expect
+    .poll(() => query("SELECT count(*) FROM swaps WHERE user_id = :'user_id';", { user_id: user.userId })[0][0])
+    .toBe("1");
+
+  page.on("dialog", (dialog) => void dialog.accept());
+  await swapRow.click();
+  await expect(page.getByRole("heading", { name: "Edit swap" })).toBeVisible();
+  await page.getByTestId("swap-delete").click();
+  await expect(page.getByRole("heading", { name: "Edit swap" })).toBeHidden();
+
+  await page.getByRole("button", { name: "Back" }).filter({ visible: true }).click();
+  await expect(page.getByRole("button", { name: /^ZZSWB Test Corp, / })).toBeHidden({ timeout: 60_000 });
+  await page.getByRole("button", { name: /^ZZSWA Test Corp, / }).click();
+  await expect(quantity.getByText("2", { exact: true })).toBeVisible({ timeout: 60_000 });
+
+  await waitForSynced(page);
+  await expect
+    .poll(() => query("SELECT count(*) FROM swaps WHERE user_id = :'user_id';", { user_id: user.userId })[0][0])
+    .toBe("0");
+});

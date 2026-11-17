@@ -17,7 +17,7 @@ import (
 )
 
 const insightsUsage = `usage:
-  mtapi insights run [--date YYYY-MM-DD]`
+  mtapi insights run [--date YYYY-MM-DD] [--portfolio]`
 
 // insightsCmd runs an insights subcommand. It reads DATABASE_URL and
 // AI_BASE_URL. The name is not insights, so that main.go can import the
@@ -28,7 +28,12 @@ func insightsCmd(args []string, logger *slog.Logger) error {
 	}
 	fs := flag.NewFlagSet("insights run", flag.ContinueOnError)
 	date := fs.String("date", time.Now().Format(time.DateOnly), "the day of the run")
+	portfolioOnly := fs.Bool("portfolio", false, "run only the weekly portfolio insights")
 	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	spending, portfolio, err := insightsPlan(*date, *portfolioOnly)
+	if err != nil {
 		return err
 	}
 
@@ -51,5 +56,38 @@ func insightsCmd(args []string, logger *slog.Logger) error {
 
 	// insights.Run logs through the default logger.
 	slog.SetDefault(logger)
-	return insights.Run(ctx, pool, aiclient.New(aiURL, nil), *date)
+	client := aiclient.New(aiURL, nil)
+	return runInsights(spending, portfolio,
+		func() error { return insights.Run(ctx, pool, client, *date) },
+		func() error { return insights.RunPortfolio(ctx, pool, client, *date) })
+}
+
+// runInsights runs the planned parts. An auth error of the spending run
+// stops before the portfolio run.
+func runInsights(spending, portfolio bool, runSpending, runPortfolio func() error) error {
+	var errs []error
+	if spending {
+		err := runSpending()
+		if errors.Is(err, aiclient.ErrAuth) {
+			return err
+		}
+		errs = append(errs, err)
+	}
+	if portfolio {
+		errs = append(errs, runPortfolio())
+	}
+	return errors.Join(errs...)
+}
+
+// insightsPlan returns which runs to do on date. The spending run is daily
+// and the portfolio run is on Mondays. portfolioOnly runs only the portfolio.
+func insightsPlan(date string, portfolioOnly bool) (spending, portfolio bool, err error) {
+	day, err := time.Parse(time.DateOnly, date)
+	if err != nil {
+		return false, false, err
+	}
+	if portfolioOnly {
+		return false, true, nil
+	}
+	return true, day.Weekday() == time.Monday, nil
 }

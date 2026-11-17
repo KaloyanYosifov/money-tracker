@@ -1,9 +1,11 @@
+import { useQuery } from "@powersync/react";
 import { useContext, useState, type ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaInsetsContext } from "react-native-safe-area-context";
 
-import { useInstrument, type TradeRow } from "../../data/portfolio";
+import { useInstrument, type SwapRow, type TradeRow } from "../../data/portfolio";
 import { fromFixed, toFixed } from "../../domain/decimal";
+import { decimalSeparator } from "../../domain/money";
 import { today as localToday } from "../../domain/period";
 import { LineChart } from "../charts/LineChart";
 import { isHovered } from "../components/interaction";
@@ -31,12 +33,15 @@ type Props = {
   onBack: () => void;
   onAddTrade: () => void;
   onOpenTrade: (tradeId: string) => void;
+  onSwap: () => void;
+  onOpenSwap: (swapId: string) => void;
 };
 
 /** One asset: the price chart, the holding and its trades. */
-export function InstrumentDetailScreen({ id, locale, onBack, onAddTrade, onOpenTrade }: Props) {
+export function InstrumentDetailScreen({ id, locale, onBack, onAddTrade, onOpenTrade, onSwap, onOpenSwap }: Props) {
   const { settings, theme } = useScreenSettings();
   const { data } = useInstrument(id);
+  const symbols = useQuery<{ id: string; symbol: string }>("SELECT id, symbol FROM instruments");
   const [range, setRange] = useState<Range>("1Y");
   const bottomInset = useBottomInset();
   // On iOS the screen fills the display, so the header starts below the status bar.
@@ -55,17 +60,30 @@ export function InstrumentDetailScreen({ id, locale, onBack, onAddTrade, onOpenT
           ‹ Portfolio
         </Text>
       </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Add trade"
-        onPress={onAddTrade}
-        hitSlop={8}
-        style={(state) => [styles.headerButton, styles.add, (isHovered(state) || state.pressed) && { backgroundColor: theme.hover }]}
-      >
-        <Text allowFontScaling style={[styles.addText, { color: theme.ink }]}>
-          +
-        </Text>
-      </Pressable>
+      <View style={styles.actions}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Swap"
+          onPress={onSwap}
+          hitSlop={8}
+          style={(state) => [styles.headerButton, (isHovered(state) || state.pressed) && { backgroundColor: theme.hover }]}
+        >
+          <Text allowFontScaling style={[styles.swapText, { color: theme.ink }]}>
+            Swap
+          </Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Add trade"
+          onPress={onAddTrade}
+          hitSlop={8}
+          style={(state) => [styles.headerButton, styles.add, (isHovered(state) || state.pressed) && { backgroundColor: theme.hover }]}
+        >
+          <Text allowFontScaling style={[styles.addText, { color: theme.ink }]}>
+            +
+          </Text>
+        </Pressable>
+      </View>
     </View>
   );
 
@@ -73,7 +91,13 @@ export function InstrumentDetailScreen({ id, locale, onBack, onAddTrade, onOpenT
     return <View style={[styles.screen, { backgroundColor: theme.paper }]}>{header}</View>;
   }
 
-  const { instrument, holding, trades } = data;
+  const { instrument, holding, trades, swaps } = data;
+  const symbolOf = (instrumentId: string) => symbols.data.find((i) => i.id === instrumentId)?.symbol ?? "?";
+  // Both lists are newest first, and the sort is stable, so each keeps its order within a date.
+  const rows: ({ date: string; trade: TradeRow } | { date: string; swap: SwapRow })[] = [
+    ...trades.map((trade) => ({ date: trade.date, trade })),
+    ...swaps.map((swap) => ({ date: swap.date, swap })),
+  ].sort((a, b) => b.date.localeCompare(a.date));
   const appCurrency = settings?.currency_code ?? "EUR";
   const quote = holding.quoteCurrency;
   const foreign = quote !== appCurrency;
@@ -158,9 +182,28 @@ export function InstrumentDetailScreen({ id, locale, onBack, onAddTrade, onOpenT
           <Cell text="Qty" theme={theme} head numeric />
           <Cell text="Price" theme={theme} head numeric />
         </View>
-        {trades.map((trade) => (
-          <TradeLine key={trade.id} trade={trade} currency={quote} locale={locale} theme={theme} onPress={() => onOpenTrade(trade.id)} />
-        ))}
+        {rows.map((row) =>
+          "trade" in row ? (
+            <TradeLine
+              key={row.trade.id}
+              trade={row.trade}
+              currency={quote}
+              locale={locale}
+              theme={theme}
+              onPress={() => onOpenTrade(row.trade.id)}
+            />
+          ) : (
+            <SwapLine
+              key={row.swap.id}
+              swap={row.swap}
+              fromSymbol={symbolOf(row.swap.from_instrument_id)}
+              toSymbol={symbolOf(row.swap.to_instrument_id)}
+              locale={locale}
+              theme={theme}
+              onPress={() => onOpenSwap(row.swap.id)}
+            />
+          ),
+        )}
       </ScrollView>
     </View>
   );
@@ -260,6 +303,54 @@ function TradeLine({
   );
 }
 
+// A quantity has at most 12 integer digits, so Number keeps the integer part exact. The fraction stays text.
+function swapQuantity(text: string, locale?: string): string {
+  const [whole, fraction] = fromFixed(toFixed(text) ?? 0n).split(".");
+  const grouped = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(Number(whole));
+  return fraction ? `${grouped}${decimalSeparator(locale)}${fraction}` : grouped;
+}
+
+function SwapLine({
+  swap,
+  fromSymbol,
+  toSymbol,
+  locale,
+  theme,
+  onPress,
+}: {
+  swap: SwapRow;
+  fromSymbol: string;
+  toSymbol: string;
+  locale?: string;
+  theme: ThemeColors;
+  onPress: () => void;
+}) {
+  const date = shortDate(swap.date, true);
+  const given = `${swapQuantity(swap.from_quantity, locale)} ${fromSymbol}`;
+  const received = `${swapQuantity(swap.to_quantity, locale)} ${toSymbol}`;
+  return (
+    <Pressable
+      testID={`swap-${swap.id}`}
+      accessibilityRole="button"
+      accessibilityLabel={`Swapped ${given} to ${received}, ${date}`}
+      onPress={onPress}
+      style={(state) => [
+        styles.tradeRow,
+        {
+          backgroundColor: state.pressed ? theme.line : isHovered(state) ? theme.hover : theme.row,
+          borderBottomColor: theme.line,
+        },
+      ]}
+    >
+      <Cell text={date} theme={theme} />
+      <Cell text="Swap" theme={theme} />
+      <Text allowFontScaling style={[styles.cell, styles.numeric, styles.span, { color: theme.ink }]}>
+        {`${given} → ${received}`}
+      </Text>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
@@ -280,6 +371,14 @@ const styles = StyleSheet.create({
   },
   backText: {
     fontSize: 18,
+  },
+  actions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  swapText: {
+    fontSize: 17,
   },
   add: {
     minWidth: 44,
@@ -362,6 +461,9 @@ const styles = StyleSheet.create({
   cell: {
     flex: 1,
     fontSize: 15,
+  },
+  span: {
+    flex: 2,
   },
   headCell: {
     fontSize: 12,

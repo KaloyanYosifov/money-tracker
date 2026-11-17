@@ -20,6 +20,8 @@ export default function InstrumentRoute() {
         onBack={close}
         onAddTrade={() => router.push(`/trade/new?instrument=${id}` as Href)}
         onOpenTrade={(tradeId) => router.push(`/trade/${tradeId}` as Href)}
+        onSwap={() => router.push(`/swap/new?instrument=${id}` as Href)}
+        onOpenSwap={(swapId) => router.push(`/swap/${swapId}` as Href)}
       />
     </DeskScreen>
   );

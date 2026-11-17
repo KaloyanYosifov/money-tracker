@@ -1,13 +1,19 @@
 import { useMemo } from "react";
 import { useQuery } from "@powersync/react";
 
-import type { Instrument, InstrumentPrice, Trade as TradeRecord } from "../generated/schema";
+import type { Instrument, InstrumentPrice, Swap, Trade as TradeRecord } from "../generated/schema";
 import { mul, toFixed } from "../domain/decimal";
 import { today as localToday } from "../domain/period";
-import { holding, rateOn, sortTrades, toApp, valueSeries, type Close, type Trade } from "../domain/portfolio";
+import { holding, rateOn, sortTrades, swapLegs, toApp, valueSeries, type Close, type Trade } from "../domain/portfolio";
 import type { SqlRunner } from "./mutations";
 
 export type TradeRow = Pick<TradeRecord, "id" | "instrument_id" | "side" | "date" | "quantity" | "price" | "fee"> & {
+  note: string | null;
+};
+export type SwapRow = Pick<
+  Swap,
+  "id" | "from_instrument_id" | "to_instrument_id" | "date" | "from_quantity" | "to_quantity" | "fee" | "value" | "to_value"
+> & {
   note: string | null;
 };
 export type InstrumentRow = Omit<Instrument, "last_fetched_at" | "failed_at"> & {
@@ -18,11 +24,14 @@ type PriceRow = Pick<InstrumentPrice, "instrument_id" | "date" | "close">;
 
 interface PortfolioRows {
   trades: TradeRow[];
+  swaps: SwapRow[];
   instruments: InstrumentRow[];
   prices: PriceRow[];
 }
 
 const tradesSql = "SELECT id, instrument_id, side, date, quantity, price, fee, note FROM trades";
+const swapsSql =
+  "SELECT id, from_instrument_id, to_instrument_id, date, from_quantity, to_quantity, fee, value, to_value, note FROM swaps";
 const instrumentsSql = "SELECT * FROM instruments";
 // Takes one parameter: today.
 const pricesSql = "SELECT instrument_id, date, close FROM instrument_prices WHERE date <= ? ORDER BY date";
@@ -67,8 +76,12 @@ export interface Portfolio {
 export interface InstrumentDetail {
   instrument: InstrumentRow;
   holding: PortfolioHolding;
-  /** Newest first. */
+  /** The real trades, newest first. */
   trades: TradeRow[];
+  /** The swaps from or to the instrument, newest first. */
+  swaps: SwapRow[];
+  /** The trades and the swap legs of the instrument. */
+  legs: Trade[];
 }
 
 function fixed(text: string): bigint {
@@ -90,7 +103,12 @@ function closesOf(rows: PortfolioRows, instrumentId: string | undefined): Close[
 }
 
 function tradesOf(rows: PortfolioRows, instrumentId: string): Trade[] {
-  return rows.trades.filter((t) => t.instrument_id === instrumentId);
+  const legs: Trade[] = [];
+  for (const swap of rows.swaps) {
+    if (swap.from_instrument_id === instrumentId) legs.push(swapLegs(swap).sell);
+    if (swap.to_instrument_id === instrumentId) legs.push(swapLegs(swap).buy);
+  }
+  return [...rows.trades.filter((t) => t.instrument_id === instrumentId), ...legs];
 }
 
 function summarize(rows: PortfolioRows, instrument: InstrumentRow, appCurrency: string, today: string): PortfolioHolding {
@@ -135,8 +153,9 @@ function summarize(rows: PortfolioRows, instrument: InstrumentRow, appCurrency: 
 }
 
 function seriesDates(rows: PortfolioRows, instruments: InstrumentRow[], today: string): string[] {
-  if (rows.trades.length === 0) return [];
-  const first = rows.trades.reduce((min, t) => (t.date < min ? t.date : min), rows.trades[0].date);
+  const activity = [...rows.trades, ...rows.swaps];
+  if (activity.length === 0) return [];
+  const first = activity.reduce((min, t) => (t.date < min ? t.date : min), activity[0].date);
   const ids = new Set(instruments.map((i) => i.id));
   const dates = new Set(rows.prices.filter((p) => ids.has(p.instrument_id) && p.date >= first).map((p) => p.date));
   dates.add(today);
@@ -156,7 +175,10 @@ function compareHoldings(a: PortfolioHolding, b: PortfolioHolding): number {
 
 /** Prices in rows must be on or before today and sorted by date. */
 export function buildPortfolio(rows: PortfolioRows, appCurrency: string, today: string): Portfolio {
-  const traded = new Set(rows.trades.map((t) => t.instrument_id));
+  const traded = new Set([
+    ...rows.trades.map((t) => t.instrument_id),
+    ...rows.swaps.flatMap((s) => [s.from_instrument_id, s.to_instrument_id]),
+  ]);
   const instruments = rows.instruments.filter((i) => i.kind !== "fx" && traded.has(i.id));
   const all = instruments.map((i) => summarize(rows, i, appCurrency, today));
   const priced = all.filter((h) => h.app.value !== null && h.app.cost !== null);
@@ -194,12 +216,17 @@ export function buildInstrumentDetail(
   const instrument = rows.instruments.find((i) => i.id === instrumentId);
   if (!instrument) return null;
   const trades = sortTrades(rows.trades.filter((t) => t.instrument_id === instrumentId)).reverse() as TradeRow[];
-  return { instrument, holding: summarize(rows, instrument, appCurrency, today), trades };
+  const swaps = rows.swaps
+    .filter((s) => s.from_instrument_id === instrumentId || s.to_instrument_id === instrumentId)
+    .sort((a, b) => b.date.localeCompare(a.date) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
+  const legs = tradesOf(rows, instrumentId);
+  return { instrument, holding: summarize(rows, instrument, appCurrency, today), trades, swaps, legs };
 }
 
 async function loadRows(db: SqlRunner, today: string): Promise<PortfolioRows> {
   return {
     trades: await db.getAll<TradeRow>(tradesSql),
+    swaps: await db.getAll<SwapRow>(swapsSql),
     instruments: await db.getAll<InstrumentRow>(instrumentsSql),
     prices: await db.getAll<PriceRow>(pricesSql, [today]),
   };
@@ -224,17 +251,18 @@ function usePortfolioRows() {
   const today = localToday();
   const settings = useQuery<{ currency_code: string }>("SELECT currency_code FROM user_settings LIMIT 1");
   const trades = useQuery<TradeRow>(tradesSql);
+  const swaps = useQuery<SwapRow>(swapsSql);
   const instruments = useQuery<InstrumentRow>(instrumentsSql);
   const prices = useQuery<PriceRow>(pricesSql, [today]);
   const rows = useMemo(
-    () => ({ trades: trades.data, instruments: instruments.data, prices: prices.data }),
-    [trades.data, instruments.data, prices.data],
+    () => ({ trades: trades.data, swaps: swaps.data, instruments: instruments.data, prices: prices.data }),
+    [trades.data, swaps.data, instruments.data, prices.data],
   );
   return {
     rows,
     today,
     appCurrency: settings.data[0]?.currency_code ?? null,
-    isLoading: settings.isLoading || trades.isLoading || instruments.isLoading || prices.isLoading,
+    isLoading: settings.isLoading || trades.isLoading || swaps.isLoading || instruments.isLoading || prices.isLoading,
   };
 }
 

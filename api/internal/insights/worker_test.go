@@ -27,6 +27,10 @@ func (f *questionAI) DailyInsights(context.Context, any) (aiclient.DailyInsights
 	return aiclient.DailyInsightsResult{}, errors.New("not used in the worker tests")
 }
 
+func (f *questionAI) PortfolioInsights(context.Context, any) (aiclient.DailyInsightsResult, error) {
+	return aiclient.DailyInsightsResult{}, errors.New("not used in the worker tests")
+}
+
 func (f *questionAI) CategoryQuestion(_ context.Context, input any) (aiclient.CategoryQuestionResult, error) {
 	in, ok := input.(QuestionInput)
 	if !ok {
@@ -109,6 +113,7 @@ func TestWorkerProcessPending(t *testing.T) {
 			`INSERT INTO budgets (id, user_id, category_id, period, amount_minor)
 			 VALUES (gen_random_uuid(), $1, $2, 'monthly', 30000)`, u.userID, u.expenseCatID)
 		execSQL(t, pool, `INSERT INTO insight_memory (user_id, summary) VALUES ($1, 'Eats out a lot.')`, u.userID)
+		execSQL(t, pool, `INSERT INTO insight_memory (user_id, source, summary) VALUES ($1, 'portfolio', 'Holds one stock.')`, u.userID)
 		for i := range 6 {
 			execSQL(t, pool,
 				`INSERT INTO insight_questions (id, user_id, category_id, question, answer, status, answered_at, created_at, updated_at)

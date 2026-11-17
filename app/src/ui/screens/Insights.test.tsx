@@ -224,6 +224,74 @@ describe("InsightsScreen suggestions", () => {
   });
 });
 
+const portfolioCard = { ...card("pf", "tip", "2026-11-02T06:00:00Z", null), source: "portfolio" };
+const trade = { id: "t1", user_id: "u1", instrument_id: "i1", side: "buy", date: "2026-10-01", quantity: "2", price: "10.5", fee: "1" };
+
+function loadPortfolio(withCards: Record<string, unknown>[], trades: Record<string, unknown>[] = []) {
+  loadFixture(mockDb, { user_settings: [userSettings], categories, accounts, insights: withCards, trades });
+}
+
+function runText(at: string) {
+  const when = new Date(at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return `Updated ${when}`;
+}
+
+describe("InsightsScreen portfolio", () => {
+  it("shows the spending and the portfolio cards in their own sections", async () => {
+    loadPortfolio([card("tip", "tip", "2026-10-20T06:00:00Z", null), portfolioCard], [trade]);
+    await render(<InsightsScreen today={TODAY} />);
+
+    const spending = within(screen.getByTestId("insights-spending"));
+    expect(spending.getByTestId("insight-card-tip")).toBeOnTheScreen();
+    expect(spending.queryByTestId("insight-card-pf")).toBeNull();
+
+    expect(screen.getByRole("header", { name: "Portfolio" })).toBeOnTheScreen();
+    const portfolio = within(screen.getByTestId("insights-portfolio"));
+    expect(portfolio.getByTestId("insight-card-pf")).toBeOnTheScreen();
+    expect(portfolio.queryByTestId("insight-card-tip")).toBeNull();
+  });
+
+  it("dismisses a portfolio card, which has no accept button", async () => {
+    const budgetPortfolioCard = { ...card("pf-b", "budget", "2026-11-01T06:00:00Z", budgetAction), source: "portfolio" };
+    loadPortfolio([portfolioCard, budgetPortfolioCard]);
+    const spy = jest.spyOn(insights, "dismissCard");
+    await render(<InsightsScreen today={TODAY} />);
+
+    expect(within(screen.getByTestId("insight-card-pf-b")).getAllByRole("button")).toHaveLength(1);
+    const pf = within(screen.getByTestId("insight-card-pf"));
+    expect(pf.getAllByRole("button")).toHaveLength(1);
+    await act(async () => fireEvent.press(pf.getByRole("button", { name: "Dismiss" })));
+    expect(spy).toHaveBeenCalledWith(expect.anything(), "pf");
+    expect(row("insights", "pf")?.status).toBe("dismissed");
+  });
+
+  it("has no portfolio section with no trades and no portfolio cards", async () => {
+    loadPortfolio([card("tip", "tip", "2026-10-20T06:00:00Z", null)]);
+    await render(<InsightsScreen today={TODAY} />);
+
+    expect(screen.queryByRole("header", { name: "Portfolio" })).toBeNull();
+    expect(screen.queryByTestId("insights-portfolio-last-run")).toBeNull();
+  });
+
+  it("shows an empty portfolio section with trades and no portfolio cards", async () => {
+    loadPortfolio([], [trade]);
+    await render(<InsightsScreen today={TODAY} />);
+
+    expect(screen.getByRole("header", { name: "Portfolio" })).toBeOnTheScreen();
+    expect(screen.getByText("No portfolio suggestions yet. They come each Monday.")).toBeOnTheScreen();
+    expect(screen.getByTestId("insights-portfolio-last-run")).toHaveTextContent("No run yet");
+  });
+
+  // The portfolio card is from 2026-11-02. A query over both sources shows the newer of the two times on both lines.
+  it.each(["2026-10-20T06:00:00Z", "2026-11-05T06:00:00Z"])("shows the last run time of each source, spending at %s", async (spendingAt) => {
+    loadPortfolio([card("tip", "tip", spendingAt, null), portfolioCard], [trade]);
+    await render(<InsightsScreen today={TODAY} />);
+
+    expect(screen.getByTestId("insights-last-run")).toHaveTextContent(runText(spendingAt));
+    expect(screen.getByTestId("insights-portfolio-last-run")).toHaveTextContent(runText("2026-11-02T06:00:00Z"));
+  });
+});
+
 describe("InsightsScreen questions", () => {
   it("asks a question about the selected category and clears the field", async () => {
     load();

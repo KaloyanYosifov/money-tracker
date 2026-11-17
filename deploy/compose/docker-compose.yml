@@ -47,14 +47,16 @@ services:
         condition: service_completed_successfully
 
   # The AI gateway. It has no database access. Without a token it starts, but
-  # its tasks fail. Run "CLAUDE_CODE_OAUTH_TOKEN=... make stack-up" to use Claude.
+  # its tasks fail. Put CLAUDE_CODE_OAUTH_TOKEN in ai.env (see ai.env.example) to use Claude.
   ai:
     image: money-tracker-ai:dev
     build:
       context: ../..
       dockerfile: deploy/docker/ai.Dockerfile
+    env_file:
+      - path: ai.env
+        required: false
     environment:
-      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       LISTEN_ADDR: :8080
     healthcheck:
       test: ["CMD", "/mtai", "healthcheck"]

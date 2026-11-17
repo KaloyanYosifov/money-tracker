@@ -10,6 +10,7 @@ import {
   dismissCard,
   MAX_QUESTION_LENGTH,
   parseAction,
+  useHasTrades,
   useLastRunTime,
   useOpenCards,
   useQuestions,
@@ -85,13 +86,16 @@ type Props = {
   today?: string;
 };
 
-/** The AI Insights page: the suggestions of the daily run, and questions about a category. */
+/** The AI Insights page: the suggestions of the daily run, the weekly portfolio suggestions, and questions about a category. */
 export function InsightsScreen({ today = localToday() }: Props) {
   const db = usePowerSync();
   const { settings, theme } = useScreenSettings();
   const currency = settings?.currency_code ?? "EUR";
-  const cards = useOpenCards().data;
-  const lastRun = useLastRunTime();
+  const cards = useOpenCards("spending").data;
+  const lastRun = useLastRunTime("spending");
+  const portfolioCards = useOpenCards("portfolio").data;
+  const portfolioLastRun = useLastRunTime("portfolio");
+  const hasTrades = useHasTrades(today);
   const categories = useQuery<Category>("SELECT * FROM categories ORDER BY type, sort_order, name").data;
   const accounts = useQuery<Account>("SELECT * FROM accounts WHERE archived_at IS NULL ORDER BY sort_order, name").data;
   const [categoryId, setCategoryId] = useState<string | null>(null);
@@ -137,33 +141,30 @@ export function InsightsScreen({ today = localToday() }: Props) {
             {notice}
           </Text>
         ) : null}
-        {cards.length === 0 ? (
-          <Text allowFontScaling style={[styles.empty, { color: theme.accent }]}>
-            No suggestions yet.
-          </Text>
-        ) : (
-          cards.map((card) => {
-            const acceptLabel = parseAction(card) ? ACCEPT_LABEL[card.kind] : undefined;
-            return (
-              <View key={card.id} testID={`insight-card-${card.id}`} style={[styles.card, { borderColor: theme.line, backgroundColor: theme.paper }]}>
-                <Text allowFontScaling style={[styles.kind, { color: theme.accent }]}>
-                  {KIND_LABEL[card.kind]}
-                </Text>
-                <Text allowFontScaling style={[styles.title, { color: theme.ink }]}>
-                  {card.title}
-                </Text>
-                <Text allowFontScaling style={[styles.body, { color: theme.ink }]}>
-                  {card.body}
-                </Text>
-                <View style={styles.buttons}>
-                  <Button label="Dismiss" theme={theme} onPress={() => void dismissCard(db, card.id)} />
-                  {acceptLabel ? <Button label={acceptLabel} primary theme={theme} onPress={() => setOpen(card)} /> : null}
-                </View>
-              </View>
-            );
-          })
-        )}
+        <CardList
+          testID="insights-spending"
+          cards={cards}
+          emptyText="No suggestions yet."
+          theme={theme}
+          onDismiss={(id) => void dismissCard(db, id)}
+          onAccept={setOpen}
+        />
       </GroupedSection>
+
+      {hasTrades || portfolioCards.length > 0 ? (
+        <GroupedSection title="Portfolio" theme={theme}>
+          <Text allowFontScaling testID="insights-portfolio-last-run" style={[styles.lastRun, { color: theme.accent }]}>
+            {lastRunText(portfolioLastRun)}
+          </Text>
+          <CardList
+            testID="insights-portfolio"
+            cards={portfolioCards}
+            emptyText="No portfolio suggestions yet. They come each Monday."
+            theme={theme}
+            onDismiss={(id) => void dismissCard(db, id)}
+          />
+        </GroupedSection>
+      ) : null}
 
       <GroupedSection title="Ask about a category" theme={theme}>
         <View style={[styles.ask, { borderBottomColor: theme.line }]}>
@@ -387,6 +388,48 @@ function AcceptSheet({ card, categoryName, accounts, settings, currency, theme, 
         </View>
       </View>
     </Modal>
+  );
+}
+
+type CardListProps = {
+  testID: string;
+  cards: InsightCard[];
+  emptyText: string;
+  theme: ThemeColors;
+  onDismiss: (id: string) => void;
+  onAccept?: (card: InsightCard) => void;
+};
+
+function CardList({ testID, cards, emptyText, theme, onDismiss, onAccept }: CardListProps) {
+  return (
+    <View testID={testID}>
+      {cards.length === 0 ? (
+        <Text allowFontScaling style={[styles.empty, { color: theme.accent }]}>
+          {emptyText}
+        </Text>
+      ) : (
+        cards.map((card) => {
+          const acceptLabel = onAccept && parseAction(card) ? ACCEPT_LABEL[card.kind] : undefined;
+          return (
+            <View key={card.id} testID={`insight-card-${card.id}`} style={[styles.card, { borderColor: theme.line, backgroundColor: theme.paper }]}>
+              <Text allowFontScaling style={[styles.kind, { color: theme.accent }]}>
+                {KIND_LABEL[card.kind]}
+              </Text>
+              <Text allowFontScaling style={[styles.title, { color: theme.ink }]}>
+                {card.title}
+              </Text>
+              <Text allowFontScaling style={[styles.body, { color: theme.ink }]}>
+                {card.body}
+              </Text>
+              <View style={styles.buttons}>
+                <Button label="Dismiss" theme={theme} onPress={() => onDismiss(card.id)} />
+                {acceptLabel ? <Button label={acceptLabel} primary theme={theme} onPress={() => onAccept?.(card)} /> : null}
+              </View>
+            </View>
+          );
+        })
+      )}
+    </View>
   );
 }
 

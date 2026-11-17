@@ -548,6 +548,16 @@ func TestApplyInsightsTablesAreServerOwned(t *testing.T) {
 		wantStatus(t, apply(t, pool, a.userID, put("insights", newID(t, pool), data(t,
 			`{"user_id":%q,"kind":"tip","title":"T","body":"B","fingerprint":"f","status":"open"}`, a.userID))), sync.Rejected, "not_allowed")
 	})
+	t.Run("insights_patch_source_not_allowed", func(t *testing.T) {
+		wantStatus(t, apply(t, pool, a.userID, patch("insights", insight, data(t, `{"source":"portfolio"}`))), sync.Rejected, "not_allowed")
+		var source string
+		if err := pool.QueryRow(ctx, `SELECT source FROM insights WHERE id = $1`, insight).Scan(&source); err != nil {
+			t.Fatal(err)
+		}
+		if source != "spending" {
+			t.Fatalf("source = %q, want spending", source)
+		}
+	})
 	t.Run("insights_delete_not_allowed", func(t *testing.T) {
 		wantStatus(t, apply(t, pool, a.userID, del("insights", insight)), sync.Rejected, "not_allowed")
 	})
@@ -708,5 +718,73 @@ func TestApplyTrades(t *testing.T) {
 		if n := rowCount(t, pool, `SELECT count(*) FROM instruments WHERE symbol = 'ZZTEST3'`); n != 0 {
 			t.Fatalf("instruments = %d, want 0", n)
 		}
+	})
+}
+
+func TestApplySwaps(t *testing.T) {
+	ctx := context.Background()
+	pool := testutil.StartPostgres(t)
+	a := seedUser(t, pool, "a@example.com")
+
+	instrument := func(symbol string, link bool) string {
+		t.Helper()
+		var id string
+		err := pool.QueryRow(ctx,
+			`INSERT INTO instruments (symbol, name, exchange, kind, quote_currency)
+			 VALUES ($1, 'Test Corp', 'TEST', 'crypto', 'USD') RETURNING id::text`, symbol).Scan(&id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if link {
+			if _, err := pool.Exec(ctx, `INSERT INTO user_instruments (user_id, instrument_id) VALUES ($1, $2)`, a.userID, id); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return id
+	}
+	from := instrument("ZZSWAPA", true)
+	to := instrument("ZZSWAPB", true)
+	unlinked := instrument("ZZSWAPC", false)
+
+	swap := func(fromID, toID, fromQty, toQty, fee, value, toValue string) schema.UploadOpData {
+		return data(t, `{"user_id":%q,"from_instrument_id":%q,"to_instrument_id":%q,"date":"2026-03-14",
+			"from_quantity":%q,"to_quantity":%q,"fee":%q,"value":%q,"to_value":%q,"note":null}`,
+			a.userID, fromID, toID, fromQty, toQty, fee, value, toValue)
+	}
+	wantRejected := func(t *testing.T, res sync.Result, code, msg string) {
+		t.Helper()
+		wantStatus(t, res, sync.Rejected, code)
+		if msg != "" && res.Message != msg {
+			t.Fatalf("message = %q, want %q", res.Message, msg)
+		}
+	}
+
+	t.Run("put_linked_applies", func(t *testing.T) {
+		id := newID(t, pool)
+		wantStatus(t, apply(t, pool, a.userID, put("swaps", id, swap(from, to, "1", "2498", "2", "2500", "2500"))), sync.Applied, "")
+		if n := rowCount(t, pool, `SELECT count(*) FROM swaps WHERE id = $1 AND user_id = $2`, id, a.userID); n != 1 {
+			t.Fatalf("swaps = %d, want 1", n)
+		}
+	})
+	t.Run("put_unlinked_rejected", func(t *testing.T) {
+		wantRejected(t, apply(t, pool, a.userID, put("swaps", newID(t, pool), swap(from, unlinked, "1", "10", "0", "10", "10"))), "invalid_reference", "")
+	})
+	t.Run("same_instrument_rejected", func(t *testing.T) {
+		wantRejected(t, apply(t, pool, a.userID, put("swaps", newID(t, pool), swap(from, from, "1", "10", "0", "10", "10"))), "invalid_record", "")
+	})
+	zero := map[string]schema.UploadOpData{
+		"from_quantity": swap(from, to, "0.000", "10", "0", "10", "10"),
+		"to_quantity":   swap(from, to, "1", "0.000", "0", "10", "10"),
+		"value":         swap(from, to, "1", "10", "0", "0.000", "10"),
+		"to_value":      swap(from, to, "1", "10", "0", "10", "0.000"),
+	}
+	for field, d := range zero {
+		t.Run("put_"+field+"_zero", func(t *testing.T) {
+			wantRejected(t, apply(t, pool, a.userID, put("swaps", newID(t, pool), d)),
+				"invalid_record", field+" must be greater than 0")
+		})
+	}
+	t.Run("fee_zero_applies", func(t *testing.T) {
+		wantStatus(t, apply(t, pool, a.userID, put("swaps", newID(t, pool), swap(from, to, "0.5", "1249", "0", "1250", "1250"))), sync.Applied, "")
 	})
 }

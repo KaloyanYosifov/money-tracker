@@ -13,6 +13,7 @@ bucket_definitions:
       - SELECT * FROM insights WHERE user_id = bucket.user_id
       - SELECT * FROM insight_questions WHERE user_id = bucket.user_id
       - SELECT * FROM trades WHERE user_id = bucket.user_id
+      - SELECT * FROM swaps WHERE user_id = bucket.user_id
   instrument_data:
     parameters: SELECT instrument_id FROM user_instruments WHERE user_id = request.user_id()
     data:

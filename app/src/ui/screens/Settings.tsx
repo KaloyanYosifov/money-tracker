@@ -196,7 +196,7 @@ export function Settings({
             <SwitchRow
               testID="insights-switch"
               label="AI Insights"
-              note="Sends your spending data to Anthropic to write suggestions."
+              note="Sends your spending and portfolio data to Anthropic to write suggestions."
               value={Boolean(settings.insights_enabled)}
               onChange={(insights_enabled) => set({ insights_enabled })}
               theme={theme}

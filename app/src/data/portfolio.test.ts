@@ -172,3 +172,80 @@ describe("instrumentDetail", () => {
     expect(await instrumentDetail(asyncDatabase(sqlite), "missing", "EUR", today)).toBeNull();
   });
 });
+
+describe("swaps", () => {
+  beforeEach(() => {
+    sqlite.close();
+    sqlite = createTestDatabase();
+    loadFixture(sqlite, {
+      instruments: [instrument("zza", "ZZA-USD", "crypto", "USD"), instrument("zzb", "ZZB-USD", "crypto", "USD")],
+      instrument_prices: [
+        price("zza", "2026-01-05", "2000"),
+        price("zza", "2026-02-01", "2600"),
+        price("zzb", "2026-02-01", "1"),
+        price("zzb", "2026-03-01", "1.01"),
+      ],
+      trades: [trade("zza", "buy", "2026-01-05", "1", "2000")],
+      swaps: [
+        {
+          id: "sw1",
+          user_id: "u1",
+          from_instrument_id: "zza",
+          to_instrument_id: "zzb",
+          date: "2026-02-01",
+          from_quantity: "1",
+          to_quantity: "2498",
+          fee: "2",
+          value: "2500",
+          to_value: "2500",
+        },
+      ],
+    });
+  });
+
+  it("moves the holding from the sold to the bought asset and realizes the sold one", async () => {
+    const portfolio = await loadPortfolio(asyncDatabase(sqlite), "USD", today);
+
+    expect(portfolio.holdings.map((h) => h.symbol)).toEqual(["ZZB-USD"]);
+    expect(portfolio.holdings[0]).toMatchObject({ quantity: fixed("2498"), cost: fixed("2500"), fees: fixed("2") });
+    expect(portfolio.totals.realized).toBe(fixed("500"));
+  });
+
+  it("counts the bought asset and not the sold one in the series from the swap date", async () => {
+    const { series } = await loadPortfolio(asyncDatabase(sqlite), "USD", today);
+
+    expect(series).toEqual([
+      { date: "2026-01-05", value: fixed("2000") },
+      { date: "2026-02-01", value: fixed("2498") },
+      { date: "2026-03-01", value: fixed("2522.98") },
+      { date: "2026-10-19", value: fixed("2522.98") },
+    ]);
+  });
+
+  it("shows an asset that has only swap legs and no trades", async () => {
+    const portfolio = await loadPortfolio(asyncDatabase(sqlite), "USD", today);
+
+    expect(portfolio.holdings.map((h) => h.symbol)).toEqual(["ZZB-USD"]);
+  });
+
+  it("gives the swaps and the legs of the sold asset", async () => {
+    const detail = await instrumentDetail(asyncDatabase(sqlite), "zza", "USD", today);
+
+    expect(detail?.swaps.map((s) => s.id)).toEqual(["sw1"]);
+    expect(detail?.trades.map((t) => [t.date, t.side])).toEqual([["2026-01-05", "buy"]]);
+    expect(detail?.legs.map((t) => [t.date, t.side, t.quantity])).toEqual([
+      ["2026-01-05", "buy", "1"],
+      ["2026-02-01", "sell", "1"],
+    ]);
+  });
+
+  it("gives the swaps and the buy leg of the bought asset", async () => {
+    const detail = await instrumentDetail(asyncDatabase(sqlite), "zzb", "USD", today);
+
+    expect(detail?.swaps.map((s) => s.id)).toEqual(["sw1"]);
+    expect(detail?.trades).toEqual([]);
+    expect(detail?.legs).toEqual([
+      { id: "sw1", side: "buy", date: "2026-02-01", quantity: "2498", price: "0", fee: "2", total: "2498" },
+    ]);
+  });
+});

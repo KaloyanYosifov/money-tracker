@@ -37,15 +37,31 @@ export const DAILY_QUESTION_LIMIT = 50;
 
 // Hooks. useQuery watches the tables in the SQL, so the screen updates on each change.
 
-/** The open cards, newest first. */
-export function useOpenCards() {
-  return useQuery<InsightCard>("SELECT * FROM insights WHERE status = 'open' ORDER BY created_at DESC, id");
+export type InsightSource = "spending" | "portfolio";
+
+// A card without a source arrived before the source column, so it is a spending card.
+
+/** The open cards of one source, newest first. */
+export function useOpenCards(source: InsightSource) {
+  return useQuery<InsightCard>(
+    "SELECT * FROM insights WHERE status = 'open' AND COALESCE(source, 'spending') = ? ORDER BY created_at DESC, id",
+    [source],
+  );
 }
 
-/** The time of the newest card, or null before the first run. */
-export function useLastRunTime(): string | null {
-  const result = useQuery<{ last: string | null }>("SELECT MAX(created_at) AS last FROM insights");
+/** The time of the newest card of one source, or null when it has no cards. */
+export function useLastRunTime(source: InsightSource): string | null {
+  const result = useQuery<{ last: string | null }>(
+    "SELECT MAX(created_at) AS last FROM insights WHERE COALESCE(source, 'spending') = ?",
+    [source],
+  );
   return result.data[0]?.last ?? null;
+}
+
+/** True when the user has a trade on or before today, the same rule as the weekly portfolio run. */
+export function useHasTrades(today: string): boolean {
+  const result = useQuery<{ has: number }>("SELECT EXISTS (SELECT 1 FROM trades WHERE date <= ?) AS has", [today]);
+  return result.data[0]?.has === 1;
 }
 
 /**

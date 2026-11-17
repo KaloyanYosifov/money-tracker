@@ -19,6 +19,7 @@ import (
 type AIClient interface {
 	DailyInsights(ctx context.Context, input any) (aiclient.DailyInsightsResult, error)
 	CategoryQuestion(ctx context.Context, input any) (aiclient.CategoryQuestionResult, error)
+	PortfolioInsights(ctx context.Context, input any) (aiclient.DailyInsightsResult, error)
 }
 
 // Run writes new cards for each user who turned insights on. today is the
@@ -67,9 +68,14 @@ func runOne(ctx context.Context, pool *pgxpool.Pool, client AIClient, userID, to
 	}
 
 	cards := make([]Card, 0, len(result.Cards))
+	used := map[string]bool{}
 	for _, c := range result.Cards {
 		card := Card(c)
-		if err := CheckCard(card, data); err != nil {
+		err := CheckCard(card, data)
+		if err == nil {
+			err = checkFingerprint(card.Fingerprint, input.DismissedFingerprints, used)
+		}
+		if err != nil {
 			slog.Warn("insights card dropped", "user_id", userID, "kind", card.Kind, "fingerprint", card.Fingerprint, "err", err)
 			continue
 		}
@@ -81,16 +87,23 @@ func runOne(ctx context.Context, pool *pgxpool.Pool, client AIClient, userID, to
 		return fmt.Errorf("begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err := pruneOld(ctx, tx, userID, pruneBefore); err != nil {
+	if err := pruneCards(ctx, tx, userID, SourceSpending, pruneBefore); err != nil {
 		return err
 	}
-	if err := replaceOpenCards(ctx, tx, userID, cards); err != nil {
+	if err := pruneQuestions(ctx, tx, userID, pruneBefore); err != nil {
 		return err
 	}
-	// A blank summary keeps the saved one, so one bad run does not wipe it.
-	if strings.TrimSpace(result.Summary) != "" {
-		if err := saveMemory(ctx, tx, userID, limitSummary(result.Summary)); err != nil {
+	// When the checks drop every card of the answer, the open cards and the
+	// saved summary stay, because the new summary describes the dropped cards.
+	if keep := len(cards) == 0 && len(result.Cards) > 0; !keep {
+		if err := replaceOpenCards(ctx, tx, userID, SourceSpending, cards); err != nil {
 			return err
+		}
+		// A blank summary keeps the saved one, so one bad run does not wipe it.
+		if strings.TrimSpace(result.Summary) != "" {
+			if err := saveMemory(ctx, tx, userID, SourceSpending, limitSummary(result.Summary)); err != nil {
+				return err
+			}
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -99,7 +112,7 @@ func runOne(ctx context.Context, pool *pgxpool.Pool, client AIClient, userID, to
 	return nil
 }
 
-// maxSummaryLen is the summary limit of the daily_insights output schema.
+// maxSummaryLen is the summary limit of the daily_insights and portfolio_insights output schemas.
 // The summary goes into each later prompt, so the API does not trust the
 // gateway's schema check alone and cuts a longer one.
 const maxSummaryLen = 2000

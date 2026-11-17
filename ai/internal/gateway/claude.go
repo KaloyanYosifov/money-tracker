@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 )
 
@@ -44,7 +45,7 @@ func (CLIRunner) Run(ctx context.Context, args []string, stdin string) ([]byte, 
 		return nil, ctxErr
 	}
 	if err != nil {
-		if typed := classify(stdout.String() + "\n" + stderr.String()); typed != nil {
+		if typed := runFailure(stdout.Bytes(), stderr.Bytes()); typed != nil {
 			return nil, typed
 		}
 		return nil, fmt.Errorf("claude: %w: %s", err, truncate(strings.TrimSpace(stderr.String()), 200))
@@ -52,19 +53,43 @@ func (CLIRunner) Run(ctx context.Context, args []string, stdin string) ([]byte, 
 	return stdout.Bytes(), nil
 }
 
+// runFailure classifies a failed run from stderr and the result text of the
+// envelope on stdout. The rest of the envelope has token counts and ids, which
+// can contain "401" or "429".
+func runFailure(stdout, stderr []byte) error {
+	text := string(stderr)
+	if env, ok := findEnvelope(stdout); ok {
+		text += "\n" + env.Result
+	} else {
+		text += "\n" + string(stdout)
+	}
+	return classify(text)
+}
+
+var (
+	authStatus      = regexp.MustCompile(`\b401\b`)
+	rateLimitStatus = regexp.MustCompile(`\b429\b`)
+)
+
 // classify finds an auth or rate-limit failure in the text of a failed run.
 // It returns nil when the text names neither.
 func classify(text string) error {
 	t := strings.ToLower(text)
-	for _, marker := range []string{"invalid api key", "/login", "oauth", "authentication", "unauthorized", "not logged in", "401"} {
+	for _, marker := range []string{"invalid api key", "/login", "oauth", "authentication", "unauthorized", "not logged in"} {
 		if strings.Contains(t, marker) {
 			return ErrAuth
 		}
 	}
-	for _, marker := range []string{"rate limit", "rate_limit", "usage limit", "429", "overloaded"} {
+	if authStatus.MatchString(t) {
+		return ErrAuth
+	}
+	for _, marker := range []string{"rate limit", "rate_limit", "usage limit", "overloaded"} {
 		if strings.Contains(t, marker) {
 			return ErrRateLimited
 		}
+	}
+	if rateLimitStatus.MatchString(t) {
+		return ErrRateLimited
 	}
 	return nil
 }
@@ -103,7 +128,7 @@ func parseOutput(stdout []byte) (json.RawMessage, error) {
 
 	answer := bytes.TrimSpace(env.StructuredOutput)
 	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(answer, &obj); err != nil {
+	if err := json.Unmarshal(answer, &obj); err != nil || obj == nil {
 		return nil, ErrBadOutput
 	}
 	return answer, nil
