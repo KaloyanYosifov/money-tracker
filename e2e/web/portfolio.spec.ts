@@ -112,6 +112,8 @@ test("swap one asset to another and see both assets", async ({ page }) => {
   await expect(title).toBeVisible();
   await page.getByTestId("swap-to").click();
   await page.getByTestId("swap-to-option-ZZSWB").click();
+  // A browser can lose text that is typed while the select sheet still closes.
+  await expect(page.getByTestId("swap-to-option-ZZSWB")).toBeHidden();
   const given = page.getByLabel("Quantity given", { exact: true });
   const received = page.getByLabel("Quantity received", { exact: true });
   const fee = page.getByLabel("Fee (ZZSWB)", { exact: true });

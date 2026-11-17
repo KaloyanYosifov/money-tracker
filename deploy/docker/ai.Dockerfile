@@ -2,7 +2,7 @@
 # Build context: the repository root.
 # Dependabot updates the image digests. The claude-cli-update workflow updates
 # CLAUDE_VERSION and the checksums.
-FROM --platform=$BUILDPLATFORM golang:1.26.10@sha256:672c944cfd07599b5f1bb179869270cdc94c6254e41db4d431259693cb286b82 AS build
+FROM --platform=$BUILDPLATFORM golang:1.26.11@sha256:4165ee6bf3b7811fd7b40373290405c83d0167dcb87ee5f29c427cdcef45ff8f AS build
 ARG TARGETOS
 ARG TARGETARCH
 WORKDIR /src/ai
@@ -35,7 +35,9 @@ RUN set -eu; \
 
 # Not distroless: the Claude CLI needs a shell and glibc.
 FROM debian:12-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8
+# The base image can lag behind the Debian security fixes.
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 RUN useradd --create-home --uid 10001 --shell /bin/bash mtai

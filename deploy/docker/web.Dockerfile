@@ -16,6 +16,10 @@ RUN npx powersync-web copy-assets \
     && npx expo export --platform web --output-dir dist
 
 FROM nginxinc/nginx-unprivileged:1.30.6-alpine
+# The base image can lag behind the Alpine security fixes.
+USER root
+RUN apk upgrade --no-cache
+USER 101
 COPY deploy/docker/web-nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /src/app/dist /usr/share/nginx/html
 # The entrypoint substitutes only variables that are set. An unset variable
