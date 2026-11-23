@@ -16,9 +16,9 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
 # https://downloads.claude.ai/claude-code-releases/<version>/manifest.json.
 FROM debian:12-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8 AS cli
 ARG TARGETARCH
-ARG CLAUDE_VERSION=2.1.308
-ARG CLAUDE_SHA256_AMD64=356733f185fa988e6bf3aa9a555269fdd167982a2e2a80d3c8a78037bb92ad58
-ARG CLAUDE_SHA256_ARM64=fdd22e6cbb734d580f5664c48df4294eeec850218ff07f186f9af30426396ee1
+ARG CLAUDE_VERSION=2.1.323
+ARG CLAUDE_SHA256_AMD64=604d29a6869409106b6a1110bdadcc8b72e8654a5a865d23258f938a696e348e
+ARG CLAUDE_SHA256_ARM64=452dddff140b5caf00a5410333a3d6db82c73ea2dec74b1541fae18e97d47dca
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
